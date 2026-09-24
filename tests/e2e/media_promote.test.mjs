@@ -14,7 +14,7 @@ const ids = await E(async () => {
   const mk = (type, x, y) => { const n = LG.createNode(type); n.pos = [x, y]; app.graph.add(n); return n; };
   const I = mk("LoadImage", 0, 0), A = mk("LoadAudio", 400, 0), V = mk("LoadVideo", 800, 0), M = mk("LoadImageMask", 0, 450);
   app.canvas.deselectAll?.(); for (const n of [I, A, V, M]) app.canvas.select(n);
-  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getCanvasMenuItems().find(i => i && /Convert/.test(i.content)).callback();
+  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
   const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
   app.canvas.ds.offset = [80 - sn.pos[0], 80 - sn.pos[1]]; app.canvas.ds.scale = 1; app.canvas.setDirty(true, true);
   return { sn: sn.id, I: I.id, A: A.id, V: V.id, M: M.id };

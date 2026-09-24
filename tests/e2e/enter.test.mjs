@@ -16,7 +16,7 @@ const sid = await E(async () => {
   A.widgets.find(w => w.name === "width").value = 64; A.widgets.find(w => w.name === "height").value = 64;
   A.connect(0, S, 0); S.connect(0, P, 0); S.connect(0, D, 0);
   app.canvas.deselectAll?.(); app.canvas.select(S); app.canvas.select(P);
-  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getCanvasMenuItems().find(i => i && /Convert/.test(i.content)).callback();
+  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
   const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
   app.canvas.ds.offset = [80 - sn.pos[0], 80 - sn.pos[1]]; app.canvas.ds.scale = 1; app.canvas.setDirty(true, true);
   return sn.id;
@@ -41,16 +41,16 @@ const run = await E(async () => {
 });
 t("edit made inside is executed: " + JSON.stringify(run.types), run.ok && run.types.includes("ImageInvert"));
 // aninhado: entra, converte o ImageInvert em outro SuperSubgraph, entra nele
-await E((sid) => { const sn = window.app.graph.getNodeById(sid); window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getNodeMenuItems(sn).find(i => i && /Open SuperSubgraph/.test(i.content)).callback(); }, sid);
+await E((sid) => { const sn = window.app.graph.getNodeById(sid); window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(sn).find(i => i && /^Open$/.test(i.content)).callback(); }, sid);
 await pg.waitForTimeout(400);
 t("context menu 'Open SuperSubgraph' enters", await E(() => window.app.canvas.graph !== window.app.rootGraph));
 const nested = await E(async () => {
   const app = window.app; const g = app.canvas.graph; const inv = g.nodes.find(n => n.type === "ImageInvert");
   app.canvas.deselectAll?.(); app.canvas.select(inv);
-  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getCanvasMenuItems().find(i => i && /Convert/.test(i.content)).callback();
+  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
   const inner2 = g.nodes.find(n => n.type === "SuperSubgraph");
   inner2.title = "Nested SS";
-  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getNodeMenuItems(inner2).find(i => i && /Open SuperSubgraph/.test(i.content)).callback();
+  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(inner2).find(i => i && /^Open$/.test(i.content)).callback();
   await new Promise(r => setTimeout(r, 400));
   return { types: app.canvas.graph.nodes.map(n => n.type).join(), bar: document.querySelector(".lego-ss-nav")?.innerText };
 });

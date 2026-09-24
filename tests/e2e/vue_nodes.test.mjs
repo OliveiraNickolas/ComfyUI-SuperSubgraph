@@ -20,7 +20,7 @@ try {
     const A = mk("EmptyImage", 0), S = mk("ImageScale", 350), P = mk("PreviewImage", 700);
     A.connect(0, S, 0); S.connect(0, P, 0);
     app.canvas.deselectAll(); for (const n of [S, P]) app.canvas.select(n);
-    app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getCanvasMenuItems().find(i => i && /Convert/.test(i.content)).callback();
+    app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
     const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
     const si = sn.__ssGraph.nodes.find(n => n.type === "ImageScale").id;
     sn.properties.ui_layout.tabs[0].sections[0].controls.push({ name: "Stepper1", kind: "number", label: "Width", bind: `${si}/width`, x: 16, y: 16, w: 256, h: 48 });

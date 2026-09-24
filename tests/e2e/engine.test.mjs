@@ -33,11 +33,11 @@ const conv = await E(async (ids) => {
   const sel = [ids.S, ids.I, ids.P].map(id => app.graph.getNodeById(id));
   app.canvas.deselectAll?.(); for (const n of sel) app.canvas.select?.(n);
   const ext = app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph");
-  const item = ext.getCanvasMenuItems().find(i => i && /Convert Selection/.test(i.content));
+  const item = ext.__flatCanvas().find(i => i && /Convert Selection/.test(i.content));
   item.callback();
   const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
   // O cartão nasce vazio (nada promovido); o teste monta o layout pelo menu.
-  if (sn) ext.getNodeMenuItems(sn).find(i => i && /Recreate Layout/.test(i.content)).callback();
+  if (sn) ext.__flatNode(sn).find(i => i && /Recreate Layout/.test(i.content)).callback();
   return sn ? {
     id: sn.id, nodes: app.graph.nodes.map(n => n.type),
     ins: sn.inputs.filter(i => /^in_/.test(i.name)).map(i => [i.name, i.label, i.type, i.link != null]),
@@ -137,7 +137,7 @@ const un = await E(async () => {
   const app = window.app;
   const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
   const ext = app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph");
-  ext.getNodeMenuItems(sn).find(i => i && /Unpack/.test(i.content)).callback();
+  ext.__flatNode(sn).find(i => i && /Unpack/.test(i.content)).callback();
   return { types: app.graph.nodes.map(n => n.type).sort(), links: [...(app.graph.links.values ? app.graph.links.values() : Object.values(app.graph.links))].length };
 });
 console.log("UNPACK", JSON.stringify(un));

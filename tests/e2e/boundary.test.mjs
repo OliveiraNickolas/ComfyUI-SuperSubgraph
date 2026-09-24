@@ -20,7 +20,7 @@ const ids = await E(() => {
   N.widgets.find(w => w.name === "value").value = 24;
   A.connect(0, S, 0); S.connect(0, P, 0); S.connect(0, D, 0);
   app.canvas.deselectAll?.(); app.canvas.select(S); app.canvas.select(P);
-  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getCanvasMenuItems().find(i => i && /Convert/.test(i.content)).callback();
+  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
   const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
   return { sn: sn.id, S: S.id, A: A.id, D: D.id, N: N.id };
 });
@@ -31,7 +31,7 @@ const hostIO = () => E((id) => { const sn = window.app.rootGraph.getNodeById(id)
 // menu do nó de dentro: acha o item (com submenu) e chama
 const menu = (label, sub) => E(({ S, label, sub }) => {
   const app = window.app; const n = app.canvas.graph.getNodeById(S);
-  const it = app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getNodeMenuItems(n).find(i => i && i.content === label);
+  const it = app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(n).find(i => i && i.content === label);
   if (!it) return "no item " + label;
   const s = it.submenu.options.find(o => o.content.startsWith(sub));
   if (!s) return "no sub " + sub + " in " + it.submenu.options.map(o => o.content).join("|");
@@ -56,14 +56,14 @@ const run = () => E(async () => {
 let io = await hostIO();
 t("start: in_1 (image) and out_1 linked " + io.ins + " / " + io.outs, /^in_1:image:true$/.test(io.ins) && /^out_1:IMAGE:1$/.test(io.outs));
 
-await E((id) => window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getNodeMenuItems(window.app.rootGraph.getNodeById(id)).find(i => i && /Open SuperSubgraph/.test(i.content)).callback(), ids.sn);
+await E((id) => window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(window.app.rootGraph.getNodeById(id)).find(i => i && /^Open$/.test(i.content)).callback(), ids.sn);
 await pg.waitForTimeout(500);
 let tags = await E(() => [...document.querySelectorAll(".lego-ss-io")].map(e => e.textContent).sort().join("|"));
 t("inside: boundary tags on the inner node: " + tags, tags === "in_1 →|→ out_1");
 await pg.screenshot({ path: path.join(dir, "boundary_inside.png") });
 
 // expõe a largura (widget) do ImageScale como in_2
-t("Expose Input > width", (await menu("Expose Input to SuperSubgraph", "width")) === "ok");
+t("Expose Input > width", (await menu("Expose Input", "width")) === "ok");
 await pg.waitForTimeout(300);
 tags = await E(() => [...document.querySelectorAll(".lego-ss-io")].map(e => e.textContent).sort().join("|"));
 t("tag for in_2 appears: " + tags, tags === "in_1 →|in_2 →|→ out_1");
@@ -71,10 +71,10 @@ t("tag for in_2 appears: " + tags, tags === "in_1 →|in_2 →|→ out_1");
 t("Unexpose Output > out_1", (await menu("Unexpose Output", "out_1")) === "ok");
 io = await hostIO();
 t("output gone and its outside link dropped: '" + io.outs + "'", io.outs === "");
-t("Expose Output > IMAGE", (await menu("Expose Output from SuperSubgraph", "IMAGE")) === "ok");
+t("Expose Output > IMAGE", (await menu("Expose Output", "IMAGE")) === "ok");
 // tira a entrada de imagem (in_1): in_2 vira in_1
 t("Unexpose Input > in_1", (await menu("Unexpose Input", "in_1")) === "ok");
-t("Expose Input > image again", (await menu("Expose Input to SuperSubgraph", "image")) === "ok");
+t("Expose Input > image again", (await menu("Expose Input", "image")) === "ok");
 await pg.keyboard.press("Escape"); await pg.waitForTimeout(400);
 io = await hostIO();
 t("renumbered: in_1 = width, in_2 = image; out_1 back " + io.ins + " / " + io.outs + " " + io.meta,
@@ -92,11 +92,11 @@ const r = await run();
 t("runs, and the outside number drives the inner width: " + JSON.stringify(r), r.ok && r.w === 24 && r.h === 16);
 
 // nó de dentro apagado: a saída exposta dele sai junto ao voltar
-await E((id) => window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getNodeMenuItems(window.app.rootGraph.getNodeById(id)).find(i => i && /Open SuperSubgraph/.test(i.content)).callback(), ids.sn);
+await E((id) => window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(window.app.rootGraph.getNodeById(id)).find(i => i && /^Open$/.test(i.content)).callback(), ids.sn);
 await pg.waitForTimeout(400);
 const invId = await E(() => { const g = window.app.canvas.graph; const inv = window.LiteGraph.createNode("ImageInvert"); inv.pos = [0, 400]; g.add(inv); return inv.id; });
 const exp = await E((invId) => { const app = window.app; const n = app.canvas.graph.getNodeById(invId);
-  const it = app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getNodeMenuItems(n).find(i => i && i.content === "Expose Output from SuperSubgraph");
+  const it = app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(n).find(i => i && i.content === "Expose Output");
   it.submenu.options[0].callback(); return window.app.rootGraph.nodes.find(n => n.type === "SuperSubgraph").outputs.map(o => o.name).join(); }, invId);
 t("new inner node output exposed as out_2: " + exp, exp === "out_1,out_2");
 await E((invId) => { const g = window.app.canvas.graph; g.remove(g.getNodeById(invId)); }, invId);
