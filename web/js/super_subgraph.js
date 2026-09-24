@@ -2638,6 +2638,32 @@ const CSS_OUTPUT = `
 .lego-segment-item.kind-outimage,.lego-segment-item.kind-outvideo,.lego-segment-item.kind-outaudio{flex-direction:column;align-items:stretch}
 `;
 
+/* Arraste entre grupos, zonas e sub-abas: feedback de entrada e saída */
+const CSS_DRAG = `
+.lego-segment-box{position:relative}
+.lego-segment-box.drop-into{outline:2px dashed var(--lego-accent,#3b82f6)!important;outline-offset:2px;
+  background:rgba(59,130,246,0.12)!important}
+.lego-drop-line{position:absolute;pointer-events:none;background:var(--lego-accent,#3b82f6);border-radius:2px;
+  box-shadow:0 0 8px rgba(59,130,246,0.8);z-index:60}
+.lego-drop-line.v{top:4px;bottom:4px;width:3px}
+.lego-drop-line.h{left:6px;right:6px;height:3px}
+.lego-sec-controls.drop-out{outline:2px dashed rgba(34,197,94,0.85)!important;outline-offset:-2px;
+  background:rgba(34,197,94,0.07)!important}
+.lego-drag-ghost{position:fixed!important;margin:0!important;pointer-events:none!important;z-index:100000;
+  opacity:.9;transform-origin:0 0;box-shadow:0 10px 28px rgba(0,0,0,0.55);border-radius:6px;
+  background:#26262b;color:#e5e7eb;font-family:inherit;display:flex;align-items:center;gap:6px;
+  padding:2px 6px;box-sizing:border-box;overflow:hidden}
+.lego-drag-ghost .lego-item-actions,.lego-drag-ghost .lego-resizer-corner{display:none!important}
+.lego-segment-item.drag-source{opacity:.3}
+.lego-segment-item.editable{cursor:grab}
+.lego-row.entering-group{opacity:.45!important}
+.lego-seg-empty-hint{font-size:11px;color:var(--lego-dim);font-style:italic;pointer-events:none;padding:2px 4px}
+.lego-subtab.dragging{opacity:.4}
+.lego-subtab.drop-before{box-shadow:inset 3px 0 0 var(--lego-accent,#3b82f6)}
+.lego-subtab.drop-after{box-shadow:inset -3px 0 0 var(--lego-accent,#3b82f6)}
+.lego-subtabs.drop-into,.lego-sec-h.drop-into{outline:2px dashed var(--lego-accent,#3b82f6);outline-offset:2px;border-radius:6px}
+`;
+
 function showLegoToast(msg) {
   let toast = document.getElementById("lego-action-toast");
   if (!toast) {
@@ -3010,7 +3036,7 @@ function injectCSS() {
   if (document.getElementById("lego-style")) return;
   const s = document.createElement("style");
   s.id = "lego-style";
-  s.textContent = CSS + CSS_FORM + CSS_OUTPUT;
+  s.textContent = CSS + CSS_FORM + CSS_OUTPUT + CSS_DRAG;
   document.head.appendChild(s);
 }
 
@@ -4721,10 +4747,250 @@ function addItemToSegment(host, state, segmentCtrl, itemDef) {
 /**
  * Builds a Custom Segment component (containing multiple inline sub-controls).
  */
+/* ══════════════════════════════════════════════════════════════════════════
+   Arraste entre grupos e zonas
+
+   Os elementos do DOM carregam o dado que representam: `box.__legoSeg` é o
+   grupo (horizontal/vertical) e `ctrlsBox.__legoList` é a lista de controles
+   da zona. Assim o alvo do arraste sai direto do ponto sob o cursor, sem
+   procurar no layout.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const isContainerKind = (k) => k === "segment" || k === "vsegment" || k === "group";
+const is2DKind = (k) => k === "textarea" || k === "media" || k === "video" || k === "audio" || isOutputKind(k);
+
+/**
+ * O navegador dispara um `click` logo depois de soltar um arraste; ele não
+ * pode virar seleção. Engole só esse clique — o bloqueio expira no próximo
+ * ciclo para não comer o clique seguinte do usuário.
+ */
+function swallowNextClick() {
+  const stop = (ce) => { ce.stopPropagation(); ce.preventDefault(); };
+  window.addEventListener("click", stop, true);
+  setTimeout(() => window.removeEventListener("click", stop, true), 0);
+}
+
+/** Remove qualquer realce/indicador de soltura deixado por um arraste. */
+function clearDropFeedback() {
+  document.querySelectorAll(".lego-drop-line").forEach((e) => e.remove());
+  document.querySelectorAll(".lego-segment-box.drop-into").forEach((e) => e.classList.remove("drop-into"));
+  document.querySelectorAll(".lego-sec-controls.drop-out").forEach((e) => e.classList.remove("drop-out"));
+}
+
+/**
+ * Grupo sob o ponto, com a posição de inserção entre os itens dele.
+ * `skipEl` (o elemento arrastado) não conta nem como alvo nem como vizinho.
+ */
+function groupDropTargetAt(x, y, skipEl) {
+  for (const hitEl of document.elementsFromPoint(x, y)) {
+    const box = hitEl.closest?.(".lego-segment-box");
+    if (!box || !box.__legoSeg) continue;
+    if (skipEl && (skipEl === box || skipEl.contains(box))) continue;
+    const vertical = box.classList.contains("vertical");
+    const items = [...box.children].filter((c) => c.classList.contains("lego-segment-item") && c !== skipEl);
+    let index = items.length;
+    for (let i = 0; i < items.length; i++) {
+      const r = items[i].getBoundingClientRect();
+      if (vertical ? y < r.top + r.height / 2 : x < r.left + r.width / 2) { index = i; break; }
+    }
+    // `index` conta só os itens visíveis; converte para o índice na lista real.
+    const seg = box.__legoSeg;
+    const ref = items[index];
+    const listIndex = ref ? seg.items.findIndex((it) => it.name === ref.dataset.name) : seg.items.length;
+    return { box, seg, vertical, items, index, listIndex: listIndex < 0 ? seg.items.length : listIndex };
+  }
+  return null;
+}
+
+/** Zona (área de controles) sob o ponto. */
+function zoneDropTargetAt(x, y) {
+  for (const hitEl of document.elementsFromPoint(x, y)) {
+    const zone = hitEl.closest?.(".lego-sec-controls");
+    if (zone && zone.__legoList) return zone;
+  }
+  return null;
+}
+
+/** Realça o grupo e desenha a linha onde o item vai entrar. */
+function showGroupDrop(t) {
+  clearDropFeedback();
+  t.box.classList.add("drop-into");
+  const line = el("div", `lego-drop-line ${t.vertical ? "h" : "v"}`);
+  const boxR = t.box.getBoundingClientRect();
+  const sc = boxR.width / (t.box.offsetWidth || boxR.width || 1);   // zoom do canvas
+  const before = t.items[t.index];
+  const after = t.items[t.index - 1];
+  if (t.vertical) {
+    const yPx = before
+      ? before.getBoundingClientRect().top - 3
+      : after ? after.getBoundingClientRect().bottom + 1 : boxR.top + 6;
+    line.style.top = `${(yPx - boxR.top) / sc}px`;
+  } else {
+    const xPx = before
+      ? before.getBoundingClientRect().left - 3
+      : after ? after.getBoundingClientRect().right + 1 : boxR.left + 8;
+    line.style.left = `${(xPx - boxR.left) / sc}px`;
+  }
+  t.box.append(line);
+}
+
+/** Converte um item de grupo em componente solto da zona (e vice-versa). */
+function itemToZoneCtrl(item, x, y, wPx, hPx) {
+  const c = { ...item, x: Math.max(0, Math.round(x / GRID) * GRID), y: Math.max(0, Math.round(y / GRID) * GRID) };
+  const { minW, minH } = getComponentMinDimensions(c);
+  c.w = Math.max(minW, typeof item.w === "number" ? item.w : Math.round(wPx / GRID) * GRID || toolByKind(item.kind).w);
+  c.h = Math.max(minH, typeof item.h === "number" ? item.h : Math.round(hPx / GRID) * GRID || toolByKind(item.kind).h);
+  return c;
+}
+
+function zoneCtrlToItem(ctrl) {
+  const it = { ...ctrl };
+  delete it.x;
+  delete it.y;
+  delete it.width;
+  delete it.height;
+  // Dentro do grupo o item acompanha a largura do grupo; só o que tem corpo
+  // (texto longo, mídia, output) guarda a altura que tinha.
+  delete it.w;
+  if (!is2DKind(it.kind)) delete it.h;
+  return it;
+}
+
+/**
+ * Arraste de um item que está DENTRO de um grupo: reordena no mesmo grupo,
+ * passa para outro grupo ou sai para a zona como componente solto.
+ */
+function startGroupItemDrag(e, { host, state, item, fromList, itemEl }) {
+  const startX = e.clientX;
+  const startY = e.clientY;
+  const srcR = itemEl.getBoundingClientRect();
+  const sc = srcR.width / (itemEl.offsetWidth || srcR.width || 1);
+  const grabX = startX - srcR.left;
+  const grabY = startY - srcR.top;
+  const undoSnapshot = JSON.stringify(host.properties[PROP] || {});
+  let ghost = null;
+  let target = null;   // { type: "group", ...groupDropTargetAt } | { type: "zone", zone }
+
+  const onMove = (ev) => {
+    if (!ghost) {
+      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 4) return;
+      ghost = itemEl.cloneNode(true);
+      ghost.classList.add("lego-drag-ghost");
+      ghost.classList.remove("selected");
+      ghost.style.width = `${itemEl.offsetWidth}px`;
+      ghost.style.height = `${itemEl.offsetHeight}px`;
+      ghost.style.transform = `scale(${sc})`;
+      document.body.append(ghost);
+      itemEl.classList.add("drag-source");
+    }
+    ev.preventDefault();
+    ev.stopPropagation();
+    ghost.style.left = `${ev.clientX - grabX}px`;
+    ghost.style.top = `${ev.clientY - grabY}px`;
+
+    const g = groupDropTargetAt(ev.clientX, ev.clientY, itemEl);
+    if (g) {
+      target = { type: "group", ...g };
+      showGroupDrop(g);
+      return;
+    }
+    const zone = zoneDropTargetAt(ev.clientX, ev.clientY);
+    clearDropFeedback();
+    if (zone) {
+      target = { type: "zone", zone };
+      zone.classList.add("drop-out");
+    } else {
+      target = null;
+    }
+  };
+
+  const onUp = (ev) => {
+    window.removeEventListener("pointermove", onMove, true);
+    window.removeEventListener("pointerup", onUp, true);
+    window.removeEventListener("pointercancel", onUp, true);
+    clearDropFeedback();
+    itemEl.classList.remove("drag-source");
+    if (!ghost) {
+      // Foi só um clique: a seleção cuida disso. Num campo de texto, o
+      // pointerdown barrado impediu o foco nativo — devolve para digitar.
+      const field = e.target.closest?.("input, textarea, select");
+      if (field) field.focus();
+      return;
+    }
+    ghost.remove();
+    ev.stopPropagation();
+    swallowNextClick();
+    if (!target) return;
+
+    const from = fromList.indexOf(item);
+    if (from < 0) return;
+    if (target.type === "group") {
+      const dest = target.seg.items || (target.seg.items = []);
+      let at = target.listIndex;
+      fromList.splice(from, 1);
+      if (dest === fromList && from < at) at--;
+      dest.splice(Math.max(0, Math.min(at, dest.length)), 0, item);
+    } else {
+      const zr = target.zone.getBoundingClientRect();
+      const zsc = zr.width / (target.zone.offsetWidth || zr.width || 1);
+      const x = (ev.clientX - grabX - zr.left) / zsc;
+      const y = (ev.clientY - grabY - zr.top) / zsc;
+      fromList.splice(from, 1);
+      const moved = itemToZoneCtrl(item, x, y, srcR.width / sc, srcR.height / sc);
+      target.zone.__legoList.push(moved);
+    }
+    pushUndoSnapshot(host, undoSnapshot);
+    state.selectedName = item.name;
+    state.selectedNames = new Set([item.name]);
+    state.refresh();
+  };
+
+  window.addEventListener("pointermove", onMove, true);
+  window.addEventListener("pointerup", onUp, true);
+  window.addEventListener("pointercancel", onUp, true);
+}
+
+function clearSubTabFeedback() {
+  document.querySelectorAll(".lego-subtab.drop-before, .lego-subtab.drop-after")
+    .forEach((e) => e.classList.remove("drop-before", "drop-after"));
+  document.querySelectorAll(".lego-subtabs.drop-into, .lego-sec-h.drop-into")
+    .forEach((e) => e.classList.remove("drop-into"));
+}
+
+/** Move uma sub-aba de zona (reordenar na mesma zona ou levar para outra). */
+function moveSubTab(host, state, fromSec, fromIdx, toSec, toIdx) {
+  if (!Array.isArray(fromSec.tabs) || !fromSec.tabs[fromIdx]) return;
+  if (fromSec === toSec && (toIdx === fromIdx || toIdx === fromIdx + 1)) return;
+  pushUndo(host);
+  const [tab] = fromSec.tabs.splice(fromIdx, 1);
+  if (fromSec === toSec && fromIdx < toIdx) toIdx--;
+  if (!Array.isArray(toSec.tabs) || !toSec.tabs.length) {
+    // Zona sem sub-abas: o que ela já tem vira a primeira aba e a nova entra
+    // ao lado — nada do conteúdo dela se perde.
+    toSec.tabs = [{ name: "Tab 1", controls: toSec.controls || [] }];
+    delete toSec.controls;
+    toIdx = 1;
+  }
+  toIdx = Math.max(0, Math.min(toIdx, toSec.tabs.length));
+  toSec.tabs.splice(toIdx, 0, tab);
+  toSec.activeTab = toIdx;
+  if (fromSec !== toSec) {
+    if (!fromSec.tabs.length) {
+      delete fromSec.tabs;
+      fromSec.controls = [];
+      fromSec.activeTab = 0;
+    } else {
+      fromSec.activeTab = Math.min(fromSec.activeTab || 0, fromSec.tabs.length - 1);
+    }
+  }
+  state.refresh();
+}
+
 function buildSegment(host, ctrl, state, sectionCtrls) {
   const isVertical = ctrl.kind === "vsegment";
   const box = el("div", `lego-segment-box ${isVertical ? "vertical" : "horizontal"}${state?.edit ? " in-edit" : ""}`);
   if (!Array.isArray(ctrl.items)) ctrl.items = [];
+  box.__legoSeg = ctrl;   // alvo de arraste (ver groupDropTargetAt)
 
   // Duplo clique no segmento em modo de edição abre o seletor nativo com segmentCtrl
   if (state?.edit) {
@@ -4790,6 +5056,17 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
     }
 
     if (state?.edit) {
+      // Arrastar o item: reordena no grupo, leva a outro grupo ou solta na
+      // zona. Barra o pointerdown para não arrastar o grupo inteiro junto.
+      itemWrap.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0 || state.armedTool) return;
+        if (e.target.closest(".lego-item-actions, .lego-resizer-corner")) return;
+        e.stopPropagation();
+        e.preventDefault();
+        startGroupItemDrag(e, { host, state, item, fromList: ctrl.items, itemEl: itemWrap });
+      });
+      itemWrap.ondragstart = (e) => e.preventDefault();
+
       itemWrap.addEventListener("click", (e) => {
         if (e.target.closest(".lego-item-del-btn") || e.target.closest(".lego-item-link-btn") || e.target.closest(".lego-resizer-corner")) return;
         e.stopPropagation();
@@ -5131,26 +5408,12 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       }
     });
 
-    const editBtn = glyphTextBtn("lego-seg-quick-btn", "plus", "Add", 12);
-    editBtn.title = `Add element to ${isVertical ? "vertical group" : "horizontal group"} (opens selector)`;
-    if (!isVertical) editBtn.style.marginLeft = "auto";
-    editBtn.addEventListener("pointerdown", (e) => {
-      e.stopPropagation();
-    });
-    editBtn.addEventListener("mousedown", (e) => {
-      e.stopPropagation();
-    });
-    editBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openInspector({
-        host,
-        layout: host.properties[PROP],
-        section: { controls: sectionCtrls },
-        state,
-        segmentCtrl: ctrl
-      });
-    });
-    box.append(editBtn);
+    // O "+ Add" fica na barra flutuante do grupo (buildControl), junto de
+    // configurar, duplicar e remover — não mais dentro do grupo.
+    if (!ctrl.items.length) {
+      const hint = el("div", "lego-seg-empty-hint", "Empty group — use + above or drag elements here");
+      box.append(hint);
+    }
   }
 
   if (ctrl.items.length === 0 && !state?.edit) {
@@ -5628,6 +5891,18 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     });
     floatingActions.append(editBtn);
 
+    // Grupo: "+ Add" na mesma barra de configurar/duplicar/remover.
+    if (isSegmentLike) {
+      const addBtn = glyphBtn("lego-iconbtn btn-add", "plus", 10);
+      addBtn.title = `Add element to ${ctrl.kind === "vsegment" ? "vertical" : "horizontal"} group`;
+      addBtn.addEventListener("pointerdown", eatPointer);
+      addBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openInspector({ host, layout: host.properties[PROP], section: { controls: sectionCtrls }, state, segmentCtrl: ctrl });
+      });
+      floatingActions.append(addBtn);
+    }
+
     // Botão de duplicar / copiar em componentes não linkados (ou cosméticos)
     const isUnboundOrCosmetic = !hit || !ctrl.bind || isDivider || isGroup || isLabel;
     if (isUnboundOrCosmetic) {
@@ -5855,6 +6130,10 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
         activeGuides = [];
       };
 
+      // Um componente sozinho (não-grupo) pode ser solto DENTRO de um grupo.
+      const canEnterGroup = movingItems.length === 1 && !isContainerKind(ctrl.kind);
+      let groupTarget = null;
+
       const onMove = (ev) => {
         ev.stopPropagation();
         ev.preventDefault();
@@ -6027,6 +6306,22 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
           }
         }
 
+        // Sobre um grupo: realça o grupo, mostra onde entra e esmaece o
+        // componente, que ali vira item do grupo em vez de mudar de lugar.
+        if (canEnterGroup) {
+          const g = groupDropTargetAt(ev.clientX, ev.clientY, row);
+          if (g) {
+            groupTarget = g;
+            clearGuides();   // guias de alinhamento não valem dentro do grupo
+            showGroupDrop(g);
+            row.classList.add("entering-group");
+          } else if (groupTarget) {
+            groupTarget = null;
+            clearDropFeedback();
+            row.classList.remove("entering-group");
+          }
+        }
+
         if (updateBoundsFn) {
           const maxMovingBottom = Math.max(...movingItems.map(m => m.curY + (m.ctrl.h || 46) + 16));
           const curMinH = parseFloat(container.style.minHeight) || 70;
@@ -6049,6 +6344,8 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
         window.removeEventListener("mouseup", onUp, true);
 
         clearGuides();
+        clearDropFeedback();
+        row.classList.remove("entering-group");
         row.style.cursor = "grab";
 
         if (!isDragging) {
@@ -6076,6 +6373,20 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
         }
 
         ev?.stopPropagation();
+
+        if (groupTarget) {
+          const idx = sectionCtrls.indexOf(ctrl);
+          if (idx >= 0) {
+            sectionCtrls.splice(idx, 1);
+            const dest = groupTarget.seg.items || (groupTarget.seg.items = []);
+            dest.splice(Math.min(groupTarget.listIndex, dest.length), 0, zoneCtrlToItem(ctrl));
+            pushUndoSnapshot(host, undoSnapshot);
+            state.selectedName = ctrl.name;
+            state.selectedNames = new Set([ctrl.name]);
+            state.refresh();
+            return;
+          }
+        }
 
         for (const item of movingItems) {
           if (item.el) {
@@ -9710,6 +10021,26 @@ function buildCard(host, state) {
         });
       }
 
+      if (state.edit && !hasSubTabs) {
+        h.addEventListener("dragover", (e) => {
+          if (!state.draggingSubTab) return;
+          e.preventDefault();
+          e.stopPropagation();
+          clearSubTabFeedback();
+          h.classList.add("drop-into");
+        });
+        h.addEventListener("dragleave", () => h.classList.remove("drop-into"));
+        h.addEventListener("drop", (e) => {
+          const d = state.draggingSubTab;
+          if (!d) return;
+          e.preventDefault();
+          e.stopPropagation();
+          state.draggingSubTab = null;
+          clearSubTabFeedback();
+          moveSubTab(host, state, d.sec, d.idx, s, 1);
+        });
+      }
+
       const titleSpan = el("span", null, s.header || "");
       if (state.edit) {
         titleSpan.title = "Double-click to rename this card";
@@ -9923,6 +10254,43 @@ function buildCard(host, state) {
           const subTab = el("div", `lego-subtab${isSel ? " sel" : ""}`);
           subTab.append(el("span", "lego-subtab-title", st.name));
 
+          // Sub-aba arrastável: reordena na zona ou muda de zona.
+          if (state.edit) {
+            subTab.draggable = true;
+            subTab.title = "Drag to reorder or move to another zone";
+            subTab.addEventListener("dragstart", (e) => {
+              e.stopPropagation();
+              state.draggingSubTab = { sec: s, idx: stIdx };
+              try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", st.name || ""); } catch {}
+              subTab.classList.add("dragging");
+            });
+            subTab.addEventListener("dragend", () => {
+              state.draggingSubTab = null;
+              subTab.classList.remove("dragging");
+              clearSubTabFeedback();
+            });
+            subTab.addEventListener("dragover", (e) => {
+              if (!state.draggingSubTab) return;
+              e.preventDefault();
+              e.stopPropagation();
+              const r = subTab.getBoundingClientRect();
+              const after = e.clientX > r.left + r.width / 2;
+              clearSubTabFeedback();
+              subTab.classList.add(after ? "drop-after" : "drop-before");
+            });
+            subTab.addEventListener("drop", (e) => {
+              const d = state.draggingSubTab;
+              if (!d) return;
+              e.preventDefault();
+              e.stopPropagation();
+              const r = subTab.getBoundingClientRect();
+              const after = e.clientX > r.left + r.width / 2;
+              state.draggingSubTab = null;
+              clearSubTabFeedback();
+              moveSubTab(host, state, d.sec, d.idx, s, stIdx + (after ? 1 : 0));
+            });
+          }
+
           // Em modo de edição, adiciona botões de ação rápidos na sub-aba
           if (state.edit) {
             const subActions = el("span", "lego-subtab-actions");
@@ -10031,12 +10399,33 @@ function buildCard(host, state) {
           });
           subBar.append(addSubTab);
         }
+        // Soltar no espaço vazio da barra: entra no fim da fila desta zona.
+        if (state.edit) {
+          subBar.addEventListener("dragover", (e) => {
+            if (!state.draggingSubTab) return;
+            e.preventDefault();
+            e.stopPropagation();
+            clearSubTabFeedback();
+            subBar.classList.add("drop-into");
+          });
+          subBar.addEventListener("dragleave", () => subBar.classList.remove("drop-into"));
+          subBar.addEventListener("drop", (e) => {
+            const d = state.draggingSubTab;
+            if (!d) return;
+            e.preventDefault();
+            e.stopPropagation();
+            state.draggingSubTab = null;
+            clearSubTabFeedback();
+            moveSubTab(host, state, d.sec, d.idx, s, s.tabs.length);
+          });
+        }
         sec.append(subBar);
       }
 
       // ── ÁREA DE CANVAS 2D DA ZONA (SEM TEXTURA DE BOLINHAS, TOTALMENTE DISCRETO) ──
       const CTRL_GRID = 16;
       const ctrlsBox = el("div", `lego-sec-controls${state.edit ? " in-edit" : ""}`);
+      ctrlsBox.__legoList = list;   // alvo de arraste (ver zoneDropTargetAt)
 
       function updateControlsBounds() {
         let maxY = 70;
