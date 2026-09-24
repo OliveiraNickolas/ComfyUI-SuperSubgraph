@@ -1,0 +1,23 @@
+<!doctype html><html><body style="background:#1b1b1f;margin:0;padding:20px;font-family:sans-serif"><div id="wrap" style="width:900px"></div>
+<script>
+globalThis.__app = { canvas: { ds: { scale: 1 }, setDirty(){} }, graph: { _nodes: [], setDirtyCanvas(){} } };
+globalThis.__api = { apiURL: p => p, fetchApi: async () => ({ ok:false }), addEventListener(){} };
+</script>
+<script type="module">
+import * as M from "./mod.mjs";
+const widgets = [
+  { name: "a", type: "number", value: 1, options: { min: 0, max: 10, step: 1 } },
+  { name: "b", type: "number", value: 2, options: { min: 0, max: 10, step: 1 } },
+  { name: "c", type: "toggle", value: true },
+];
+const host = { id: 1, title: "T", size: [900, 500], properties: {}, widgets, graph: globalThis.__app.graph, flags: {},
+  addDOMWidget(n, t, el) { widgets.push({ name: n, element: el }); document.getElementById("wrap").append(el); return widgets.at(-1); },
+  setSize(s){ this.size = s; }, computeSize(){ return [1,1]; } };
+host.properties.ui_layout = { schema: 2, activeTab: 0, tabs: [{ name: "Main", sections: [{ header: "ZONE A", controls: [
+  { name: "Stepper1", kind: "number", bind: "a", label: "A", x: 16, y: 16, w: 224, h: 48 },
+  { name: "Stepper2", kind: "number", bind: "b", label: "B", x: 320, y: 112, w: 256, h: 48 },
+  { name: "Switch1", kind: "toggle", bind: "c", label: "C", x: 96, y: 208, w: 192, h: 48 } ] }] }] };
+window.__st = M.attach(host); __st.edit = true; __st.refresh();
+window.__C = () => host.properties.ui_layout.tabs[0].sections[0].controls;
+window.__ready = true;
+</script></body></html>
