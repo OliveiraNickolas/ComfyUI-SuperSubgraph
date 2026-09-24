@@ -12,6 +12,15 @@ Custom node for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) providing a
 - **Layout in the workflow**: Layout and state persist in `node.properties.ui_layout`, serializing natively with your workflow.
 - **Independent Super Subgraph node**: select nodes and use **Convert Selection to SuperSubgraph** (selection toolbar — the native subgraph icon with a purple "SS" badge, canvas or node right-click menu). The nodes move inside a `SuperSubgraph` node with its own engine — no native subgraph involved. Links crossing the selection become its inputs/outputs; the card starts empty (nothing is promoted automatically) and binds straight to the inner widgets you choose — **Recreate Layout from Widgets** builds a default layout on demand. To explore or edit the nodes inside, click the **enter** button in the card header (or right-click → **Open SuperSubgraph**); a bar at the top shows where you are and **Back** returns (nested SuperSubgraphs work too). **Unpack Super Subgraph** (node right-click) puts the nodes back into the workflow.
 
+## Promoting parameters
+
+Double-click an empty zone (edit mode) or use a zone's **+**, then **Target Picker**. On the canvas (inside the SuperSubgraph):
+
+- click a node **title** to pick the whole node (purple border) — it becomes a whole-node widget;
+- click a **parameter** to pick just it (green border) — it becomes its own component;
+- click again to unpick; clicking a parameter of a whole-picked node unpicks just that parameter;
+- **Promote (N)** (or Enter) adds everything at once, stacked from where you opened the selector; **Cancel** (or Esc) leaves without changes. Opened from a group's **+ Add**, the picks become items of that group.
+
 ## How the Super Subgraph engine works
 
 - **Frontend:** the inner nodes live in their own graph, off the canvas, saved in `node.properties.ss_inner`. When you queue, ComfyUI's own `graphToPrompt` turns that graph into the API format (bypass, mute, reroutes and primitives behave as usual).
