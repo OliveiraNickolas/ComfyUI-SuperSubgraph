@@ -23,6 +23,10 @@ Quickest way: on an empty card, click **Promote parameters** — the selector op
 
 If a promoted parameter disappears (its node was deleted or changed), the component shows **widget missing** with **Rebind** (link it to another parameter) and **Remove**.
 
+## Editing components
+
+In edit mode, right-click a component for **Properties**, **Duplicate** (Ctrl+D), **Group** / **Group vertically** (Ctrl+G / Ctrl+Shift+G group the selected components), **Ungroup**, **Change to Slider/Stepper** (same parameter, other look), **Rebind…** and **Remove** (Del). Ctrl/Shift + right-click still just adds to the selection.
+
 ## Inputs and outputs of a Super Subgraph
 
 Inside a SuperSubgraph, purple tags show the border: `in_N →` on inner inputs fed from outside, `→ out_N` on inner outputs that go outside.

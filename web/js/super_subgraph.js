@@ -2326,6 +2326,9 @@ textarea.lego-in{resize:vertical;min-height:75px;font-family:ui-monospace,SFMono
   cursor:pointer;font-size:12px;color:var(--lego-text);border:0;background:transparent;text-align:left;transition:all .12s}
 .lego-ctx-item:hover{background:var(--lego-accent);color:#fff}
 .lego-ctx-item.danger:hover{background:#ef4444;color:#fff}
+.lego-ctx-label{flex:1}
+.lego-ctx-hint{margin-left:18px;font-size:10.5px;opacity:.5}
+.lego-ctx-sep{height:1px;margin:3px 6px;background:var(--lego-line)}
 
 /* ── Sub-Abas Internas de Zona (Estilo Idêntico às Abas Principais) ── */
 .lego-subtabs{display:flex;gap:4px;border-bottom:2px solid var(--lego-line);overflow-x:auto;
@@ -3098,6 +3101,19 @@ function installFormShortcuts() {
             e.stopPropagation();
             return;
           }
+        }
+      }
+    }
+
+    // Ctrl+G / Ctrl+Shift+G: agrupa a seleção num grupo horizontal / vertical
+    if (isCtrlOrCmd && (e.key === "g" || e.key === "G")) {
+      for (const n of ATTACHED) {
+        const st = n.__legoState;
+        if (st && st.edit && (st.selectedNames?.size || st.selectedName)) {
+          e.preventDefault();
+          e.stopPropagation();
+          groupSelectedComponents(n, st, e.shiftKey);
+          return;
         }
       }
     }
@@ -6287,14 +6303,19 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       selectComponent(host, state, ctrl, sectionCtrls, false, isMulti);
     });
 
-    // Botão direito abre o Inspetor de Objetos (com suporte a multi-seleção)
+    // Botão direito: menu do componente (Propriedades, Duplicar, Agrupar...).
+    // Com Ctrl/Shift continua só somando à seleção.
     row.addEventListener("contextmenu", (e) => {
       if (e.target.closest(".lego-segment-item")) return;
       e.preventDefault();
       e.stopPropagation();
       const isMulti = e.ctrlKey || e.metaKey || e.shiftKey;
-      marcar(isMulti);
-      selectComponent(host, state, ctrl, sectionCtrls, true, isMulti);
+      if (isMulti) {
+        marcar(true);
+        selectComponent(host, state, ctrl, sectionCtrls, false, true);
+        return;
+      }
+      openComponentContextMenu(e, host, state, ctrl, sectionCtrls);
     });
 
     // ── 3. ARRASTE LIVRE 2D COM SMART GUIDES ESTILO FIGMA E MULTI-SELEÇÃO ──
@@ -9233,6 +9254,161 @@ function openTabContextMenu(e, { tab, tabs, tabIndex, onUpdate, onDelete, onAdd,
   }, 10);
 
   document.body.append(menu);
+}
+
+/**
+ * Menu de contexto genérico: `entries` = [{ icon, label, hint, danger,
+ * disabled, action }] ou `null` para uma linha divisória.
+ */
+function openLegoContextMenu(e, entries) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.querySelector(".lego-ctx-menu")?.remove();
+  const menu = el("div", "lego-ctx-menu");
+  const closeMenu = () => {
+    menu.remove();
+    document.removeEventListener("click", closeMenu);
+    document.removeEventListener("pointerdown", closeMenu);
+  };
+  for (const it of entries) {
+    if (!it) { menu.append(el("div", "lego-ctx-sep")); continue; }
+    const b = el("button", `lego-ctx-item${it.danger ? " danger" : ""}`);
+    b.innerHTML = glyph(it.icon || "blank", 14);
+    b.append(el("span", "lego-ctx-label", it.label));
+    if (it.hint) b.append(el("span", "lego-ctx-hint", it.hint));
+    if (it.disabled) { b.disabled = true; b.style.opacity = "0.4"; }
+    else b.addEventListener("click", (ev) => { ev.stopPropagation(); closeMenu(); it.action(); });
+    menu.append(b);
+  }
+  // Ver openTabContextMenu: sem isto o menu some no pointerdown do próprio item.
+  menu.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+  document.body.append(menu);
+  const r = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(4, Math.min(window.innerWidth - (r.width || 190) - 4, e.clientX))}px`;
+  menu.style.top = `${Math.max(4, Math.min(window.innerHeight - (r.height || 240) - 4, e.clientY))}px`;
+  setTimeout(() => {
+    document.addEventListener("click", closeMenu);
+    document.addEventListener("pointerdown", closeMenu);
+  }, 10);
+  return menu;
+}
+
+const isGroupKind = (k) => k === "segment" || k === "vsegment" || k === "group";
+
+/** Nomes selecionados (ou só o componente clicado, se ele não está na seleção). */
+function selectionFor(state, ctrl) {
+  const names = new Set(state.selectedNames || []);
+  if (ctrl && !names.has(ctrl.name)) return new Set([ctrl.name]);
+  if (!names.size && state.selectedName) names.add(state.selectedName);
+  return names;
+}
+
+/**
+ * Agrupa (Ctrl+G) os componentes soltos selecionados da zona ativa num grupo
+ * horizontal (ou vertical), no lugar do primeiro, na ordem visual.
+ */
+function groupSelectedComponents(host, state, vertical = false, list = null) {
+  const layout = host.properties[PROP];
+  list = list || visibleControlsOf(activeSectionOf(layout, state));
+  if (!list) return false;
+  const names = selectionFor(state, null);
+  const picked = list.filter((c) => names.has(c.name) && !isGroupKind(c.kind));
+  if (!picked.length) { showLegoToast("Select components (not groups) to group"); return false; }
+  pushUndo(host);
+  picked.sort((a, b) => (a.y - b.y) || (a.x - b.x));
+  const x0 = Math.min(...picked.map((c) => c.x || 0));
+  const y0 = Math.min(...picked.map((c) => c.y || 0));
+  const right = Math.max(...picked.map((c) => (c.x || 0) + (c.w || 160)));
+  const at = Math.min(...picked.map((c) => list.indexOf(c)));
+  const items = picked.map(zoneCtrlToItem);
+  const bodyH = (it) => (is2DKind(it.kind) ? (it.h || 144) : 48);
+  const group = vertical
+    ? { kind: "vsegment", x: x0, y: y0, w: Math.max(240, ...picked.map((c) => c.w || 0)), h: items.reduce((a, it) => a + bodyH(it) + 8, 16) }
+    : { kind: "segment", x: x0, y: y0, w: Math.max(right - x0, 160 * items.length), h: Math.max(64, ...items.map((it) => bodyH(it) + 16)) };
+  group.w = Math.round(group.w / GRID) * GRID;
+  group.h = Math.round(group.h / GRID) * GRID;
+  group.items = items;
+  for (const c of picked) list.splice(list.indexOf(c), 1);
+  list.splice(Math.min(at, list.length), 0, group);
+  ensureComponentName(layout, group);
+  state.selectedNames = new Set([group.name]);
+  state.selectedName = group.name;
+  state.refresh();
+  showLegoToast(`Grouped ${items.length} item${items.length > 1 ? "s" : ""}`);
+  return true;
+}
+
+/** Desfaz o grupo: os itens voltam soltos para a zona, lado a lado (ou empilhados). */
+function ungroupComponent(host, state, group, list) {
+  const i = list.indexOf(group);
+  if (i < 0 || !isGroupKind(group.kind)) return false;
+  pushUndo(host);
+  const vertical = group.kind === "vsegment";
+  let x = group.x || 16, y = group.y || 16;
+  const out = (group.items || []).map((it) => {
+    const c = itemToZoneCtrl(it, x, y, 0, 0);
+    if (vertical) y = c.y + c.h + 16; else x = c.x + c.w + 16;
+    return c;
+  });
+  list.splice(i, 1, ...out);
+  const layout = host.properties[PROP];
+  for (const c of out) ensureComponentName(layout, c);
+  state.selectedNames = new Set(out.map((c) => c.name));
+  state.selectedName = out[out.length - 1]?.name || null;
+  state.refresh();
+  return true;
+}
+
+/** Tipos que o mesmo parâmetro aceita (para "Change type"). */
+function compatibleKinds(host, ctrl) {
+  const hit = resolveBind(host, ctrl.bind);
+  const k = ctrl.kind;
+  if (k === "slider" || k === "number") return ["slider", "number"];
+  if (k === "text" || k === "textarea") return ["text", "textarea"];
+  if (hit && (hit.widget.type === "number" || /INT|FLOAT/i.test(hit.widget.type || ""))) return ["slider", "number"];
+  return [k];
+}
+const KIND_LABEL = { slider: "Slider", number: "Stepper", text: "Text", textarea: "Text Area" };
+
+/** Botão direito num componente (modo de edição). */
+function openComponentContextMenu(e, host, state, ctrl, list) {
+  const names = selectionFor(state, ctrl);
+  if (!names.has(ctrl.name) || !state.selectedNames?.has(ctrl.name)) selectComponent(host, state, ctrl, list, false, false);
+  const many = names.size > 1;
+  const looseSel = list.filter((c) => names.has(c.name) && !isGroupKind(c.kind));
+  const entries = [
+    { icon: "settings", label: "Properties", action: () => selectComponent(host, state, ctrl, list, true, false) },
+    { icon: "copy", label: many ? `Duplicate (${names.size})` : "Duplicate", hint: "Ctrl+D", action: () => { state.selectedNames = new Set(names); if (copySelectedComponents(host, state)) pasteComponents(host, state); } },
+    null,
+    { icon: "hgroup", label: "Group", hint: "Ctrl+G", disabled: !looseSel.length, action: () => { state.selectedNames = new Set(names); groupSelectedComponents(host, state, false, list); } },
+    { icon: "vgroup", label: "Group vertically", hint: "Ctrl+Shift+G", disabled: !looseSel.length, action: () => { state.selectedNames = new Set(names); groupSelectedComponents(host, state, true, list); } },
+  ];
+  if (isGroupKind(ctrl.kind) && !many) entries.push({ icon: "grid", label: "Ungroup", action: () => ungroupComponent(host, state, ctrl, list) });
+  if (!many && ctrl.bind && !isGroupKind(ctrl.kind)) {
+    const kinds = compatibleKinds(host, ctrl).filter((k) => k !== ctrl.kind);
+    for (const k of kinds) entries.push({ icon: k === "number" ? "number" : k, label: `Change to ${KIND_LABEL[k] || k}`, action: () => { pushUndo(host); ctrl.kind = k; state.refresh(); } });
+  }
+  if (!many && !isGroupKind(ctrl.kind) && ctrl.kind !== "label" && ctrl.kind !== "hdivider" && ctrl.kind !== "vdivider" && !isOutputKind(ctrl.kind)) {
+    entries.push({ icon: "link", label: ctrl.bind ? "Rebind…" : "Bind…", action: () => openInspector({
+      host, layout: host.properties[PROP], section: { controls: list }, ctrl, state,
+      forFilterKind: ctrl.kind === "text" ? "" : ctrl.kind,
+      targetCallback: (target) => {
+        if (!target || target.isRaw) return;
+        ctrl.bind = target.bind;
+        if (!ctrl.label || ctrl.label === ctrl.name) ctrl.label = target.label || target.name;
+        ctrl.kind = target.kind || ctrl.kind;
+        state.refresh();
+      },
+    }) });
+  }
+  entries.push(null, { icon: "trash", label: many ? `Remove (${names.size})` : "Remove", hint: "Del", danger: true, action: () => {
+    pushUndo(host);
+    removeControlsByName(host.properties[PROP], names);
+    state.selectedNames?.clear();
+    state.selectedName = null;
+    state.refresh();
+  } });
+  return openLegoContextMenu(e, entries);
 }
 
 /** Diálogo modal para adicionar uma nova Zona (Seção). */
