@@ -4,7 +4,6 @@ for (const k of ["window","document","HTMLElement","Event","MouseEvent","Keyboar
 globalThis.PointerEvent = dom.window.MouseEvent;
 globalThis.requestAnimationFrame = (f) => setTimeout(f, 0);
 globalThis.cancelAnimationFrame = (h) => clearTimeout(h);
-globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
 globalThis.ResizeObserver = class { observe(){} disconnect(){} };
 const canvasEl = document.createElement("canvas"); document.body.append(canvasEl);
 canvasEl.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 1000 });

@@ -25,11 +25,21 @@ const r = await pg.evaluate(async () => {
   let done = false;
   for (let i = 0; i < 60 && !done; i++) { const h = await (await fetch(`/history/${q.prompt_id}`)).json(); done = !!h[q.prompt_id]?.status?.completed; if (!done) await new Promise(r => setTimeout(r, 500)); }
   res.ran = done;
-  // layout automático só sob pedido
-  ext.getNodeMenuItems(sn).find(i => i && /Recreate Layout/.test(i.content)).callback();
-  const L2 = sn.properties.ui_layout;
-  res.recreated = L2.tabs.flatMap(t => t.sections.flatMap(s => (s.controls || []).map(c => c.kind))).join();
   return res;
+});
+// botão "Promote parameters" do cartão vazio abre o picker direto no grafo de dentro
+await pg.waitForTimeout(400);
+t("empty card shows 'Promote parameters'", await pg.locator(".lego-promote-cta").count() === 1);
+await pg.locator(".lego-promote-cta").click(); await pg.waitForTimeout(500);
+const pick = await pg.evaluate(() => ({ hud: !!document.querySelector(".lego-picker-hud .lego-picker-promote-btn"), inner: (window.app.canvas.graph.nodes || []).map(n => n.type).sort().join() }));
+t("CTA opens the multi-select picker inside the SuperSubgraph: " + pick.inner, pick.hud && pick.inner === "ImageScale,PreviewImage");
+await pg.keyboard.press("Escape"); await pg.waitForTimeout(400);
+t("Esc cancels back to the workflow with no dialog left", await pg.evaluate(() => window.app.canvas.graph === window.app.rootGraph && !document.querySelector(".lego-picker-hud, .lego-comfy-backdrop")));
+r.recreated = await pg.evaluate(() => {
+  // layout automático só sob pedido
+  const app = window.app; const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
+  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getNodeMenuItems(sn).find(i => i && /Recreate Layout/.test(i.content)).callback();
+  return sn.properties.ui_layout.tabs.flatMap(t => t.sections.flatMap(s => (s.controls || []).map(c => c.kind))).join();
 });
 console.log(JSON.stringify(r));
 t("card starts empty: only Controls tab, zero controls", r.tabs.join() === "Controls" && r.count === 0);

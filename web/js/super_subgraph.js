@@ -1335,6 +1335,11 @@ const CSS = `
 
 
 .lego-row.missing .lego-lbl{color:#ef4444;text-decoration:line-through}
+.lego-missing-box{display:flex;align-items:center;gap:6px;min-width:0}
+.lego-missing-txt{opacity:.55;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.lego-missing-btn{flex:none;padding:2px 8px;border-radius:5px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:#e5e7eb;font:600 11px/16px system-ui,sans-serif;cursor:pointer}
+.lego-missing-btn:hover{background:rgba(168,85,247,.3);border-color:rgba(168,85,247,.7)}
+.lego-missing-btn.danger:hover{background:rgba(239,68,68,.3);border-color:rgba(239,68,68,.7)}
 .lego-grip{cursor:grab;color:var(--lego-dim);padding:0 4px;user-select:none;font-size:14px}
 
 .lego-in{width:100%;min-width:0;background:var(--lego-well,rgba(0,0,0,0.34));color:var(--lego-text);
@@ -1768,6 +1773,10 @@ textarea.lego-in{resize:vertical;min-height:75px;font-family:ui-monospace,SFMono
 .lego-cols .lego-row.wide{grid-column:1/-1}
 
 .lego-empty{color:var(--lego-dim);font-size:12px;font-style:italic;padding:12px;text-align:center}
+.lego-empty-cta{display:flex;flex-direction:column;align-items:center;gap:8px}
+.lego-promote-cta{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;border:1px solid rgba(168,85,247,.55);background:rgba(168,85,247,.16);color:#e9d5ff;font:600 12px/1 inherit;font-style:normal;cursor:pointer}
+.lego-promote-cta:hover{background:rgba(168,85,247,.3)}
+.lego-empty-hint{font-size:11px;opacity:.7}
 .lego-pick{display:flex;flex-direction:column;gap:5px;max-height:240px;overflow:auto;
   padding:8px;background:#1f1f26;border:1px solid var(--lego-line);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.4)}
 .lego-pick button{text-align:left;background:transparent;border:0;color:var(--lego-text);
@@ -2699,6 +2708,7 @@ const CSS_DRAG = `
 .lego-ss-nav-back{display:flex;align-items:center;gap:4px;padding:3px 9px 3px 5px;border-radius:7px;border:1px solid rgba(255,255,255,0.14);
   background:rgba(255,255,255,0.06);color:inherit;font:600 12.5px system-ui,sans-serif;cursor:pointer}
 .lego-ss-nav-back:hover{background:rgba(168,85,247,0.28);border-color:rgba(168,85,247,0.7)}
+.lego-ss-nav-kbd{margin-left:4px;padding:0 4px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);font:600 9px/14px monospace;opacity:.7}
 .lego-ss-nav-crumbs{display:flex;align-items:center;gap:6px;min-width:0}
 .lego-ss-nav-crumb{background:none;border:none;color:#a1a1aa;font:500 12.5px system-ui,sans-serif;cursor:pointer;padding:2px 3px;border-radius:4px;
   white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}
@@ -5938,9 +5948,47 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       }
     } else {
       row.classList.add("missing");
+      row.title = `${ctrl.bind} — the parameter no longer exists`;
       row.append(el("div", "lego-lbl", ctrl.label || ctrl.bind || ctrl.kind || "Element"));
-      const miss = el("div", "lego-in", "widget missing");
-      miss.style.opacity = ".5";
+      const miss = el("div", "lego-in lego-missing-box");
+      const missTxt = el("span", "lego-missing-txt", "widget missing");
+      // Parâmetro sumiu (nó apagado, renomeado...): em vez de um aviso morto,
+      // oferece religar a outro parâmetro ou tirar o componente.
+      const rebindBtn = el("button", "lego-missing-btn", "Rebind");
+      rebindBtn.title = "Link this component to another parameter";
+      const removeBtn = el("button", "lego-missing-btn danger", "Remove");
+      removeBtn.title = "Remove this component";
+      for (const b of [rebindBtn, removeBtn]) b.addEventListener("pointerdown", (e) => e.stopPropagation());
+      rebindBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!state.edit) { state.edit = true; state.refresh(); }
+        openInspector({
+          host,
+          layout: host.properties[PROP],
+          section: { controls: sectionCtrls },
+          ctrl,
+          state,
+          forFilterKind: ctrl.kind === "text" ? "" : ctrl.kind,
+          targetCallback: (target) => {
+            if (!target || target.isRaw) return;
+            ctrl.bind = target.bind;
+            ctrl.label = target.label || target.name || ctrl.label;
+            ctrl.kind = target.kind || ctrl.kind;
+            state.refresh();
+          }
+        });
+      });
+      removeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const i = sectionCtrls.indexOf(ctrl);
+        if (i < 0) return;
+        pushUndo(host);
+        sectionCtrls.splice(i, 1);
+        state.selectedNames?.delete(ctrl.name);
+        if (state.selectedName === ctrl.name) state.selectedName = null;
+        state.refresh();
+      });
+      miss.append(missTxt, rebindBtn, removeBtn);
       row.append(miss);
     }
 
@@ -7255,7 +7303,7 @@ function getNodeAtEvent(canvas, e) {
 }
 
 /** Inicia o Modo de Seleção Visual no Workflow (Descompactado) */
-function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false, allowWholeNode = false, onPromote = null }) {
+function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false, allowWholeNode = false, onPromote = null, onCancel = null }) {
   backdrop.style.display = "none";
   // Seleção múltipla: clique marca/desmarca nós inteiros e parâmetros soltos;
   // "Promote" entrega tudo de uma vez.
@@ -7343,9 +7391,11 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
   };
 
   const cancelBtn = glyphTextBtn("lego-picker-cancel-btn", "close", multi ? "Cancel" : "Cancel and return", 14);
+  // Cancelar: volta para o diálogo, ou fecha tudo quando o picker abriu direto.
+  const cancel = () => { cleanup(); onCancel?.(); };
   cancelBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    cleanup();
+    cancel();
   });
   if (multi) {
     promoteBtn = glyphTextBtn("lego-picker-promote-btn", "check", "Promote", 14);
@@ -7364,7 +7414,7 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
   document.body.append(hud);
 
   function onPickKey(e) {
-    if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); cleanup(); }
+    if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); cancel(); }
     else if (e.key === "Enter" && multi && picks.size) { e.stopPropagation(); e.preventDefault(); promoteBtn?.click(); }
   }
   window.addEventListener("keydown", onPickKey, true);
@@ -7873,7 +7923,7 @@ const RAW_UI_ELEMENTS = [
   }
 ];
 
-function openInspector({ host, layout, section, ctrl, state, defaultKind, insertIndex, initialWidth, initialPos, targetCallback, forFilterKind, segmentCtrl, sourceFor }) {
+function openInspector({ host, layout, section, ctrl, state, defaultKind, insertIndex, initialWidth, initialPos, targetCallback, forFilterKind, segmentCtrl, sourceFor, autoPick = false }) {
   document.querySelector(".lego-comfy-backdrop")?.remove();
   document.querySelector(".lego-ins-backdrop")?.remove();
 
@@ -7896,10 +7946,11 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
 
   // O picker só esconde o diálogo (display:none) e o devolve ao cancelar.
   // Remover o backdrop aqui fazia o "Cancel and return" voltar para o nada.
-  const runTargetPicker = () => {
+  const runTargetPicker = (onCancel = null) => {
     startVisualWorkflowPicker({
       host,
       backdrop,
+      onCancel,
       pickNode: !!sourceFor,
       // Nó inteiro só faz sentido criando componentes, não ligando um existente.
       allowWholeNode: typeof targetCallback !== "function",
@@ -8963,6 +9014,8 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
 
   backdrop.append(dialog);
   document.body.append(backdrop);
+  // Atalho "Promote parameters": vai direto ao picker; cancelar fecha tudo.
+  if (autoPick) runTargetPicker(() => backdrop.remove());
 
   // Adapta o Object Properties ao lado do diálogo sem sobreposição
   window.addEventListener("resize", adaptInspectorWithDialog);
@@ -11136,7 +11189,21 @@ function buildCard(host, state) {
           });
           ctrlsBox.append(dz);
         } else {
-          ctrlsBox.append(el("div", "lego-empty", hasSubTabs ? `sub-tab "${activeTarget.name}" empty` : "empty zone"));
+          // Fora da edição a zona vazia convida a começar: "Promote parameters"
+          // abre o picker direto; 2 cliques entram na edição e abrem a busca.
+          const empty = el("div", "lego-empty lego-empty-cta");
+          empty.append(el("div", "", hasSubTabs ? `sub-tab "${activeTarget.name}" empty` : "empty zone"));
+          const cta = glyphTextBtn("lego-promote-cta", "target", "Promote parameters", 14);
+          cta.title = "Pick nodes or parameters on the canvas and add them to this card";
+          cta.addEventListener("pointerdown", (e) => e.stopPropagation());
+          cta.addEventListener("click", (e) => {
+            e.stopPropagation();
+            state.edit = true;
+            state.refresh();
+            openInspector({ host, layout: host.properties[PROP], section: activeTarget, state, initialPos: { x: 16, y: 16 }, autoPick: true });
+          });
+          empty.append(cta, el("div", "lego-empty-hint", "or double-click to edit"));
+          ctrlsBox.append(empty);
         }
       } else {
         // Inicializa coordenadas 2D automáticas nos controles que ainda não têm (X, Y).
@@ -11182,6 +11249,30 @@ function buildCard(host, state) {
         }
 
         updateControlsBounds();
+      }
+
+      // Fora da edição: 2 cliques numa área vazia da zona entram na edição e
+      // abrem a busca de componentes ali mesmo.
+      if (!state.edit) {
+        ctrlsBox.addEventListener("dblclick", (e) => {
+          if (e.target.closest(".lego-row, button, input, select, textarea, video, audio")) return;
+          e.stopPropagation();
+          e.preventDefault();
+          const boxRect = ctrlsBox.getBoundingClientRect();
+          const curScale = app?.canvas?.ds?.scale || 1;
+          const dropX = Math.max(16, Math.round(((e.clientX - boxRect.left) / curScale) / CTRL_GRID) * CTRL_GRID);
+          const dropY = Math.max(16, Math.round(((e.clientY - boxRect.top) / curScale) / CTRL_GRID) * CTRL_GRID);
+          state.edit = true;
+          state.refresh();
+          openComponentSearchMenu({
+            host,
+            layout: host.properties[PROP],
+            section: activeTarget,
+            state,
+            pos: { x: dropX, y: dropY },
+            clientPos: { x: e.clientX, y: e.clientY }
+          });
+        });
       }
 
       // Suporte a soltar novo componente da paleta diretamente nas coordenadas X, Y desta zona
@@ -12387,8 +12478,8 @@ function renderSuperNavBar() {
   if (!SS_NAV.length) return;
   const bar = el("div", "lego-ss-nav");
   const back = el("button", "lego-ss-nav-back");
-  back.innerHTML = `${glyph("back", 14)}<span>Back</span>`;
-  back.title = "Leave this SuperSubgraph";
+  back.innerHTML = `${glyph("back", 14)}<span>Back</span><kbd class="lego-ss-nav-kbd">Esc</kbd>`;
+  back.title = "Leave this SuperSubgraph (Esc)";
   back.addEventListener("click", (e) => { e.stopPropagation(); exitSuper(); });
   bar.append(back);
   const crumbs = el("div", "lego-ss-nav-crumbs");
@@ -12429,6 +12520,21 @@ function placeSuperNavBar() {
   }
 }
 window.addEventListener("resize", placeSuperNavBar);
+
+// Esc sai do Super Subgraph — a não ser que esteja digitando ou com algum
+// diálogo/picker aberto (aí o Esc é deles). Na captura: o ComfyUI consome o
+// Esc no próprio atalho (sair do subgrafo nativo), que não conhece o nosso.
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || e.defaultPrevented || !SS_NAV.length) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  const t = e.target;
+  if (t?.closest?.("input, textarea, select, [contenteditable=''], [contenteditable='true']")) return;
+  if (document.querySelector(".lego-comfy-backdrop, .lego-ins-backdrop, .lego-picker-hud, .p-dialog-mask, .litecontextmenu, .litegraph .dialog")) return;
+  if (app.canvas?.graph !== SS_NAV[SS_NAV.length - 1].inner) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  exitSuper();
+}, true);
 
 /** Abre o grafo de dentro do Super Subgraph no canvas. */
 function enterSuper(sn) {
