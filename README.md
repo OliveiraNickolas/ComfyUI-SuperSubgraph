@@ -23,6 +23,17 @@ Quickest way: on an empty card, click **Promote parameters** — the selector op
 
 If a promoted parameter disappears (its node was deleted or changed), the component shows **widget missing** with **Rebind** (link it to another parameter) and **Remove**.
 
+## Inputs and outputs of a Super Subgraph
+
+Inside a SuperSubgraph, purple tags show the border: `in_N →` on inner inputs fed from outside, `→ out_N` on inner outputs that go outside.
+Right-click an inner node to change the border without unpacking:
+
+- **Expose Input to SuperSubgraph** — pick an input (widgets too, e.g. a seed) to feed it from outside; it becomes a new `in_N` on the node.
+- **Unexpose Input** / **Unexpose Output** — removes it (and its outside link); the following ones are renumbered.
+- **Expose Output from SuperSubgraph** — adds a new `out_N`.
+
+Deleting an inner node also removes its inputs/outputs from the border when you leave.
+
 ## How the Super Subgraph engine works
 
 - **Frontend:** the inner nodes live in their own graph, off the canvas, saved in `node.properties.ss_inner`. When you queue, ComfyUI's own `graphToPrompt` turns that graph into the API format (bypass, mute, reroutes and primitives behave as usual).
