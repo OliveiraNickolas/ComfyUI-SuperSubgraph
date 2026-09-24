@@ -1117,7 +1117,8 @@ const CSS = `
   border-color: transparent !important;
   box-shadow: none !important;
 }
-.lego-row.is-label:hover{
+/* Destaque de hover só no modo de edição: fora dele o label é só texto. */
+.lego-sec-controls.in-edit .lego-row.is-label:hover{
   border-color: rgba(255, 255, 255, 0.2) !important;
 }
 .lego-row.is-label.selected{
@@ -2082,9 +2083,16 @@ textarea.lego-in{resize:vertical;min-height:75px;font-family:ui-monospace,SFMono
 .lego-row.is-divider.kind-vdivider {
   min-width: 16px;
 }
-.lego-row.is-divider:hover {
+/* Fora do modo de edição o divisor é só a linha: sem caixa no hover, sem
+   cursor de clique e sem capturar o ponteiro (que passa para o que estiver
+   por baixo da área dele). */
+.lego-sec-controls.in-edit .lego-row.is-divider:hover {
   border-color: rgba(255, 255, 255, 0.12) !important;
   background: rgba(255, 255, 255, 0.02) !important;
+}
+.lego-sec-controls:not(.in-edit) .lego-row.is-divider {
+  cursor: default !important;
+  pointer-events: none;
 }
 .lego-row.is-divider.selected {
   outline: 1.5px dashed var(--lego-accent, #38bdf8) !important;
@@ -2101,8 +2109,11 @@ textarea.lego-in{resize:vertical;min-height:75px;font-family:ui-monospace,SFMono
   background: transparent !important;
   border-radius: 4px;
 }
-.lego-segment-item.is-divider:hover {
+.lego-segment-box.in-edit .lego-segment-item.is-divider:hover {
   background: rgba(255, 255, 255, 0.04) !important;
+}
+.lego-segment-box:not(.in-edit) .lego-segment-item.is-divider {
+  cursor: default !important;
 }
 .lego-segment-item.is-divider.selected {
   outline: 1.5px dashed var(--lego-accent, #38bdf8) !important;
@@ -5323,7 +5334,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   const wide = !isGroup && !isCosmetic && (ctrl.kind === "textarea" || isMedia);
   let row;
   if (isDivider) {
-    row = el("div", `lego-row is-divider ${ctrl.kind}`);
+    row = el("div", `lego-row is-divider kind-${ctrl.kind}`);
     const line = el("div", `lego-divider ${ctrl.kind === "vdivider" ? "v" : "h"}`);
     row.append(line);
   } else if (isLabel) {
