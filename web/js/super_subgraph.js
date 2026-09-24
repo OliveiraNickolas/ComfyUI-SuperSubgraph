@@ -3189,7 +3189,7 @@ function describeWidget(w) {
 
 /** Widgets que o cartão nunca deve tocar. */
 function usable(w) {
-  if (!w || w.__lego) return false;
+  if (!w || w.__lego || w.__ssInternal) return false;
   const t = String(w.type || "").toLowerCase();
   if (t === "converted-widget" || t === "hidden") return false;
   if (t.startsWith("dom")) return false;
@@ -3212,14 +3212,9 @@ function nodeById(graph, id) {
 function findNodeInHostScope(host, id) {
   const sid = String(id);
   // 1. Procura dentro dos nós internos do subgrafo
-  if (host.subgraph?.nodes) {
-    const fn = host.subgraph.nodes.find((n) => String(n.id) === sid);
-    if (fn) return fn;
-  }
-  if (host.subgraph?._nodes) {
-    const fn = host.subgraph._nodes.find((n) => String(n.id) === sid);
-    if (fn) return fn;
-  }
+  // (subgrafo nativo ou o grafo interno de um Super Subgraph)
+  const inner = innerNodesOf(host).find((n) => String(n.id) === sid);
+  if (inner) return inner;
   // 2. Procura no grafo pai onde o host reside
   const fromHost = nodeById(host.graph, id);
   if (fromHost) return fromHost;
@@ -3458,7 +3453,7 @@ function autoLayout(node) {
   // Subgrafo com nó de saída (Preview/Save...) ganha a aba Output já montada,
   // em modo automático: mostra o último resultado de cada tipo.
   const outKinds = new Set();
-  for (const n of node.subgraph?._nodes || node.subgraph?.nodes || []) {
+  for (const n of innerNodesOf(node)) {
     const type = String(n.type || "");
     const isOut = n.constructor?.nodeData?.output_node || /(preview|save)|videocombine/i.test(type);
     if (!isOut) continue;
@@ -3476,7 +3471,7 @@ function autoLayout(node) {
 
   if (!tabs.length) tabs.push({ name: "Controls", sections: [sec("PARAMETERS", [])] });
 
-  const isSub = typeof node.isSubgraphNode === "function" ? node.isSubgraphNode() : !!node.subgraph;
+  const isSub = isSuperNode(node) || (typeof node.isSubgraphNode === "function" ? node.isSubgraphNode() : !!node.subgraph);
 
   return {
     schema: SCHEMA,
@@ -4564,20 +4559,26 @@ function outputURL(file, seq) {
 
 /** O nó de origem está dentro do subgrafo deste host? */
 function isInsideHost(host, id) {
-  const nodes = host.subgraph?._nodes || host.subgraph?.nodes || [];
-  return nodes.some((n) => String(n.id) === String(id));
+  return innerNodesOf(host).some((n) => String(n.id) === String(id));
 }
 
 /** Output mais recente com arquivos do tipo `media` para o controle. */
 function latestOutputFor(host, ctrl, media) {
   const src = ctrl.source != null && ctrl.source !== "" ? String(ctrl.source) : "";
   let match;
+  // Ids de execução: subgrafo nativo prefixa com "<host>:"; o motor do Super
+  // Subgraph desdobra os nós de dentro como "<host>.<id>" e mostra o output
+  // no próprio host (display node).
+  const superHost = isSuperNode(host);
   if (!src) {
     const pre = `${host.id}:`;
-    match = host.subgraph ? (k) => k.startsWith(pre) : (k) => k === String(host.id);
+    match = superHost
+      ? (k) => k === String(host.id) || k.startsWith(`${host.id}.`)
+      : host.subgraph ? (k) => k.startsWith(pre) : (k) => k === String(host.id);
   } else {
-    const base = isInsideHost(host, src) ? `${host.id}:${src}` : src;
-    match = (k) => k === base || k.startsWith(`${base}:`);
+    const inside = isInsideHost(host, src);
+    const base = inside ? (superHost ? `${host.id}.${src}` : `${host.id}:${src}`) : src;
+    match = (k) => k === base || k.startsWith(`${base}:`) || k.startsWith(`${base}.`);
   }
 
   let best = null;
@@ -4606,7 +4607,7 @@ function listOutputSources(host) {
     seen.add(`${scope}:${n.id}`);
     out.push({ id: String(n.id), node: n, scope, isOutput: isOutputNode(n) });
   };
-  for (const n of host.subgraph?._nodes || host.subgraph?.nodes || []) push(n, "sub");
+  for (const n of innerNodesOf(host)) push(n, "sub");
   for (const n of host.graph?._nodes || host.graph?.nodes || []) push(n, "graph");
   // Nós de saída primeiro; o resto fica disponível para nós customizados.
   out.sort((a, b) => (b.isOutput - a.isOutput) || (a.scope === b.scope ? 0 : a.scope === "sub" ? -1 : 1));
@@ -4615,7 +4616,7 @@ function listOutputSources(host) {
 
 function outputSourceLabel(host, ctrl) {
   const src = ctrl.source != null && ctrl.source !== "" ? String(ctrl.source) : "";
-  if (!src) return host.subgraph ? "Auto — latest inside this subgraph" : "Auto — this node";
+  if (!src) return hasInnerGraph(host) ? "Auto — latest inside this subgraph" : "Auto — this node";
   const n = findNodeInHostScope(host, src);
   return n ? `#${n.id} ${n.title || n.type}` : `#${src} (missing)`;
 }
@@ -4628,7 +4629,7 @@ function outputSourceLabel(host, ctrl) {
 function listOutputSourceTargets(host, ctrl) {
   const media = OUTPUT_KINDS[ctrl.kind] || "image";
   const kind = media === "image" ? "media" : media;
-  const autoLabel = host.subgraph ? "Auto — latest inside this subgraph" : "Auto — this node";
+  const autoLabel = hasInnerGraph(host) ? "Auto — latest inside this subgraph" : "Auto — this node";
   return [
     {
       bind: "",
@@ -6845,7 +6846,8 @@ function buildWholeNodeCtrl(host, node, orientation, pos) {
   const items = wholeNodeItems(host, node);
   const vertical = orientation === "column";
   const has2D = items.some((it) => is2DKind(it.kind));
-  const avail = Math.max(320, Math.round((host.size?.[0] || MIN_W) - 80));
+  // Largura do cartão (nunca menor que o mínimo que ele assume ao ser montado).
+  const avail = Math.max(320, Math.round(Math.max(MIN_W, host.size?.[0] || 0) - 80));
   const snap = (v) => Math.round(v / GRID) * GRID;
   for (const it of items) {
     // Label do tamanho do texto; o controle ocupa o resto da linha.
@@ -6925,7 +6927,7 @@ function listBindableTargets(host) {
   }
 
   // 2. Nós internos do Subgrafo (se existirem)
-  const subNodes = host.subgraph?._nodes || host.subgraph?.nodes || [];
+  const subNodes = innerNodesOf(host);
   for (const n of subNodes) {
     if (n === host) continue;
     const nTitle = n.title || n.type || `Node #${n.id}`;
@@ -7143,8 +7145,14 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
   const originGraph = canvas.getCurrentGraph?.() || canvas.graph || app.graph;
   let isInsideSubgraph = false;
 
-  // Abre o Subgrafo descompactado no canvas (se existir)
-  if (host.subgraph) {
+  // Abre o grafo de dentro no canvas: o grafo interno de um Super Subgraph
+  // (setGraph direto) ou o subgrafo nativo.
+  const ssGraph = ssInnerGraph(host);
+  if (ssGraph && typeof canvas.setGraph === "function") {
+    canvas.setGraph(ssGraph);
+    isInsideSubgraph = true;
+    canvas.setDirty?.(true, true);
+  } else if (host.subgraph) {
     if (typeof canvas.openSubgraph === "function") {
       canvas.openSubgraph(host.subgraph, host);
       isInsideSubgraph = true;
@@ -7173,7 +7181,11 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
     window.removeEventListener("pointerdown", onCanvasPointerDown, true);
 
     // Retorna para o grafo principal se entrou no subgrafo
-    if (isInsideSubgraph) {
+    if (isInsideSubgraph && ssGraph) {
+      // Volta do grafo interno do Super Subgraph para onde estava.
+      if (originGraph && typeof canvas.setGraph === "function") canvas.setGraph(originGraph);
+      canvas.setDirty?.(true, true);
+    } else if (isInsideSubgraph) {
       if (typeof canvas.closeSubgraph === "function") {
         canvas.closeSubgraph();
       } else if (typeof canvas.openSubgraph === "function" && originGraph) {
@@ -11685,6 +11697,334 @@ function attach(node) {
   return state;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Super Subgraph independente — motor próprio
+
+   O nó "SuperSubgraph" (Python, super_subgraph_node.py) desdobra o grafo de
+   dentro na execução. Aqui no frontend esse grafo de dentro é um LGraph
+   próprio, fora do canvas, guardado em `properties.ss_inner.graph`:
+
+   - os nós de dentro são nós de verdade (widgets vivos), então o cartão liga
+     neles do mesmo jeito que liga em qualquer nó ("<id>/<widget>");
+   - na hora de enfileirar, o widget oculto `ss_graph` vira o JSON da API do
+     grafo de dentro, gerado pelo próprio `app.graphToPrompt` (bypass, mute,
+     reroute e primitive funcionam como em qualquer grafo);
+   - as entradas/saídas do nó são in_N/out_N genéricas; `ss_inner.inputs`
+     diz para quais entradas de dentro cada in_N vai, e `ss_inner.outputs`
+     de qual saída de dentro cada out_N vem.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const SS_TYPE = "SuperSubgraph";
+const SS_PROP = "ss_inner";
+const SS_MAX_IO = 32;
+
+const isSuperNode = (n) => !!n && (n.type === SS_TYPE || n.comfyClass === SS_TYPE);
+const liteGraph = () => window.LiteGraph || globalThis.LiteGraph;
+
+function newInnerGraph(data) {
+  const Cls = liteGraph()?.LGraph || app.rootGraph?.constructor || app.graph?.constructor;
+  const g = new Cls();
+  if (data) g.configure(data);
+  return g;
+}
+
+/** O LGraph de dentro de um Super Subgraph (criado sob demanda a partir das propriedades). */
+function ssInnerGraph(node) {
+  if (!isSuperNode(node)) return null;
+  if (node.__ssGraph) return node.__ssGraph;
+  const data = node.properties?.[SS_PROP]?.graph;
+  if (!data) return null;
+  try {
+    node.__ssGraph = newInnerGraph(JSON.parse(JSON.stringify(data)));
+  } catch (e) {
+    console.error(LOG, "could not load the inner graph of", node.id, e);
+    return null;
+  }
+  return node.__ssGraph;
+}
+
+/** Nós de dentro do host: do Super Subgraph ou do subgrafo nativo. */
+function innerNodesOf(host) {
+  const g = ssInnerGraph(host);
+  if (g) return g._nodes || g.nodes || [];
+  return host?.subgraph?._nodes || host?.subgraph?.nodes || [];
+}
+const hasInnerGraph = (host) => !!(ssInnerGraph(host) || host?.subgraph);
+
+function graphLinks(graph) {
+  const l = graph?.links ?? graph?._links;
+  if (!l) return [];
+  return l instanceof Map ? [...l.values()] : Object.values(l);
+}
+
+/** JSON da API do grafo de dentro, no formato que o nó Python espera. */
+async function buildSuperApi(node) {
+  const g = ssInnerGraph(node);
+  const meta = node.properties?.[SS_PROP] || {};
+  if (!g) return { nodes: {}, inputs: [], outputs: [] };
+  const { output } = await app.graphToPrompt(g);
+  return {
+    nodes: output,
+    inputs: (meta.inputs || []).map((i) => i.targets || []),
+    outputs: (meta.outputs || []).map((o) => o.source || null),
+  };
+}
+
+/** Prepara um nó SuperSubgraph recém-criado: widget interno oculto e serialização. */
+function setupSuperNode(node) {
+  if (!isSuperNode(node) || node.__ssReady) return;
+  node.__ssReady = true;
+  const w = (node.widgets || []).find((x) => x.name === "ss_graph");
+  if (w) {
+    w.__ssInternal = true;
+    w.hidden = true;
+    // No workflow fica vazio (o grafo já vai em properties); para a API, o
+    // grafo de dentro é gerado na hora de enfileirar.
+    w.value = "";
+    w.serializeValue = async () => JSON.stringify(await buildSuperApi(node));
+  }
+}
+
+/** Mostra só as entradas/saídas em uso, com o nome e o tipo de verdade. */
+function applySuperSlots(node) {
+  const meta = node.properties?.[SS_PROP];
+  if (!meta) return;
+  const nIn = (meta.inputs || []).length;
+  const nOut = (meta.outputs || []).length;
+  for (let i = (node.inputs || []).length - 1; i >= 0; i--) {
+    const m = /^in_(\d+)$/.exec(node.inputs[i].name);
+    if (m && Number(m[1]) > nIn && node.inputs[i].link == null) node.removeInput(i);
+  }
+  meta.inputs.forEach((inp, k) => {
+    const slot = (node.inputs || []).find((s) => s.name === `in_${k + 1}`);
+    if (slot) { slot.label = inp.name; slot.localized_name = inp.name; if (inp.type) slot.type = inp.type; }
+  });
+  while ((node.outputs || []).length > nOut) {
+    const last = node.outputs.length - 1;
+    if (node.outputs[last].links?.length) break;
+    node.removeOutput(last);
+  }
+  meta.outputs.forEach((out, j) => {
+    const slot = node.outputs?.[j];
+    if (slot) { slot.label = out.name; slot.localized_name = out.name; if (out.type) slot.type = out.type; }
+  });
+}
+
+/** Layout inicial: cada nó de dentro com parâmetros vira um widget "nó inteiro". */
+function superAutoLayout(node) {
+  const base = autoLayout(node);   // cabeçalho e aba Output (se houver Preview/Save dentro)
+  node.properties[PROP] = { ...base, tabs: [] };
+  const controls = [];
+  const zone = { header: "PARAMETERS", controls };
+  node.properties[PROP].tabs.push({ name: "Controls", sections: [zone] });
+  let y = 16;
+  for (const inner of innerNodesOf(node)) {
+    if (!(inner.widgets || []).some(usable)) continue;
+    const g = buildWholeNodeCtrl(node, inner, "row", { x: 16, y });
+    controls.push(g);
+    y += g.h + 32;
+  }
+  for (const t of base.tabs || []) if (t.name === "Output") node.properties[PROP].tabs.push(t);
+  node.properties[PROP].subtitle = "Super Subgraph";
+  node.properties[PROP].badge = `${innerNodesOf(node).length} nodes`;
+  return node.properties[PROP];
+}
+
+/** Seleção atual do canvas (só nós). */
+function selectedNodes() {
+  const c = app.canvas;
+  const sel = c?.selectedItems ? [...c.selectedItems] : Object.values(c?.selected_nodes || {});
+  const Node = liteGraph()?.LGraphNode;
+  return sel.filter((n) => (Node ? n instanceof Node : n && n.pos && n.type));
+}
+
+/**
+ * Converte a seleção num Super Subgraph: os nós saem do grafo e passam a
+ * viver dentro do nó novo; os fios que cruzavam a borda viram entradas e
+ * saídas dele, religados do lado de fora.
+ */
+function convertSelectionToSuper(nodes = selectedNodes()) {
+  const graph = app.canvas?.graph || app.graph;
+  nodes = nodes.filter((n) => n.graph === graph);
+  if (!nodes.length) { showLegoToast("Select the nodes to convert first"); return null; }
+  if (nodes.some((n) => typeof n.isSubgraphNode === "function" && n.isSubgraphNode())) {
+    alert("Super Subgraph: native subgraph nodes can't go inside a Super Subgraph yet. Unpack them first.");
+    return null;
+  }
+  const LG = liteGraph();
+  const sel = new Set(nodes.map((n) => String(n.id)));
+  const links = graphLinks(graph);
+  const internal = [], incoming = [], outgoing = [];
+  for (const l of links) {
+    const o = sel.has(String(l.origin_id)), t = sel.has(String(l.target_id));
+    if (o && t) internal.push(l);
+    else if (t) incoming.push(l);
+    else if (o) outgoing.push(l);
+  }
+
+  // Entradas: um fio de fora que alimenta várias entradas de dentro vira UMA entrada.
+  const inputs = [];
+  const inByKey = new Map();
+  for (const l of incoming) {
+    const key = `${l.origin_id}:${l.origin_slot}`;
+    const tNode = graph.getNodeById(l.target_id);
+    const tIn = tNode?.inputs?.[l.target_slot];
+    if (!tIn) continue;
+    let io = inByKey.get(key);
+    if (!io) {
+      io = { name: tIn.label || tIn.localized_name || tIn.name, type: l.type || tIn.type, targets: [], ext: [l.origin_id, l.origin_slot] };
+      inByKey.set(key, io);
+      inputs.push(io);
+    }
+    io.targets.push([String(l.target_id), tIn.name]);
+  }
+  // Saídas: uma saída de dentro usada fora vira UMA saída, religada a todos os destinos.
+  const outputs = [];
+  const outByKey = new Map();
+  for (const l of outgoing) {
+    const key = `${l.origin_id}:${l.origin_slot}`;
+    const oNode = graph.getNodeById(l.origin_id);
+    const oOut = oNode?.outputs?.[l.origin_slot];
+    let io = outByKey.get(key);
+    if (!io) {
+      io = { name: oOut?.label || oOut?.localized_name || oOut?.name || String(l.type), type: l.type || oOut?.type, source: [String(l.origin_id), Number(l.origin_slot)], ext: [] };
+      outByKey.set(key, io);
+      outputs.push(io);
+    }
+    io.ext.push([l.target_id, l.target_slot]);
+  }
+  if (inputs.length > SS_MAX_IO || outputs.length > SS_MAX_IO) {
+    alert(`Super Subgraph: at most ${SS_MAX_IO} inputs and ${SS_MAX_IO} outputs crossing the selection (found ${inputs.length} / ${outputs.length}).`);
+    return null;
+  }
+
+  // Grafo de dentro: os nós como estão, só com os fios internos.
+  const internalIds = new Set(internal.map((l) => l.id));
+  const sNodes = nodes.map((n) => {
+    const d = JSON.parse(JSON.stringify(n.serialize()));
+    for (const i of d.inputs || []) if (i.link != null && !internalIds.has(i.link)) i.link = null;
+    for (const o of d.outputs || []) if (Array.isArray(o.links)) o.links = o.links.filter((id) => internalIds.has(id));
+    return d;
+  });
+  const data = {
+    last_node_id: Math.max(0, ...nodes.map((n) => Number(n.id) || 0)),
+    last_link_id: Math.max(0, ...internal.map((l) => Number(l.id) || 0)),
+    nodes: sNodes,
+    links: internal.map((l) => [l.id, l.origin_id, l.origin_slot, l.target_id, l.target_slot, l.type]),
+    groups: [],
+    config: {},
+    extra: {},
+    version: 0.4,
+  };
+  const inner = newInnerGraph(data);
+
+  const minX = Math.min(...nodes.map((n) => n.pos[0]));
+  const minY = Math.min(...nodes.map((n) => n.pos[1]));
+
+  graph.beforeChange?.();
+  for (const n of nodes) graph.remove(n);
+
+  const sn = LG.createNode(SS_TYPE);
+  if (!sn) {
+    alert("Super Subgraph: the SuperSubgraph node is not registered. Restart ComfyUI after updating the extension.");
+    return null;
+  }
+  sn.pos = [minX, minY];
+  graph.add(sn);
+  // Nasce largo o bastante para os widgets de "nó inteiro" caberem em linha.
+  sn.setSize?.([Math.max(MIN_W + 160, sn.size?.[0] || 0), Math.max(sn.size?.[1] || 0, 200)]);
+  sn.title = "Super Subgraph";
+  sn.properties = sn.properties || {};
+  sn.properties[SS_PROP] = {
+    graph: inner.serialize(),
+    inputs: inputs.map(({ name, type, targets }) => ({ name, type, targets })),
+    outputs: outputs.map(({ name, type, source }) => ({ name, type, source })),
+  };
+  sn.__ssGraph = inner;
+  setupSuperNode(sn);
+  applySuperSlots(sn);
+
+  inputs.forEach((io, k) => {
+    const origin = graph.getNodeById(io.ext[0]);
+    const slot = (sn.inputs || []).findIndex((s) => s.name === `in_${k + 1}`);
+    if (origin && slot >= 0) origin.connect(io.ext[1], sn, slot);
+  });
+  outputs.forEach((io, j) => {
+    for (const [tid, tslot] of io.ext) {
+      const target = graph.getNodeById(tid);
+      if (target) sn.connect(j, target, tslot);
+    }
+  });
+
+  superAutoLayout(sn);
+  attach(sn);
+  graph.afterChange?.();
+  app.canvas?.selectItems?.([sn]);
+  graph.setDirtyCanvas?.(true, true);
+  showLegoToast(`Super Subgraph created with ${nodes.length} node${nodes.length > 1 ? "s" : ""}`);
+  return sn;
+}
+
+/** Desfaz o Super Subgraph: os nós de dentro voltam ao grafo, religados. */
+function unpackSuper(sn) {
+  const graph = sn?.graph;
+  const inner = ssInnerGraph(sn);
+  const canvas = app.canvas;
+  if (!graph || !inner || !canvas) return;
+  if (canvas.graph !== graph) { alert("Open the graph that contains this Super Subgraph first."); return; }
+  const meta = sn.properties?.[SS_PROP] || {};
+
+  // O que está ligado no nó por fora, antes de removê-lo.
+  const inLinks = (meta.inputs || []).map((_, k) => {
+    const slot = (sn.inputs || []).find((s) => s.name === `in_${k + 1}`);
+    const l = slot?.link != null ? graph.links?.get?.(slot.link) ?? graph.links?.[slot.link] : null;
+    return l ? [l.origin_id, l.origin_slot] : null;
+  });
+  const outLinks = (meta.outputs || []).map((_, j) => (sn.outputs?.[j]?.links || []).map((id) => {
+    const l = graph.links?.get?.(id) ?? graph.links?.[id];
+    return l ? [l.target_id, l.target_slot] : null;
+  }).filter(Boolean));
+
+  // Cola os nós de dentro (com os fios internos) onde o Super Subgraph estava.
+  const innerNodes = innerNodesOf(sn);
+  const items = {
+    nodes: innerNodes.map((n) => { const d = JSON.parse(JSON.stringify(n.serialize())); return d; }),
+    links: graphLinks(inner).map((l) => (l.asSerialisable ? l.asSerialisable() : {
+      id: l.id, origin_id: l.origin_id, origin_slot: l.origin_slot, target_id: l.target_id, target_slot: l.target_slot, type: l.type,
+    })),
+    groups: [], reroutes: [], subgraphs: [],
+  };
+  const pos = [sn.pos[0], sn.pos[1]];
+  graph.beforeChange?.();
+  const res = canvas._deserializeItems(items, { position: pos });
+  const map = res?.nodes || new Map();
+  const byOld = (id) => map.get(id) || map.get(String(id)) || map.get(Number(id));
+
+  (meta.inputs || []).forEach((io, k) => {
+    const src = inLinks[k];
+    const origin = src ? graph.getNodeById(src[0]) : null;
+    if (!origin) return;
+    for (const [tid, name] of io.targets || []) {
+      const t = byOld(tid);
+      const slot = t?.inputs?.findIndex((s) => s.name === name);
+      if (t && slot >= 0) origin.connect(src[1], t, slot);
+    }
+  });
+  (meta.outputs || []).forEach((io, j) => {
+    const s = io.source ? byOld(io.source[0]) : null;
+    if (!s) return;
+    for (const [tid, tslot] of outLinks[j] || []) {
+      const t = graph.getNodeById(tid);
+      if (t) s.connect(io.source[1], t, tslot);
+    }
+  });
+
+  graph.remove(sn);
+  graph.afterChange?.();
+  graph.setDirtyCanvas?.(true, true);
+  showLegoToast("Super Subgraph unpacked");
+}
+
 /** Altura do cartão em si — o host mede o nó, não o conteúdo. */
 function cardHeight(host) {
   if (!host) return 260;
@@ -11742,6 +12082,45 @@ function detach(node) {
 app.registerExtension({
   name: EXT,
 
+  commands: [
+    {
+      id: "SuperSubgraph.ConvertSelection",
+      label: "Convert Selection to Super Subgraph",
+      icon: "pi pi-th-large",
+      function: () => convertSelectionToSuper(),
+    },
+  ],
+
+  // Barra flutuante que aparece ao selecionar nós.
+  getSelectionToolboxCommands() {
+    return ["SuperSubgraph.ConvertSelection"];
+  },
+
+  async beforeRegisterNodeDef(nodeType, nodeData) {
+    if (nodeData?.name !== SS_TYPE) return;
+    const proto = nodeType.prototype;
+
+    // O grafo de dentro vai no workflow sempre atualizado (valores mudados
+    // pelo cartão moram nos nós de dentro, não nas propriedades).
+    const origSerialize = proto.onSerialize;
+    proto.onSerialize = function (o) {
+      origSerialize?.apply(this, arguments);
+      if (this.__ssGraph && o?.properties?.[SS_PROP]) {
+        o.properties[SS_PROP].graph = this.__ssGraph.serialize();
+      }
+    };
+
+    // Carregar/colar: o grafo de dentro é refeito a partir das propriedades.
+    const origConfigure = proto.onConfigure;
+    proto.onConfigure = function () {
+      const r = origConfigure?.apply(this, arguments);
+      this.__ssGraph = null;
+      setupSuperNode(this);
+      applySuperSlots(this);
+      return r;
+    };
+  },
+
   async setup() {
     injectCSS();
 
@@ -11776,6 +12155,7 @@ app.registerExtension({
   },
 
   nodeCreated(node) {
+    if (isSuperNode(node)) setupSuperNode(node);
     if (node?.properties?.[PROP]) {
       try { attach(node); } catch (e) { console.error(LOG, "nodeCreated attach failed", node.id, e); }
     }
@@ -11787,10 +12167,33 @@ app.registerExtension({
     }
   },
 
+  getCanvasMenuItems() {
+    const sel = selectedNodes();
+    if (!sel.length) return [];
+    return [null, {
+      content: `Convert Selection to Super Subgraph (${sel.length})`,
+      callback: () => convertSelectionToSuper(sel),
+    }];
+  },
+
   getNodeMenuItems(node) {
     if (!node) return [];
     const has = !!node.properties?.[PROP];
     const items = [];
+
+    const sel = selectedNodes();
+    if (sel.length && sel.includes(node)) {
+      items.push({
+        content: `Convert Selection to Super Subgraph (${sel.length})`,
+        callback: () => convertSelectionToSuper(sel),
+      });
+    }
+    if (isSuperNode(node)) {
+      items.push({
+        content: "Unpack Super Subgraph",
+        callback: () => unpackSuper(node),
+      });
+    }
 
     if (!has) {
       items.push({
@@ -11815,7 +12218,7 @@ app.registerExtension({
         content: "Recreate Layout from Widgets",
         callback: () => {
           const keepEdit = node.__legoState?.edit;
-          node.properties[PROP] = autoLayout(node);
+          node.properties[PROP] = isSuperNode(node) ? superAutoLayout(node) : autoLayout(node);
           if (node.__legoState) { node.__legoState.edit = !!keepEdit; node.__legoState.refresh(); }
           else attach(node);
         },
