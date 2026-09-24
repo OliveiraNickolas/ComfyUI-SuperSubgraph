@@ -42,6 +42,7 @@ const MIN_W = 600;
 const PAD = 24;        // folga abaixo do cartão
 const TICK_MS = 250;   // intervalo mínimo entre conferências de tamanho
 const SWEEP_MS = 1000; // varredura de manutenção dos cartões
+const GRID = 16;       // passo do snap dos componentes na zona
 const LOG = "[SuperSubgraph]";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -2643,6 +2644,8 @@ function doUndo(node, state) {
     console.error("[SuperSubgraph] Error restoring undo state:", err);
     return false;
   }
+  // O próprio Undo/Redo não pode virar entrada nova no histórico.
+  node.__legoSkipHistory = true;
   showLegoToast("Undo");
   state?.refresh();
   renderObjectInspector(node, state, false);
@@ -2664,6 +2667,8 @@ function doRedo(node, state) {
     console.error("[SuperSubgraph] Error restoring redo state:", err);
     return false;
   }
+  // O próprio Undo/Redo não pode virar entrada nova no histórico.
+  node.__legoSkipHistory = true;
   showLegoToast("Redo");
   state?.refresh();
   renderObjectInspector(node, state, false);
@@ -2677,23 +2682,12 @@ let LEGO_PASTE_OFFSET = 16;
 function duplicateComponent(host, state, ctrl, list, offset = 16) {
   pushUndo(host);
   const layout = host.properties[PROP];
-  const clone = JSON.parse(JSON.stringify(ctrl));
-  const t = toolByKind(clone.kind);
-  clone.name = uniqueComponentName(layout, t.prefix);
-  if (clone.label === ctrl.name) clone.label = clone.name;
-
-  if (Array.isArray(clone.items)) {
-    for (const item of clone.items) {
-      const itTool = toolByKind(item.kind);
-      item.name = uniqueComponentName(layout, itTool.prefix);
-      if (item.label === item.name) item.label = item.name;
-    }
-  }
+  const clone = renameClone(layout, JSON.parse(JSON.stringify(ctrl)));
 
   if (typeof clone.x === "number") clone.x = Math.round((clone.x + offset) / 16) * 16;
   if (typeof clone.y === "number") clone.y = Math.round((clone.y + offset) / 16) * 16;
 
-  const targetList = list || layout.tabs?.find((t) => t.id === state.tab)?.sections?.[0]?.controls;
+  const targetList = list || visibleControlsOf(activeSectionOf(layout, state));
   if (targetList) {
     const idx = targetList.indexOf(ctrl);
     if (idx >= 0) {
@@ -2743,9 +2737,12 @@ function copySelectedComponents(host, state) {
 function pasteComponents(host, state) {
   if (!LEGO_CLIPBOARD || !LEGO_CLIPBOARD.items || LEGO_CLIPBOARD.items.length === 0) return false;
   const layout = host.properties[PROP];
-  const curTab = layout.tabs?.find((t) => t.id === state.tab) || layout.tabs?.[0];
-  const sec = curTab?.sections?.[0];
-  if (!sec) return false;
+  const targetControls = visibleControlsOf(activeSectionOf(layout, state));
+  if (!targetControls) return false;
+
+  // O destino "dentro do grupo" sai da seleção de ANTES da colagem; o laço
+  // abaixo muda `selectedName` a cada item colado.
+  const selectedBefore = state.selectedName ? findSelected(layout, state) : null;
 
   pushUndo(host);
 
@@ -2755,18 +2752,8 @@ function pasteComponents(host, state) {
   const pastedNames = [];
 
   for (const entry of LEGO_CLIPBOARD.items) {
-    const clone = JSON.parse(JSON.stringify(entry.ctrl));
-    const t = toolByKind(clone.kind);
-    clone.name = uniqueComponentName(layout, t.prefix);
-    if (clone.label === entry.ctrl.name) clone.label = clone.name;
-
-    if (Array.isArray(clone.items)) {
-      for (const item of clone.items) {
-        const itTool = toolByKind(item.kind);
-        item.name = uniqueComponentName(layout, itTool.prefix);
-        if (item.label === item.name) item.label = item.name;
-      }
-    }
+    const clone = renameClone(layout, JSON.parse(JSON.stringify(entry.ctrl)));
+    const isContainerClone = clone.kind === "segment" || clone.kind === "vsegment" || clone.kind === "group";
 
     if (typeof clone.x === "number") {
       clone.x = Math.round((clone.x + LEGO_PASTE_OFFSET) / 16) * 16;
@@ -2775,23 +2762,21 @@ function pasteComponents(host, state) {
       clone.y = Math.round((clone.y + LEGO_PASTE_OFFSET) / 16) * 16;
     }
 
+    // Grupo nunca entra em grupo: colar (ou Ctrl+D) com um grupo selecionado
+    // punha a cópia do grupo dentro dele mesmo.
     let addedToGroup = false;
-    if (state.selectedName) {
-      const selectedItem = findSelected(layout, state);
-      if (selectedItem?.ctrl && (selectedItem.ctrl.kind === "vsegment" || selectedItem.ctrl.kind === "segment")) {
-        if (!selectedItem.ctrl.items) selectedItem.ctrl.items = [];
-        selectedItem.ctrl.items.push(clone);
+    if (selectedBefore && !isContainerClone) {
+      if (selectedBefore.ctrl && (selectedBefore.ctrl.kind === "vsegment" || selectedBefore.ctrl.kind === "segment")) {
+        if (!selectedBefore.ctrl.items) selectedBefore.ctrl.items = [];
+        selectedBefore.ctrl.items.push(clone);
         addedToGroup = true;
-      } else if (selectedItem?.parentGroup) {
-        selectedItem.parentGroup.items.push(clone);
+      } else if (selectedBefore.parentGroup) {
+        selectedBefore.parentGroup.items.push(clone);
         addedToGroup = true;
       }
     }
 
-    if (!addedToGroup) {
-      if (!sec.controls) sec.controls = [];
-      sec.controls.push(clone);
-    }
+    if (!addedToGroup) targetControls.push(clone);
 
     state.selectedNames.add(clone.name);
     state.selectedName = clone.name;
@@ -2929,18 +2914,17 @@ function installFormShortcuts() {
         if (st && st.edit) {
           const layout = n.properties[PROP];
           if (!layout) continue;
-          const curTab = layout.tabs?.find((t) => t.id === st.tab) || layout.tabs?.[0];
-          const sec = curTab?.sections?.[0];
-          if (sec && sec.controls && sec.controls.length > 0) {
+          const controls = visibleControlsOf(activeSectionOf(layout, st));
+          if (controls && controls.length > 0) {
             e.preventDefault();
             e.stopPropagation();
             if (!st.selectedNames) st.selectedNames = new Set();
             st.selectedNames.clear();
-            sec.controls.forEach((c) => {
+            controls.forEach((c) => {
               ensureComponentName(layout, c);
               st.selectedNames.add(c.name);
             });
-            st.selectedName = sec.controls[sec.controls.length - 1]?.name || null;
+            st.selectedName = controls[controls.length - 1]?.name || null;
             st.refresh();
             renderObjectInspector(n, st, false);
             break;
@@ -2958,17 +2942,13 @@ function installFormShortcuts() {
           const layout = n.properties[PROP];
           if (!layout) continue;
 
+          // Só grava o snapshot se houver o que apagar: gravar à toa zerava o Redo.
+          let anyMatch = false;
+          walkControls(layout, (c) => { if (st.selectedNames.has(c.name)) anyMatch = true; });
+          if (!anyMatch) continue;
+
           pushUndo(n); // Salva snapshot para Undo antes de apagar
-          let deletedCount = 0;
-          walkControls(layout, (c, list) => {
-            if (st.selectedNames.has(c.name)) {
-              const idx = list.indexOf(c);
-              if (idx >= 0) {
-                list.splice(idx, 1);
-                deletedCount++;
-              }
-            }
-          });
+          const deletedCount = removeControlsByName(layout, st.selectedNames);
 
           if (deletedCount > 0) {
             e.preventDefault();
@@ -3163,10 +3143,13 @@ function requestCanvasDirty(graph) {
 /** Escreve no widget real e avisa o grafo. Não mexe em widgets_values. */
 function writeWidget(node, w, value) {
   w.value = value;
-  // Mantém widgets_values perfeitamente sincronizado para nós e serializações do ComfyUI
+  // Mantém widgets_values em dia. O índice é o do widget entre os
+  // SERIALIZÁVEIS (nota 3 do topo): contar pela posição em `node.widgets`
+  // escrevia na casa errada quando havia um widget `serialize: false` antes.
   if (node && Array.isArray(node.widgets_values) && Array.isArray(node.widgets)) {
-    const idx = node.widgets.indexOf(w);
-    if (idx >= 0) node.widgets_values[idx] = value;
+    const serializable = node.widgets.filter((x) => x && x.serialize !== false && x.options?.serialize !== false);
+    const idx = serializable.indexOf(w);
+    if (idx >= 0 && idx < node.widgets_values.length) node.widgets_values[idx] = value;
   }
   try { w.callback?.call(w, value, app.canvas, node, [0, 0], {}); } catch (e) { /* widget sem callback */ }
   requestCanvasDirty(node.graph || app.graph);
@@ -3328,6 +3311,17 @@ const el = (tag, cls, txt) => {
   if (txt != null) e.textContent = txt;
   return e;
 };
+
+/**
+ * Escapa texto para interpolar em `innerHTML`. Título de nó, valor de widget,
+ * nome e bind de componente vêm do workflow — que circula como JSON/PNG — e
+ * nunca podem virar marcação.
+ */
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, (ch) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
+  ));
+}
 
 /* ══════════════════════════════════════════════════════════════════════════
    Glifos dos widgets
@@ -3541,7 +3535,7 @@ function glyphBtn(cls, name, size = 13, title = "") {
 /** Botão com glifo + texto, na ordem em que o olho lê. */
 function glyphTextBtn(cls, name, text, size = 14) {
   const b = el("button", cls);
-  b.innerHTML = `${glyph(name, size)}<span>${text}</span>`;
+  b.innerHTML = `${glyph(name, size)}<span>${esc(text)}</span>`;
   return b;
 }
 
@@ -4121,7 +4115,7 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
   sel.append(labelEl, chevron);
 
   const populateOptions = () => {
-    const vals = w?.options?.values || [];
+    const vals = valuesOf(w, node);
     labelEl.textContent = w?.value ? shortLabel(w.value, vals) : "\u2014";
     sel.title = w?.value ? String(w.value) : `No ${mediaTypeName} selected`;
   };
@@ -4130,7 +4124,8 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
   sel.addEventListener("click", (e) => {
     e.stopPropagation();
     e.preventDefault();
-    openDropdown(sel, w?.options?.values || [], w?.value, (v) => {
+    // `valuesOf` também resolve `values` dado como função (combos dinâmicos).
+    openDropdown(sel, valuesOf(w, node), w?.value, (v) => {
       writeWidget(node, w, v);
       populateOptions();
       updateThumb();
@@ -4279,12 +4274,16 @@ function mkStepNumber(node, w, ctrl, state) {
   };
   paint();
 
+  // Soma de floats acumula resíduo (0.1 + 0.2 = 0.30000000000000004); corta
+  // na precisão do widget ou, sem ela, numa folga que some com o resíduo.
+  const tidy = (v) => (isInt ? Math.round(v) : Number(v.toFixed(Number.isFinite(o.precision) ? o.precision : 10)));
+
   const changeVal = (delta) => {
     let cur = Number(w.value) || 0;
     cur += delta;
     if (Number.isFinite(min)) cur = Math.max(min, cur);
     if (Number.isFinite(max)) cur = Math.min(max, cur);
-    writeWidget(node, w, isInt ? Math.round(cur) : cur);
+    writeWidget(node, w, tidy(cur));
     paint();
   };
 
@@ -5028,7 +5027,6 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     row.classList.add("grp-media");
   }
 
-  const GRID = 16;
   const groupHasMedia = isGroup && (ctrl.items || []).some((i) => isMediaLike(i.kind));
   const hasMediaItem = isMedia || groupHasMedia;
   const isSlider = ctrl.kind === "slider" || (!isGroup && !isCosmetic && hit && describeWidget(hit.widget).kind === "slider");
@@ -5293,12 +5291,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       e.stopPropagation();
       pushUndo(host);
       if (state.selectedNames && state.selectedNames.has(ctrl.name) && state.selectedNames.size > 1) {
-        walkControls(host.properties[PROP], (c, list) => {
-          if (state.selectedNames.has(c.name)) {
-            const idx = list.indexOf(c);
-            if (idx >= 0) list.splice(idx, 1);
-          }
-        });
+        removeControlsByName(host.properties[PROP], state.selectedNames);
         state.selectedNames.clear();
         state.selectedName = null;
         state.refresh();
@@ -6241,8 +6234,8 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect }) {
         <div style="display:flex;align-items:center;gap:8px;">
           <span class="lego-glyph-wrap">${glyph("grid", 18)}</span>
           <div>
-            <div class="lego-node-title">${nTitle} <span style="font-size:11px;color:var(--lego-accent);">#${hitNode.id}</span></div>
-            <div class="lego-node-picker-sub">${hitNode.type}</div>
+            <div class="lego-node-title">${esc(nTitle)} <span style="font-size:11px;color:var(--lego-accent);">#${esc(hitNode.id)}</span></div>
+            <div class="lego-node-picker-sub">${esc(hitNode.type)}</div>
           </div>
         </div>
         <button class="lego-iconbtn close-btn" style="width:24px;height:24px;">${glyph("close", 12)}</button>
@@ -6275,10 +6268,10 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect }) {
         btn.innerHTML = `
           <div style="display:flex;align-items:center;gap:8px;">
             <span class="lego-glyph-wrap">${icon}</span>
-            <span style="font-weight:600;">${prettify(w.name)}</span>
-            ${valPreview ? `<span style="font-size:11px;color:var(--lego-dim);font-family:monospace;">(${valPreview})</span>` : ""}
+            <span style="font-weight:600;">${esc(prettify(w.name))}</span>
+            ${valPreview ? `<span style="font-size:11px;color:var(--lego-dim);font-family:monospace;">(${esc(valPreview)})</span>` : ""}
           </div>
-          <span style="font-size:10.5px;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.08);color:var(--lego-accent);">${kind}</span>
+          <span style="font-size:10.5px;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.08);color:var(--lego-accent);">${esc(kind)}</span>
         `;
 
         btn.addEventListener("click", (e) => {
@@ -6589,8 +6582,9 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
   const dialog = el("div", "lego-comfy-dialog");
   dialog.addEventListener("click", (e) => e.stopPropagation());
 
+  // O picker só esconde o diálogo (display:none) e o devolve ao cancelar.
+  // Remover o backdrop aqui fazia o "Cancel and return" voltar para o nada.
   const runTargetPicker = () => {
-    backdrop.remove();
     startVisualWorkflowPicker({
       host,
       backdrop,
@@ -7009,7 +7003,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
       return window.app.nodeDefs[nodeType];
     }
     try {
-      const res = await fetch(`/object_info/${encodeURIComponent(nodeType)}`);
+      const res = await api.fetchApi(`/object_info/${encodeURIComponent(nodeType)}`);
       if (res.ok) {
         const data = await res.json();
         if (data && data[nodeType]) {
@@ -7189,7 +7183,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
       detailsPanel.append(rawBox);
 
       const submitBtn = el("button", "lego-comfy-det-btn");
-      submitBtn.innerHTML = `${glyph("plus", 15)}<span>Add ${t.label} to form</span>`;
+      submitBtn.innerHTML = `${glyph("plus", 15)}<span>Add ${esc(t.label)} to form</span>`;
       submitBtn.addEventListener("click", insertSelectedTarget);
       detailsPanel.append(submitBtn);
       return;
@@ -7358,7 +7352,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
 
         const ctrlEl = el("div", "lego-faithful-widget-ctrl");
         if (w.type === "COMBO") {
-          ctrlEl.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${curVal}</span><span class="lego-glyph-wrap" style="opacity:0.6;">${glyph("chevron", 12)}</span>`;
+          ctrlEl.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(curVal)}</span><span class="lego-glyph-wrap" style="opacity:0.6;">${glyph("chevron", 12)}</span>`;
         } else {
           ctrlEl.textContent = String(curVal);
         }
@@ -7376,8 +7370,8 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
       // Resumo Compacto
       const summary = el("div", "lego-faithful-summary");
       summary.innerHTML = `
-        <div>Target: <strong style="color: #38bdf8;">${t.name}</strong> (${t.kind})</div>
-        <div>Node: <strong>${cleanTitle}</strong> (#${node.id}) · <em>${node.type || 'Custom'}</em></div>
+        <div>Target: <strong style="color: #38bdf8;">${esc(t.name)}</strong> (${esc(t.kind)})</div>
+        <div>Node: <strong>${esc(cleanTitle)}</strong> (#${esc(node.id)}) · <em>${esc(node.type || 'Custom')}</em></div>
       `;
       canvasArea.append(summary);
     });
@@ -7425,6 +7419,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
 
     // Se a busca nativa foi aberta para vincular um alvo específico a um controle (ex: sub-elemento de segmento)
     if (typeof targetCallback === "function") {
+      if (!selectedTarget.isRaw) pushUndo(host);
       targetCallback(selectedTarget);
       backdrop.remove();
       return;
@@ -7452,8 +7447,12 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
         newCtrl.items = [];
       }
 
+      pushUndo(host);
+      ensureComponentName(host.properties[PROP], newCtrl);
       if (!section.controls) section.controls = [];
       section.controls.push(newCtrl);
+      state.selectedName = newCtrl.name;
+      state.selectedNames = new Set([newCtrl.name]);
       backdrop.remove();
       state.refresh();
 
@@ -7463,16 +7462,20 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
       return;
     }
 
+    pushUndo(host);
     c.bind = selectedTarget.bind;
     c.label = selectedTarget.label || prettify(selectedTarget.name);
     c.kind = selectedTarget.kind;
     const isTargetMedia = (selectedTarget.kind === "media" || selectedTarget.kind === "video" || selectedTarget.kind === "audio");
-    c.width = isTargetMedia ? "288px" : "100%";
-    c.height = isTargetMedia ? "144px" : "auto";
-    c.w = isTargetMedia ? 288 : 256;
-    c.h = isTargetMedia ? 144 : 46;
 
     if (isNew) {
+      // Tamanho padrão só para quem está nascendo. Num componente existente,
+      // trocar o parâmetro não pode desfazer o redimensionamento do usuário;
+      // o piso por tipo é aplicado no `buildControl`.
+      c.width = isTargetMedia ? "288px" : "100%";
+      c.height = isTargetMedia ? "144px" : "auto";
+      c.w = isTargetMedia ? 288 : 256;
+      c.h = isTargetMedia ? 144 : 46;
       if (!section.controls) section.controls = [];
       if (initialPos) {
         c.x = initialPos.x;
@@ -7707,6 +7710,10 @@ function openTabContextMenu(e, { tab, tabs, tabIndex, onUpdate, onDelete, onAdd,
   }
   menu.append(itemDel);
 
+  // O fechamento escuta `pointerdown` no documento; sem barrar aqui, o menu
+  // sumia no pointerdown do próprio item e o `click` nunca chegava nele.
+  menu.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+
   const closeMenu = () => {
     menu.remove();
     document.removeEventListener("click", closeMenu);
@@ -7919,13 +7926,80 @@ function walkControls(layout, fn) {
   }
 }
 
+/**
+ * Remove do layout todo componente cujo nome esteja em `names`.
+ * Coleta antes e remove depois: dar `splice` dentro do `walkControls` pulava o
+ * vizinho seguinte, e de dois itens adjacentes selecionados um sobrevivia.
+ * Devolve quantos removeu.
+ */
+function removeControlsByName(layout, names) {
+  const hits = [];
+  walkControls(layout, (c, list) => { if (names.has(c.name)) hits.push({ c, list }); });
+  let removed = 0;
+  for (const { c, list } of hits) {
+    const idx = list.indexOf(c);
+    if (idx >= 0) { list.splice(idx, 1); removed++; }
+  }
+  return removed;
+}
+
 /** Nome único no formulário — Slider1, Slider2, como o Delphi batiza. */
-function uniqueComponentName(layout, prefix) {
-  const taken = new Set();
+function uniqueComponentName(layout, prefix, reserved) {
+  const taken = new Set(reserved || []);
   walkControls(layout, (c) => { if (c.name) taken.add(c.name); });
   let i = 1;
   while (taken.has(`${prefix}${i}`)) i++;
   return `${prefix}${i}`;
+}
+
+/**
+ * Rebatiza um clone (e os itens dele) com nomes livres. O clone ainda não está
+ * no layout, então os nomes já dados ficam reservados — senão dois itens do
+ * mesmo tipo dentro do grupo saíam com o mesmo nome.
+ */
+function renameClone(layout, clone, reserved = new Set()) {
+  const oldName = clone.name;
+  clone.name = uniqueComponentName(layout, toolByKind(clone.kind).prefix, reserved);
+  reserved.add(clone.name);
+  if (clone.label === oldName) clone.label = clone.name;
+  if (Array.isArray(clone.items)) {
+    for (const item of clone.items) {
+      const oldItemName = item.name;
+      item.name = uniqueComponentName(layout, toolByKind(item.kind).prefix, reserved);
+      reserved.add(item.name);
+      if (item.label === oldItemName) item.label = item.name;
+    }
+  }
+  return clone;
+}
+
+/** A aba que o cartão está mostrando agora. */
+function activeTabOf(layout) {
+  const tabs = layout?.tabs || [];
+  return tabs[layout?.activeTab || 0] || tabs[0] || null;
+}
+
+/**
+ * A lista de controles visível numa zona: a da sub-aba ativa, se houver
+ * sub-abas, ou a da própria zona. Gravar em `sec.controls` de uma zona com
+ * sub-abas punha o componente numa lista que nunca é desenhada.
+ */
+function visibleControlsOf(sec) {
+  if (!sec) return null;
+  if (Array.isArray(sec.tabs) && sec.tabs.length) {
+    const idx = Math.min(Math.max(0, sec.activeTab || 0), sec.tabs.length - 1);
+    const sub = sec.tabs[idx];
+    return sub.controls || (sub.controls = []);
+  }
+  return sec.controls || (sec.controls = []);
+}
+
+/** A zona ativa da aba atual: a última clicada, se ainda existir nela, ou a primeira. */
+function activeSectionOf(layout, state) {
+  const tab = activeTabOf(layout);
+  const sections = tab?.sections || [];
+  if (state?.activeSection && sections.includes(state.activeSection)) return state.activeSection;
+  return sections[0] || null;
 }
 
 /**
@@ -8052,7 +8126,10 @@ function dropArmedTool(host, state, section, x, y, keepArmed, forcedKind) {
   const ctrl = makeComponent(layout, tool.kind, spot.x, spot.y);
   list.push(ctrl);
   if (!keepArmed) state.armedTool = null;
+  // Seleção passa a ser SÓ o recém-solto; manter o conjunto anterior fazia o
+  // Delete seguinte apagar também o que estava selecionado antes.
   state.selectedName = ctrl.name;
+  state.selectedNames = new Set([ctrl.name]);
   state.refresh();
   return true;
 }
@@ -8289,7 +8366,7 @@ function renderObjectInspector(host, state, force) {
     const base = `${c.name || c.label || c.kind}: ${toolByKind(c.kind).label}`;
     return parentGroup ? `${base} (in ${parentGroup.name || parentGroup.kind})` : base;
   };
-  pickBtn.innerHTML = `<span>${sel ? itemLabel(sel, current?.parentGroup) : "(no component)"}</span>${glyph("chevron", 12)}`;
+  pickBtn.innerHTML = `<span>${esc(sel ? itemLabel(sel, current?.parentGroup) : "(no component)")}</span>${glyph("chevron", 12)}`;
   pickBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     openDropdown(
@@ -8479,12 +8556,7 @@ function renderObjectInspector(host, state, force) {
     delAllBtn.style.fontWeight = "600";
     delAllBtn.addEventListener("click", () => {
       pushUndo(host);
-      walkControls(layout, (c, list) => {
-        if (state.selectedNames.has(c.name)) {
-          const idx = list.indexOf(c);
-          if (idx >= 0) list.splice(idx, 1);
-        }
-      });
+      removeControlsByName(layout, state.selectedNames);
       state.selectedNames.clear();
       state.selectedName = null;
       state.refresh();
@@ -8642,6 +8714,7 @@ function renderObjectInspector(host, state, force) {
       const i = list.findIndex((c) => c === ctrl || c.name === ctrl.name);
       if (i >= 0) list.splice(i, 1);
       state.selectedName = null;
+      state.selectedNames?.delete(ctrl.name);
       state.refresh();
     });
     footD.append(delD);
@@ -8666,7 +8739,7 @@ function renderObjectInspector(host, state, force) {
         : iHit
           ? (iHit.node === host ? iHit.widget.name : `#${iHit.node.id} ${iHit.widget.name}`)
           : `${item.bind} (missing)`;
-      btn.innerHTML = `${glyph(item.bind && iHit ? "link" : "blank", 12)}<span>${txt}</span>`;
+      btn.innerHTML = `${glyph(item.bind && iHit ? "link" : "blank", 12)}<span>${esc(txt)}</span>`;
       btn.title = item.bind || "Click to choose parameter";
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -8690,6 +8763,7 @@ function renderObjectInspector(host, state, force) {
       const i = list.findIndex((c) => c.name === ctrl.name);
       if (i >= 0) list.splice(i, 1);
       state.selectedName = null;
+      state.selectedNames?.delete(ctrl.name);
       state.refresh();
     });
     footC.append(delC);
@@ -8704,7 +8778,7 @@ function renderObjectInspector(host, state, force) {
     : hit
       ? (hit.node === host ? hit.widget.name : `#${hit.node.id} ${hit.widget.name}`)
       : `${ctrl.bind} (missing widget)`;
-  fnBtn.innerHTML = `${glyph(ctrl.bind && hit ? "link" : "blank", 12)}<span>${fnText}</span>`;
+  fnBtn.innerHTML = `${glyph(ctrl.bind && hit ? "link" : "blank", 12)}<span>${esc(fnText)}</span>`;
   fnBtn.title = ctrl.bind
     ? `Bound to ${ctrl.bind} — click to change`
     : "Click to choose workflow parameter controlled by this component";
@@ -8753,6 +8827,7 @@ function renderObjectInspector(host, state, force) {
     const i = list.findIndex((c) => c === ctrl || c.name === ctrl.name);
     if (i >= 0) list.splice(i, 1);
     state.selectedName = null;
+    state.selectedNames?.delete(ctrl.name);
     state.refresh();
   });
   foot.append(del);
@@ -9083,6 +9158,7 @@ function buildCard(host, state) {
           const c = makeComponent(layout, d.kind, spot0.x, spot0.y);
           list.push(c);
           state.selectedName = c.name;
+          state.selectedNames = new Set([c.name]);
           state.refresh();
         }
       });
@@ -10249,8 +10325,20 @@ function attach(node) {
     },
     /** Repinta o cartão inteiro a partir do layout atual. */
     refresh() {
+      // Rede de segurança do Undo: toda mudança de layout termina num
+      // refresh, então se o layout mudou desde o último desenho e ninguém
+      // gravou snapshot, grava aqui o estado anterior. Um `pushUndo` explícito
+      // antes da mudança grava o MESMO snapshot, que o topo da pilha descarta.
+      const before = JSON.stringify(node.properties?.[PROP] || {});
+      if (node.__legoSkipHistory) {
+        node.__legoSkipHistory = false;
+      } else if (node.__legoLastSnap && before !== node.__legoLastSnap) {
+        pushUndoSnapshot(node, node.__legoLastSnap);
+      }
       state.watchers.clear();
       host.replaceChildren(buildCard(node, state));
+      // Depois do desenho: o `buildControl` normaliza x/y/w/h e nomes.
+      node.__legoLastSnap = JSON.stringify(node.properties?.[PROP] || {});
       hideNative(node);
       state.ro?.disconnect();
       if (host.firstElementChild) {
@@ -10264,10 +10352,14 @@ function attach(node) {
       if (!w.__legoWrapped) {
         const orig = w.callback;
         w.__legoWrapped = true;
+        // O wrapper é instalado uma vez por widget, mas o widget pode estar
+        // ligado a vários cartões (bind cruzado "6725/steps"): avisa todos os
+        // cartões vivos, não só o que instalou o wrapper.
         w.callback = function (...args) {
           const r = orig?.apply(this, args);
-          for (const [ww, fns] of node.__legoState?.watchers || []) {
-            if (ww === w) fns.forEach((f) => { try { f(); } catch {} });
+          for (const n of ATTACHED) {
+            const fns = n.__legoState?.watchers?.get(w);
+            if (fns) fns.forEach((f) => { try { f(); } catch {} });
           }
           return r;
         };
