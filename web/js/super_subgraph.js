@@ -1926,6 +1926,49 @@ textarea.lego-in{resize:vertical;min-height:75px;font-family:ui-monospace,SFMono
   border: none;
   background: transparent;
 }
+/* A barra de ações do GRUPO fica acima da borda dele, por fora: no canto de
+   dentro ela cobria os botões (elo, X) do item que estivesse ali. O
+   padding-bottom faz a ponte até a borda, para o hover não cair no vão. */
+.lego-row.is-segment > .lego-floating-actions{
+  top: auto;
+  bottom: 100%;
+  right: 0;
+  padding-bottom: 4px;
+}
+/* Ponte de hover: enquanto o ponteiro está no grupo, a faixa logo acima dele
+   (onde fica a barra) continua contando como grupo — ir até a barra na
+   diagonal não a faz sumir no meio do caminho. Só existe durante o hover,
+   então não bloqueia nada acima do grupo no resto do tempo. */
+.lego-sec-controls.in-edit .lego-row.is-segment:hover::after{
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 30px;
+}
+/* Cabeçalho do grupo: o nome do nó quando ele veio como "nó inteiro". */
+.lego-row.is-segment.has-header{
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+.lego-row.is-segment.has-header > .lego-segment-box{
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+.lego-seg-header{
+  flex: none;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--lego-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 
 .lego-segment-box{
@@ -2883,6 +2926,15 @@ function installFormShortcuts() {
     );
 
     if (e.key === "Escape") {
+      // Janela de busca aberta: o Esc é dela. Antes, com algo selecionado, este
+      // atalho consumia a tecla (limpando a seleção) e a janela não fechava.
+      const dlg = document.querySelector(".lego-comfy-backdrop");
+      if (dlg && dlg.style.display !== "none") {
+        dlg.remove();
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
       for (const n of ATTACHED) {
         const st = n.__legoState;
         if (st) {
@@ -5669,6 +5721,24 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     row.append(lblSpan);
   } else if (isSegmentLike) {
     row = el("div", `lego-row is-segment ${ctrl.kind === "vsegment" ? "vertical" : "horizontal"}`);
+    if (ctrl.header && ctrl.labelPos !== "none") {
+      row.classList.add("has-header");
+      const head = el("div", "lego-seg-header", ctrl.header);
+      if (ctrl.labelPos === "right") head.style.textAlign = "right";
+      if (state.edit) {
+        head.title = "Double-click to rename";
+        head.addEventListener("dblclick", (e) => {
+          e.stopPropagation();
+          const v = prompt("Group header:", ctrl.header);
+          if (v != null) {
+            pushUndo(host);
+            if (v.trim()) ctrl.header = v.trim(); else delete ctrl.header;
+            state.refresh();
+          }
+        });
+      }
+      row.append(head);
+    }
     const innerBox = buildSegment(host, ctrl, state, sectionCtrls);
     row.append(innerBox);
   } else if (isOutput) {
@@ -6654,7 +6724,9 @@ function wholeNodeItems(host, node) {
     let kind = detectMediaKind(w, describeWidget(w));
     // Número vira Stepper: é o controle compacto que cabe numa linha de grupo.
     if (kind === "slider") kind = "number";
-    const text = prettify(w.name);
+    // O nome que o usuário deu ao parâmetro (widget renomeado/promovido)
+    // vale mais que o nome técnico.
+    const text = (typeof w.label === "string" && w.label.trim() && w.label !== w.name) ? w.label.trim() : prettify(w.name);
     const control = { kind, bind: node === host ? w.name : `${node.id}/${w.name}`, label: text, labelPos: "none" };
     if (is2DKind(kind)) control.h = kind === "textarea" ? 80 : 120;
     // O botão já escreve o próprio nome; os demais ganham um Label na frente.
@@ -6703,13 +6775,15 @@ function buildWholeNodeCtrl(host, node, orientation, pos) {
   const group = {
     kind: vertical ? "vsegment" : "segment",
     label: node.title || node.type || `Node #${node.id}`,
+    header: node.title || node.type || `Node #${node.id}`,
     // Nasce dentro da largura da zona, mesmo se o clique foi perto da borda.
     x: Math.max(16, Math.min(pos?.x ?? 16, avail - w)),
     y: pos?.y ?? 16,
     w,
-    h: vertical
+    // +16 para o cabeçalho com o nome do nó.
+    h: 16 + (vertical
       ? snap(items.reduce((a, it) => a + (it.kind === "label" ? 20 : (it.h || 36)) + 8, 16))
-      : (has2D ? 160 : 48),
+      : (has2D ? 160 : 48)),
     items,
   };
   return renameClone(layout, group);
@@ -9573,6 +9647,16 @@ function renderObjectInspector(host, state, force) {
     });
     capIn.placeholder = capPadrao;
     props.append(propRow("Caption", capIn));
+
+    if (ctrl.kind === "segment" || ctrl.kind === "vsegment") {
+      const headIn = propText(ctrl.header || "", (v) => {
+        const t = String(v).trim();
+        if (t) ctrl.header = t; else delete ctrl.header;
+        state.refresh();
+      });
+      headIn.placeholder = "(no header)";
+      props.append(propRow("Header", headIn));
+    }
 
     const POSICOES = [
       { id: "left", label: "Left" },
