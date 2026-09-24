@@ -4478,19 +4478,58 @@ function outputSourceLabel(host, ctrl) {
   return n ? `#${n.id} ${n.title || n.type}` : `#${src} (missing)`;
 }
 
-/** Lista suspensa para escolher o nó de origem de um controle de output. */
-function openOutputSourcePicker(anchor, host, ctrl, state) {
-  const sources = listOutputSources(host);
-  const labels = [
-    host.subgraph ? "Auto — latest inside this subgraph" : "Auto — this node",
-    ...sources.map((s) => `${s.scope === "sub" ? "[subgraph]" : "[graph]"} #${s.id} ${s.node.title || s.node.type}${s.isOutput ? "" : "  (no output flag)"}`),
+/**
+ * Alvos da janela de busca quando ela escolhe a ORIGEM de um output: o modo
+ * automático e os nós do escopo, no mesmo formato de `listBindableTargets`,
+ * para a janela funcionar igual à dos outros elementos.
+ */
+function listOutputSourceTargets(host, ctrl) {
+  const media = OUTPUT_KINDS[ctrl.kind] || "image";
+  const kind = media === "image" ? "media" : media;
+  const autoLabel = host.subgraph ? "Auto — latest inside this subgraph" : "Auto — this node";
+  return [
+    {
+      bind: "",
+      name: autoLabel,
+      label: autoLabel,
+      kind,
+      node: host,
+      scope: "Automatic",
+      detail: `Latest ${media} output`,
+    },
+    ...listOutputSources(host).map((s) => {
+      const title = s.node.title || s.node.type || `Node #${s.id}`;
+      return {
+        bind: s.id,
+        name: title,
+        label: title,
+        kind,
+        node: s.node,
+        scope: `${s.scope === "sub" ? "Subgraph" : "Graph"} #${s.id} (${s.node.type})`,
+        detail: `#${s.id} ${title}${s.isOutput ? "" : " (no output flag)"}`,
+      };
+    }),
   ];
-  const current = ctrl.source ? labels[1 + sources.findIndex((s) => s.id === String(ctrl.source))] : labels[0];
-  openDropdown(anchor, labels, current, (_v, idx) => {
-    pushUndo(host);
-    if (idx === 0) delete ctrl.source;
-    else if (sources[idx - 1]) ctrl.source = sources[idx - 1].id;
-    state.refresh();
+}
+
+/**
+ * Escolhe o nó de origem de um output pela MESMA janela de busca que dá função
+ * aos outros elementos (lista, categorias, prévia do nó e Target Picker).
+ */
+function openOutputSourceDialog(host, ctrl, state, list) {
+  openInspector({
+    host,
+    layout: host.properties[PROP],
+    section: { controls: list || [] },
+    ctrl,
+    state,
+    sourceFor: ctrl,
+    targetCallback: (target) => {
+      if (!target || target.isRaw) return;
+      if (target.bind) ctrl.source = String(target.bind);
+      else delete ctrl.source;
+      state.refresh();
+    },
   });
 }
 
@@ -4718,11 +4757,12 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       // Ícone de corrente (link) à esquerda do 'x'. No output ele escolhe o
       // NÓ de origem em vez de um widget.
       if (isOutputItem) {
-        const srcSubBtn = glyphBtn("lego-item-link-btn is-bound", "link", 10);
+        const srcOk = !item.source || !!findNodeInHostScope(host, item.source);
+        const srcSubBtn = glyphBtn(`lego-item-link-btn ${srcOk ? "is-bound" : "is-unbound"}`, "link", 10);
         srcSubBtn.title = `Source: ${outputSourceLabel(host, item)} (click to change)`;
         srcSubBtn.addEventListener("click", (e) => {
           e.stopPropagation();
-          openOutputSourcePicker(srcSubBtn, host, item, state);
+          openOutputSourceDialog(host, item, state, ctrl.items);
         });
         actionsWrap.append(srcSubBtn);
       } else if (!isDividerItem && !isLabelItem && !isContainerItem) {
@@ -5554,12 +5594,13 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     // Grupos verticais, horizontais, divisores e labels não recebem link (não linkam em nada)
     if (isOutput) {
       // No output o elo escolhe o NÓ de origem (ou o modo automático).
-      const srcBtn = glyphBtn("lego-iconbtn btn-link is-bound", "link", 10);
+      const srcOk = !ctrl.source || !!findNodeInHostScope(host, ctrl.source);
+      const srcBtn = glyphBtn(`lego-iconbtn btn-link ${srcOk ? "is-bound" : "is-unbound"}`, "link", 10);
       srcBtn.title = `Source: ${outputSourceLabel(host, ctrl)} (click to change)`;
       srcBtn.addEventListener("pointerdown", eatPointer);
       srcBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        openOutputSourcePicker(srcBtn, host, ctrl, state);
+        openOutputSourceDialog(host, ctrl, state, sectionCtrls);
       });
       floatingActions.append(srcBtn);
     } else if (!isDivider && !isGroup && !isLabel) {
@@ -6472,7 +6513,7 @@ function getNodeAtEvent(canvas, e) {
 }
 
 /** Inicia o Modo de Seleção Visual no Workflow (Descompactado) */
-function startVisualWorkflowPicker({ host, backdrop, onSelect }) {
+function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false }) {
   backdrop.style.display = "none";
 
   const canvas = app.canvas;
@@ -6498,7 +6539,7 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect }) {
       <span class="lego-pulse-icon lego-glyph-wrap">${glyph("target", 24)}</span>
       <div>
         <div style="font-weight:700;font-size:14px;color:#fff;letter-spacing:0.02em;">TARGET PICKER ACTIVE</div>
-        <div style="font-size:12px;color:rgba(255,255,255,0.75);">Click any node on the canvas to pick the parameter to control</div>
+        <div style="font-size:12px;color:rgba(255,255,255,0.75);">${pickNode ? "Click the node whose output this component should show" : "Click any node on the canvas to pick the parameter to control"}</div>
       </div>
     </div>
   `;
@@ -6618,6 +6659,17 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect }) {
 
     e.stopPropagation();
     e.preventDefault();
+    // Origem de output: o alvo é o próprio nó, não um widget dele.
+    if (pickNode) {
+      onSelect({
+        bind: hitNode === host ? "" : String(hitNode.id),
+        name: hitNode.title || hitNode.type,
+        label: hitNode.title || hitNode.type,
+        node: hitNode,
+      });
+      cleanup();
+      return;
+    }
     openNodeWidgetPopup(hitNode, e.clientX, e.clientY);
   }
 
@@ -6911,7 +6963,7 @@ const RAW_UI_ELEMENTS = [
   }
 ];
 
-function openInspector({ host, layout, section, ctrl, state, defaultKind, insertIndex, initialWidth, initialPos, targetCallback, forFilterKind, segmentCtrl }) {
+function openInspector({ host, layout, section, ctrl, state, defaultKind, insertIndex, initialWidth, initialPos, targetCallback, forFilterKind, segmentCtrl, sourceFor }) {
   document.querySelector(".lego-comfy-backdrop")?.remove();
   document.querySelector(".lego-ins-backdrop")?.remove();
 
@@ -6938,6 +6990,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
     startVisualWorkflowPicker({
       host,
       backdrop,
+      pickNode: !!sourceFor,
       onSelect: (target) => {
         if (!target) return;
         selectedTarget = target;
@@ -6952,7 +7005,9 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
   searchIcon.innerHTML = glyph("search", 18);
   const searchInput = el("input", "lego-comfy-search-input");
   searchInput.type = "text";
-  searchInput.placeholder = "Add a node or parameter... (ex: steps, image, denoise, seed)";
+  searchInput.placeholder = sourceFor
+    ? "Pick the node whose output this component shows..."
+    : "Add a node or parameter... (ex: steps, image, denoise, seed)";
   searchInput.addEventListener("keydown", (e) => e.stopPropagation());
 
   // Target Picker (Botão primordial fixado no topo, visível 100% do tempo sem risco de scroll)
@@ -7024,8 +7079,10 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
   dialog.append(body);
 
   // Carrega todos os alvos vinculáveis
-  const targets = listBindableTargets(host);
-  let selectedTarget = targets.find(t => t.bind === c.bind) || targets[0] || null;
+  // Output escolhe um NÓ de origem, não um widget: a lista muda, a janela não.
+  const targets = sourceFor ? listOutputSourceTargets(host, sourceFor) : listBindableTargets(host);
+  const currentBind = sourceFor ? String(sourceFor.source ?? "") : c.bind;
+  let selectedTarget = targets.find(t => t.bind === currentBind) || targets[0] || null;
   let activeCategory = "all";
   let highlightedIndex = 0;
 
@@ -7744,7 +7801,9 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
       const isVert = segmentCtrl.kind === "vsegment";
       submitBtn.innerHTML = `${glyph("plus", 15)}<span>Add to ${isVert ? "vertical group" : "group"}</span>`;
     } else if (typeof targetCallback === "function") {
-      submitBtn.innerHTML = `${glyph("link", 15)}<span>Assign function to component</span>`;
+      submitBtn.innerHTML = sourceFor
+        ? `${glyph("link", 15)}<span>Show this node's output</span>`
+        : `${glyph("link", 15)}<span>Assign function to component</span>`;
     } else {
       submitBtn.innerHTML = isNew
         ? `${glyph("plus", 15)}<span>Insert into form</span>`
@@ -9083,14 +9142,15 @@ function renderObjectInspector(host, state, force) {
 
   if (isOutputKind(ctrl.kind)) {
     /* ── origem: o nó cujo output este componente mostra ── */
-    INSPECTOR.append(el("div", "lego-oi-sec", "Output"));
+    INSPECTOR.append(el("div", "lego-oi-sec", "Events"));
     const og = el("div", "lego-oi-grid");
-    const srcBtn = el("button", "lego-oi-pick");
-    srcBtn.innerHTML = `<span>${esc(outputSourceLabel(host, ctrl))}</span>${glyph("chevron", 12)}`;
-    srcBtn.title = "Node whose output this component shows. Auto = latest output of this type.";
+    const srcMissing = !!ctrl.source && !findNodeInHostScope(host, ctrl.source);
+    const srcBtn = el("button", `lego-oi-fn${srcMissing ? " broken" : " bound"}`);
+    srcBtn.innerHTML = `${glyph(srcMissing ? "blank" : "link", 12)}<span>${esc(outputSourceLabel(host, ctrl))}</span>`;
+    srcBtn.title = "Node whose output this component shows — click to change. Auto = latest output of this type.";
     srcBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      openOutputSourcePicker(srcBtn, host, ctrl, state);
+      openOutputSourceDialog(host, ctrl, state, list);
     });
     og.append(propRow("Source", srcBtn));
     INSPECTOR.append(og);
