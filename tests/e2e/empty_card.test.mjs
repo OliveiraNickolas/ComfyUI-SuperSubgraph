@@ -15,7 +15,7 @@ const r = await pg.evaluate(async () => {
   A.connect(0, S, 0); S.connect(0, P, 0); S.connect(0, D, 0);
   app.canvas.deselectAll?.(); app.canvas.select(S); app.canvas.select(P);
   const ext = app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph");
-  ext.getCanvasMenuItems().find(i => i && /Convert/.test(i.content)).callback();
+  ext.__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
   const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
   const L = sn.properties.ui_layout;
   const count = L.tabs.reduce((a, t) => a + t.sections.reduce((b, s) => b + (s.controls || []).length, 0), 0);
@@ -38,7 +38,7 @@ t("Esc cancels back to the workflow with no dialog left", await pg.evaluate(() =
 r.recreated = await pg.evaluate(() => {
   // layout automático só sob pedido
   const app = window.app; const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
-  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getNodeMenuItems(sn).find(i => i && /Recreate Layout/.test(i.content)).callback();
+  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(sn).find(i => i && /Recreate Layout/.test(i.content)).callback();
   return sn.properties.ui_layout.tabs.flatMap(t => t.sections.flatMap(s => (s.controls || []).map(c => c.kind))).join();
 });
 console.log(JSON.stringify(r));

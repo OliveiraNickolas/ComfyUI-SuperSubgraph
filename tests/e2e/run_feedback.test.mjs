@@ -16,7 +16,7 @@ const ids = await E(() => {
   const L = mk("LoadImage", 0), S = mk("ImageScale", 350), P = mk("PreviewImage", 700), N = mk("PrimitiveInt", 350, 400);
   L.connect(0, S, 0); S.connect(0, P, 0);
   app.canvas.deselectAll(); for (const n of [L, S, P, N]) app.canvas.select(n);
-  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getCanvasMenuItems().find(i => i && /Convert/.test(i.content)).callback();
+  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
   const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
   const inner = sn.__ssGraph.nodes;
   const li = inner.find(n => n.type === "LoadImage"), si = inner.find(n => n.type === "ImageScale"), ni = inner.find(n => n.type === "PrimitiveInt");

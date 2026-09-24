@@ -23,7 +23,7 @@ const r = await pg.evaluate(async () => {
   nat.properties.ui_layout = { schema: 2, title: "MY BLEND", activeTab: 0, tabs: [{ name: "Main", sections: [{ header: "Z", controls: [
     { name: "Stepper1", kind: "number", label: "Width", bind: `${innerS.id}/width`, x: 16, y: 16, w: 224, h: 48 },
     { name: "ImageOutput1", kind: "outimage", label: "", source: String(innerP.id), x: 16, y: 80, w: 288, h: 144 } ] }] }] };
-  const item = ext.getNodeMenuItems(nat).find(i => i && i.content === "Convert Subgraph to SuperSubgraph");
+  const item = ext.__flatNode(nat).find(i => i && i.content === "Convert This Subgraph");
   if (!item) return { err: "no menu item" };
   item.callback();
   await new Promise(r => setTimeout(r, 300));

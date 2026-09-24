@@ -22,7 +22,7 @@ const sid = await E(() => {
   A.widgets.find(w => w.name === "width").value = 64; A.widgets.find(w => w.name === "height").value = 64;
   A.connect(0, S, 0); S.connect(0, P, 0);
   app.canvas.deselectAll(); for (const n of [A, S, P]) app.canvas.select(n);
-  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getCanvasMenuItems().find(i => i && /Convert/.test(i.content)).callback();
+  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
   const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
   sn.title = "Scaler";
   const si = sn.__ssGraph.nodes.find(n => n.type === "ImageScale").id;
@@ -45,12 +45,12 @@ t("zone and component colors set and shown: " + JSON.stringify(col), col.zone ==
 await pg.screenshot({ path: path.join(dir, "colors.png") });
 
 // biblioteca
-await E(async ({ sid, ext }) => { const e = eval(ext); await e.getNodeMenuItems(window.app.graph.getNodeById(sid)).find(i => i && /Save SuperSubgraph to Library/.test(i.content)).callback(); }, { sid, ext });
+await E(async ({ sid, ext }) => { const e = eval(ext); await e.__flatNode(window.app.graph.getNodeById(sid)).find(i => i && /^Save to Library/.test(i.content)).callback(); }, { sid, ext });
 await pg.waitForTimeout(500);
 const lib = await E(async () => (await window.comfyAPI.api.api.listUserDataFullInfo("supersubgraph")).map(f => f.path));
 t("saved to the library (userdata): " + NAME, lib.includes(`${NAME}.json`));
 // exporta para arquivo
-const [dl] = await Promise.all([pg.waitForEvent("download"), E(({ sid, ext }) => { const e = eval(ext); e.getNodeMenuItems(window.app.graph.getNodeById(sid)).find(i => i && /Export SuperSubgraph/.test(i.content)).callback(); }, { sid, ext })]);
+const [dl] = await Promise.all([pg.waitForEvent("download"), E(({ sid, ext }) => { const e = eval(ext); e.__flatNode(window.app.graph.getNodeById(sid)).find(i => i && /^Export to File/.test(i.content)).callback(); }, { sid, ext })]);
 const file = path.join(dir, dl.suggestedFilename()); await dl.saveAs(file);
 const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
 t("export downloads a package: " + dl.suggestedFilename(), dl.suggestedFilename() === "Scaler.supersubgraph.json" && pkg.type === "ComfyUI-SuperSubgraph" && pkg.properties.ss_inner.graph.nodes.length === 3);
@@ -58,8 +58,8 @@ t("export downloads a package: " + dl.suggestedFilename(), dl.suggestedFilename(
 // novo workflow: adiciona da biblioteca e importa do arquivo
 await E(() => window.app.graph.clear());
 const added = await E(async ({ ext, NAME }) => {
-  const e = eval(ext); const items = e.getCanvasMenuItems();
-  const sub = items.find(i => i && i.content === "Add SuperSubgraph from Library");
+  const e = eval(ext); const items = e.__flatCanvas();
+  const sub = items.find(i => i && i.content === "Add from Library");
   const it = sub?.submenu.options.find(o => o.content === NAME);
   if (!it) return { err: "not listed: " + JSON.stringify(sub?.submenu.options.map(o => o.content)) };
   it.callback(); await new Promise(r => setTimeout(r, 600));
@@ -67,7 +67,7 @@ const added = await E(async ({ ext, NAME }) => {
   return { title: sn?.title, inner: sn?.__ssGraph?.nodes.length, zone: sn?.properties.ui_layout.tabs[0].sections[0].color, card: !!sn?.__legoHost?.querySelector('.lego-row[data-name="Stepper1"]') };
 }, { ext, NAME });
 t("added from the library with card and colors: " + JSON.stringify(added), added.title === NAME && added.inner === 3 && added.zone === "#3b82f6" && added.card);
-const [fc] = await Promise.all([pg.waitForEvent("filechooser"), E(({ ext }) => { const e = eval(ext); e.getCanvasMenuItems().find(i => i && /Import SuperSubgraph/.test(i.content)).callback(); }, { ext })]);
+const [fc] = await Promise.all([pg.waitForEvent("filechooser"), E(({ ext }) => { const e = eval(ext); e.__flatCanvas().find(i => i && /^Import from File/.test(i.content)).callback(); }, { ext })]);
 await fc.setFiles(file); await pg.waitForTimeout(800);
 const imported = await E(() => window.app.graph.nodes.filter(n => n.type === "SuperSubgraph").map(n => n.title).sort().join());
 t("imported from file: " + imported, imported === [NAME, "Scaler"].sort().join());
@@ -79,7 +79,7 @@ const run = await E(async () => {
 });
 t("both copies run (2 inner previews): " + run, run === 2);
 // apaga da biblioteca
-await E(async ({ ext, NAME }) => { const e = eval(ext); await e.getCanvasMenuItems().find(i => i && i.content === "Delete from SuperSubgraph Library").submenu.options.find(o => o.content === NAME).callback(); }, { ext, NAME });
+await E(async ({ ext, NAME }) => { const e = eval(ext); await e.__flatCanvas().find(i => i && i.content === "Delete from Library").submenu.options.find(o => o.content === NAME).callback(); }, { ext, NAME });
 await pg.waitForTimeout(500);
 const lib2 = await E(async () => (await window.comfyAPI.api.api.listUserDataFullInfo("supersubgraph")).map(f => f.path));
 t("deleted from the library", !lib2.includes(`${NAME}.json`));

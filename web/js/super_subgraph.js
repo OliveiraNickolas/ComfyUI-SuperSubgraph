@@ -10411,6 +10411,160 @@ async function deleteSuperFromLibrary(name) {
   await refreshSuperLibrary();
 }
 
+/* ── Layouts do cartão: salvar e carregar ──────────────────────────────────
+ * Só o cartão (abas, zonas, componentes), sem os nós. Fica na biblioteca do
+ * usuário (userdata "supersubgraph/layouts/") ou num arquivo .sslayout.json.
+ * Os binds apontam para ids de nós; ao aplicar num nó onde o id não bate
+ * com o mesmo tipo de nó, ele é religado ao nó de mesmo tipo (e, se houver,
+ * mesmo título) — assim um layout serve para outro Super Subgraph parecido.
+ */
+const SS_LAYOUT_TYPE = "ComfyUI-SuperSubgraph-Layout";
+const SS_LAYOUT_DIR = `${SS_LIB_DIR}/layouts`;
+let SS_LAYOUTS = [];
+
+/** Ids de nó usados pelos binds/fontes do layout. */
+function layoutNodeIds(layout) {
+  const ids = new Set();
+  walkControls(layout, (c) => {
+    if (typeof c.bind === "string" && c.bind.includes("/")) ids.add(c.bind.slice(0, c.bind.indexOf("/")));
+    if (c.source != null && c.source !== "") ids.add(String(c.source));
+  });
+  return ids;
+}
+
+function layoutPackage(host, name) {
+  const layout = JSON.parse(JSON.stringify(host.properties[PROP] || {}));
+  const nodes = {};
+  for (const id of layoutNodeIds(layout)) {
+    const n = findNodeInHostScope(host, id);
+    if (n) nodes[id] = { type: n.type, title: n.title };
+  }
+  return { type: SS_LAYOUT_TYPE, version: 1, name, layout, nodes };
+}
+
+/** Aplica um pacote de layout em `host`, religando binds por tipo de nó quando preciso. */
+function applyLayoutPackage(host, pkg) {
+  if (pkg?.type !== SS_LAYOUT_TYPE || !pkg.layout?.tabs) { alert("Super Subgraph: this file is not a card layout."); return false; }
+  const layout = JSON.parse(JSON.stringify(pkg.layout));
+  const candidates = hasInnerGraph(host) ? innerNodesOf(host) : (host.graph?._nodes || host.graph?.nodes || []);
+  const used = new Set();
+  const idMap = new Map();
+  let lost = 0;
+  for (const [id, info] of Object.entries(pkg.nodes || {})) {
+    const same = findNodeInHostScope(host, id);
+    if (same && same.type === info.type) { used.add(same); continue; }
+    const pool = candidates.filter((n) => n.type === info.type && !used.has(n));
+    const pick = pool.find((n) => n.title === info.title) || pool[0];
+    if (pick) { idMap.set(String(id), pick.id); used.add(pick); } else lost++;
+  }
+  pushUndo(host);
+  host.properties[PROP] = idMap.size ? remapLayoutIds(layout, idMap) : layout;
+  const st = host.__legoState || attach(host);
+  st.selectedNames?.clear();
+  st.selectedName = null;
+  st.refresh();
+  showLegoToast(lost ? `Layout loaded — ${lost} node${lost > 1 ? "s" : ""} not found (use Rebind)` : "Layout loaded");
+  return true;
+}
+
+async function refreshLayoutLibrary() {
+  try {
+    const list = await api.listUserDataFullInfo?.(SS_LAYOUT_DIR);
+    SS_LAYOUTS = (list || []).map((f) => String(f.path || "")).filter((p) => p.endsWith(".json") && !p.includes("/")).map((p) => p.slice(0, -5)).sort((a, b) => a.localeCompare(b));
+  } catch {
+    SS_LAYOUTS = [];
+  }
+  return SS_LAYOUTS;
+}
+
+async function saveLayoutToLibrary(host) {
+  const name = prompt("Save this card layout as:", host.properties?.[PROP]?.title || host.title || "Layout");
+  if (name == null || !name.trim()) return false;
+  const file = safeFileName(name);
+  if (SS_LAYOUTS.includes(file) && !confirm(`Layout "${file}" already exists. Replace it?`)) return false;
+  try {
+    await api.storeUserData(`${SS_LAYOUT_DIR}/${file}.json`, layoutPackage(host, name.trim()), { overwrite: true, stringify: true, throwOnError: true });
+  } catch (e) {
+    alert(`Super Subgraph: could not save the layout (${e.message}).`);
+    return false;
+  }
+  await refreshLayoutLibrary();
+  showLegoToast(`Layout "${file}" saved`);
+  return true;
+}
+
+async function loadLayoutFromLibrary(host, name) {
+  try {
+    const res = await api.getUserData(`${SS_LAYOUT_DIR}/${name}.json`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return applyLayoutPackage(host, await res.json());
+  } catch (e) {
+    alert(`Super Subgraph: could not load layout "${name}" (${e.message}).`);
+    return false;
+  }
+}
+
+async function deleteLayoutFromLibrary(name) {
+  if (!confirm(`Delete layout "${name}"?`)) return;
+  try { await api.deleteUserData(`${SS_LAYOUT_DIR}/${name}.json`); } catch (e) { alert(`Could not delete (${e.message}).`); }
+  await refreshLayoutLibrary();
+}
+
+function exportLayoutToFile(host) {
+  const name = host.properties?.[PROP]?.title || host.title || "Layout";
+  const blob = new Blob([JSON.stringify(layoutPackage(host, name), null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${safeFileName(name)}.sslayout.json`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function importLayoutFromFile(host) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json,application/json";
+  input.addEventListener("change", async () => {
+    const f = input.files?.[0];
+    if (!f) return;
+    try { applyLayoutPackage(host, JSON.parse(await f.text())); } catch (e) { alert(`Super Subgraph: could not read this file (${e.message}).`); }
+  });
+  input.click();
+}
+
+/** Submenu "Card Layout" de um nó com cartão. */
+function layoutMenuItems(node) {
+  refreshLayoutLibrary();   // para a próxima abertura do menu
+  const items = [
+    { content: "Save Layout…", callback: () => saveLayoutToLibrary(node) },
+  ];
+  if (SS_LAYOUTS.length) {
+    items.push({ content: "Load Layout", has_submenu: true, submenu: { options: SS_LAYOUTS.map((name) => ({ content: name, callback: () => loadLayoutFromLibrary(node, name) })) } });
+  }
+  items.push(
+    { content: "Export Layout to File…", callback: () => exportLayoutToFile(node) },
+    { content: "Import Layout from File…", callback: () => importLayoutFromFile(node) },
+    null,
+    {
+      content: "Recreate Layout from Widgets",
+      callback: () => {
+        const keepEdit = node.__legoState?.edit;
+        pushUndo(node);
+        node.properties[PROP] = isSuperNode(node) ? superAutoLayout(node) : autoLayout(node);
+        if (node.__legoState) { node.__legoState.edit = !!keepEdit; node.__legoState.refresh(); }
+        else attach(node);
+      },
+    },
+  );
+  if (SS_LAYOUTS.length) {
+    items.push({ content: "Delete Saved Layout", has_submenu: true, submenu: { options: SS_LAYOUTS.map((name) => ({ content: name, callback: () => deleteLayoutFromLibrary(name) })) } });
+  }
+  if (!isSuperNode(node)) items.push(null, { content: "Remove Card UI", callback: () => detach(node) });
+  return items;
+}
+
 /** Desfaz o Super Subgraph: os nós de dentro voltam ao grafo, religados. */
 function unpackSuper(sn) {
   const graph = sn?.graph;
@@ -10766,11 +10920,11 @@ function boundaryMenuItems(node) {
   const exposedOut = new Set(b.outs.map((x) => x.slot));
   const label = (s) => s.label || s.localized_name || s.name;
   const sub = (list) => ({ options: list, title: undefined });
-  const items = [null];
+  const items = [];
   // Só entradas sem fio de dentro: um fio de fora e um de dentro na mesma entrada seria ambíguo.
   const canIn = (node.inputs || []).filter((s) => s.link == null && !exposedIn.has(s.name));
   if (canIn.length) items.push({
-    content: "Expose Input to SuperSubgraph", has_submenu: true,
+    content: "Expose Input", has_submenu: true,
     submenu: sub(canIn.map((s) => ({ content: `${label(s)}${s.widget ? " (widget)" : ""}`, callback: () => exposeSuperInput(host, node, s.name) }))),
   });
   if (b.ins.length) items.push({
@@ -10779,14 +10933,14 @@ function boundaryMenuItems(node) {
   });
   const canOut = (node.outputs || []).map((s, i) => ({ s, i })).filter(({ i }) => !exposedOut.has(i));
   if (canOut.length) items.push({
-    content: "Expose Output from SuperSubgraph", has_submenu: true,
+    content: "Expose Output", has_submenu: true,
     submenu: sub(canOut.map(({ s, i }) => ({ content: label(s), callback: () => exposeSuperOutput(host, node, i) }))),
   });
   if (b.outs.length) items.push({
     content: "Unexpose Output", has_submenu: true,
     submenu: sub(b.outs.map((x) => ({ content: `out_${x.j + 1}: ${x.name}`, callback: () => unexposeSuperOutput(host, node, x.slot) }))),
   });
-  return items.length > 1 ? items : [];
+  return items;
 }
 
 /* Etiquetas da borda: desenhadas por cima do canvas enquanto se está dentro. */
@@ -11072,6 +11226,7 @@ app.registerExtension({
       notifyOutputViews();
     });
     refreshSuperLibrary();
+    refreshLayoutLibrary();
     for (const type of ["execution_start", "progress_state", "executing", "execution_error", "execution_interrupted", "execution_success"]) {
       api.addEventListener(type, (e) => { try { onRunEvent(type, e?.detail); } catch (err) { console.warn(LOG, "run feedback", err); } });
     }
@@ -11109,79 +11264,51 @@ app.registerExtension({
     }
   },
 
+  // Tudo do SuperSubgraph num item só ("SuperSubgraph ▸"), no canvas e no nó.
   getCanvasMenuItems() {
     const sel = selectedNodes();
     const pos = canvasDropPos();
-    const items = [null];
-    if (sel.length) items.push({
-      content: `Convert Selection to SuperSubgraph (${sel.length})`,
-      callback: () => convertSelectionToSuper(sel),
-    });
-    items.push({ content: "Import SuperSubgraph from File…", callback: () => importSuperFromFile(pos) });
+    const sub = [];
+    if (sel.length) sub.push({ content: `Convert Selection (${sel.length})`, callback: () => convertSelectionToSuper(sel) }, null);
     refreshSuperLibrary();   // para a próxima abertura do menu
     if (SS_LIBRARY.length) {
-      items.push({
-        content: "Add SuperSubgraph from Library", has_submenu: true,
-        submenu: { options: SS_LIBRARY.map((name) => ({ content: name, callback: () => addSuperFromLibrary(name, pos) })) },
-      });
-      items.push({
-        content: "Delete from SuperSubgraph Library", has_submenu: true,
-        submenu: { options: SS_LIBRARY.map((name) => ({ content: name, callback: () => deleteSuperFromLibrary(name) })) },
-      });
+      sub.push({ content: "Add from Library", has_submenu: true, submenu: { options: SS_LIBRARY.map((name) => ({ content: name, callback: () => addSuperFromLibrary(name, pos) })) } });
     }
-    return items;
+    sub.push({ content: "Import from File…", callback: () => importSuperFromFile(pos) });
+    if (SS_LIBRARY.length) {
+      sub.push({ content: "Delete from Library", has_submenu: true, submenu: { options: SS_LIBRARY.map((name) => ({ content: name, callback: () => deleteSuperFromLibrary(name) })) } });
+    }
+    return [null, { content: "SuperSubgraph", has_submenu: true, submenu: { options: sub } }];
   },
 
   getNodeMenuItems(node) {
     if (!node) return [];
     const has = !!node.properties?.[PROP];
-    const items = [];
+    const sub = [];
+    const sep = () => { if (sub.length && sub[sub.length - 1] !== null) sub.push(null); };
 
     const sel = selectedNodes();
-    if (sel.length && sel.includes(node)) {
-      items.push({
-        content: `Convert Selection to SuperSubgraph (${sel.length})`,
-        callback: () => convertSelectionToSuper(sel),
-      });
-    }
-    items.push(...boundaryMenuItems(node));
-    if (isNativeSubgraphNode(node)) {
-      items.push({
-        content: "Convert Subgraph to SuperSubgraph",
-        callback: () => convertNativeToSuper(node),
-      });
-    }
+    if (sel.length && sel.includes(node) && !(sel.length === 1 && isSuperNode(node))) sub.push({ content: `Convert Selection (${sel.length})`, callback: () => convertSelectionToSuper(sel) });
+    if (isNativeSubgraphNode(node)) sub.push({ content: "Convert This Subgraph", callback: () => convertNativeToSuper(node) });
+
     if (isSuperNode(node)) {
-      items.push({
-        content: "Open SuperSubgraph",
-        callback: () => enterSuper(node),
-      });
-      items.push({
-        content: "Unpack Super Subgraph",
-        callback: () => unpackSuper(node),
-      });
-      items.push({
-        content: "Save SuperSubgraph to Library…",
-        callback: () => saveSuperToLibrary(node),
-      });
-      items.push({
-        content: "Export SuperSubgraph to File…",
-        callback: () => exportSuperToFile(node),
-      });
+      sep();
+      sub.push(
+        { content: "Open", callback: () => enterSuper(node) },
+        { content: "Unpack", callback: () => unpackSuper(node) },
+        null,
+        { content: "Save to Library…", callback: () => saveSuperToLibrary(node) },
+        { content: "Export to File…", callback: () => exportSuperToFile(node) },
+      );
     }
 
-    if (!has) {
-      items.push({
-        content: "Convert to Super-Subgraph",
-        callback: () => {
-          node.properties = node.properties || {};
-          node.properties[PROP] = autoLayout(node);
-          attach(node);
-        },
-      });
-    } else {
-      items.push({
-        content: "Edit Layout",
+    const border = boundaryMenuItems(node);
+    if (border.length) { sep(); sub.push(...border); }
+
+    sep();
+    if (has) {
+      sub.push({
+        content: node.__legoState?.edit ? "Finish Editing Card" : "Edit Card",
         callback: () => {
           const s = node.__legoState || attach(node);
           s.edit = !s.edit;
@@ -11189,21 +11316,29 @@ app.registerExtension({
           s.refresh();
         },
       });
-      items.push({
-        content: "Recreate Layout from Widgets",
+      sub.push({ content: "Card Layout", has_submenu: true, submenu: { options: layoutMenuItems(node) } });
+    } else {
+      sub.push({
+        content: "Add Card UI",
         callback: () => {
-          const keepEdit = node.__legoState?.edit;
-          node.properties[PROP] = isSuperNode(node) ? superAutoLayout(node) : autoLayout(node);
-          if (node.__legoState) { node.__legoState.edit = !!keepEdit; node.__legoState.refresh(); }
-          else attach(node);
+          node.properties = node.properties || {};
+          node.properties[PROP] = autoLayout(node);
+          attach(node);
         },
       });
-      items.push({
-        content: "Remove Super-Subgraph UI",
-        callback: () => detach(node),
-      });
     }
-    return items;
+    while (sub.length && sub[sub.length - 1] === null) sub.pop();
+    return sub.length ? [null, { content: "SuperSubgraph", has_submenu: true, submenu: { options: sub } }] : [];
+  },
+
+  __flatNode(node) { return this.__flatMenu(this.getNodeMenuItems(node)); },
+  __flatCanvas() { return this.__flatMenu(this.getCanvasMenuItems()); },
+  /** Para testes e scripts: todos os itens do menu, com os de submenus, numa lista só. */
+  __flatMenu(items) {
+    const out = [];
+    const walk = (list) => { for (const it of list || []) { if (!it) continue; out.push(it); walk(it.submenu?.options); } };
+    walk(items);
+    return out;
   },
 });
 

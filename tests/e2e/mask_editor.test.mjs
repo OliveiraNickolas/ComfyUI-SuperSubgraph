@@ -17,7 +17,7 @@ const ids = await E(() => {
   L.widgets.find(w => w.name === "image").value = "example.png";
   L.connect(1, M, 0); M.connect(0, P, 0);
   app.canvas.deselectAll(); for (const n of [L, M, P]) app.canvas.select(n);
-  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").getCanvasMenuItems().find(i => i && /Convert/.test(i.content)).callback();
+  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
   const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
   const li = sn.__ssGraph.nodes.find(n => n.type === "LoadImage");
   sn.properties.ui_layout.tabs[0].sections[0].controls.push({ name: "Image1", kind: "media", label: "", bind: `${li.id}/image`, x: 16, y: 16, w: 288, h: 224 });
