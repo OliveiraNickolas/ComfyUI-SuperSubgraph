@@ -27,6 +27,11 @@ If a promoted parameter disappears (its node was deleted or changed), the compon
 
 In edit mode, right-click a component for **Properties**, **Duplicate** (Ctrl+D), **Group** / **Group vertically** (Ctrl+G / Ctrl+Shift+G group the selected components), **Ungroup**, **Change to Slider/Stepper** (same parameter, other look), **Rebind…** and **Remove** (Del). Ctrl/Shift + right-click still just adds to the selection.
 
+## While it runs
+
+The card shows a progress bar with the inner node that is running, and if something fails, a red strip says which inner node failed and why (✕ dismisses it; the next run clears it).
+Numbers with ComfyUI's *control after generate* (seeds) get a small mode button next to them — **FIX**, **+1**, **−1** or 🎲 random — click to cycle. It works for nodes inside a SuperSubgraph too.
+
 ## Inputs and outputs of a Super Subgraph
 
 Inside a SuperSubgraph, purple tags show the border: `in_N →` on inner inputs fed from outside, `→ out_N` on inner outputs that go outside.
