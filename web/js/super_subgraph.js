@@ -1010,9 +1010,9 @@ const GLYPHS = {
   folder:
     '<path d="M3 6.5h6l2 2.5h10v9.5a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 18.5z" ' +
     'fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>',
-  // Máscara: quadro com um pincel.
+  // Máscara: o mesmo ícone do Mask Editor nativo do ComfyUI (comfy--mask, 16x16).
   mask:
-    '<rect x="3" y="3" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M8 13c1.5-3 3.5-4.5 6-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M14.5 14.5l6-6a1.4 1.4 0 0 1 2 2l-6 6-2.6.6z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>',
+    '<g transform="scale(1.5)" stroke="currentColor" stroke-width="1.3"><path d="M6.05 2C5.52 7.295 9.23 10.472 14 9.943"/><path stroke-linecap="round" d="M6.5 5.5 10 2"/><path stroke-linecap="square" d="m8 8 4.5-4.5"/><path stroke-linecap="round" d="M10.5 9.5 14 6"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 14.667A6.667 6.667 0 108 1.333a6.667 6.667 0 000 13.334"/></g>',
   folderSearch:
     '<path d="M3 6.5h5.5l2 2H19a1.5 1.5 0 0 1 1.5 1.5v3M3 6.5v11.5A1.5 1.5 0 0 0 4.5 19.5h6.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<circle cx="15.5" cy="15.5" r="3.5" fill="none" stroke="currentColor" stroke-width="1.9"/>' +
@@ -9287,6 +9287,22 @@ function buildCard(host, state) {
   }
 
   root.append(body);
+
+  // Uma borda só: o título já aparece na barra nativa do nó, então o cartão
+  // não repete o título nem desenha uma moldura dentro da moldura do nó. Os
+  // botões do cabeçalho (entrar, editar) vão para a ponta direita da primeira
+  // linha — a barra de abas ou o título da primeira zona.
+  // `layout.showTitle: true` volta ao cabeçalho antigo.
+  if (!layout.showTitle) {
+    const firstRow = root.querySelector(":scope > .lego-tabs") || body.querySelector(".lego-sec-h");
+    if (firstRow) {
+      const tools = el("span", "lego-head-tools");
+      tools.append(...[...head.children].filter((c) => c !== txt));
+      firstRow.append(tools);
+      head.remove();
+      root.classList.add("merged");
+    }
+  }
 
   // O inspetor é uma janela fora do nó — acompanha a seleção, não o layout.
   queueMicrotask(() => renderObjectInspector(host, state, false));

@@ -20,7 +20,7 @@ const ids = await E(async () => {
   return { sn: sn.id, I: I.id, A: A.id, V: V.id, M: M.id };
 });
 await pg.waitForTimeout(500);
-await pg.locator(".lego-head .lego-iconbtn:not(.lego-ss-enter)").last().click(); await pg.waitForTimeout(300);
+await pg.locator(".lego-head-tools .lego-iconbtn:not(.lego-ss-enter)").last().click(); await pg.waitForTimeout(300);
 await pg.locator(".lego-zone-dropzone").dblclick(); await pg.waitForTimeout(300);
 await pg.locator(".lego-comfy-target-picker-btn").click(); await pg.waitForTimeout(700);
 const titlePos = (id) => E((id) => { const c = window.app.canvas; const n = c.graph.getNodeById(id); const r = c.canvas.getBoundingClientRect(); const T = window.LiteGraph.NODE_TITLE_HEIGHT || 30; return [r.left + (n.pos[0] + 30 + c.ds.offset[0]) * c.ds.scale, r.top + (n.pos[1] - T / 2 + c.ds.offset[1]) * c.ds.scale]; }, id);
