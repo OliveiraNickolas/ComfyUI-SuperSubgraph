@@ -16,7 +16,7 @@ jobs:
           node-version: 20
       - name: Syntax
         run: |
-          node --check web/js/super_subgraph.js
+          for f in web/js/*.js; do node --check "$f"; done
           python3 -m py_compile super_subgraph_node.py __init__.py
           for f in locales/*/commands.json; do python3 -m json.tool "$f" > /dev/null; done
       - run: npm ci

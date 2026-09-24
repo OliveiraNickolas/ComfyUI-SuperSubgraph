@@ -27,6 +27,12 @@ If a promoted parameter disappears (its node was deleted or changed), the compon
 
 In edit mode, right-click a component for **Properties**, **Duplicate** (Ctrl+D), **Group** / **Group vertically** (Ctrl+G / Ctrl+Shift+G group the selected components), **Ungroup**, **Change to Slider/Stepper** (same parameter, other look), **Rebind…** and **Remove** (Del). Ctrl/Shift + right-click still just adds to the selection.
 
+## Reuse and share
+
+- **Save SuperSubgraph to Library…** (node right-click) keeps it in your ComfyUI user folder (`user/default/supersubgraph/`). Right-click the canvas → **Add SuperSubgraph from Library** to drop a copy into any workflow (**Delete from SuperSubgraph Library** removes one).
+- **Export SuperSubgraph to File…** downloads a `.supersubgraph.json` you can send to someone; they use **Import SuperSubgraph from File…** on the canvas menu.
+- Colors: in edit mode, the dot next to a zone title picks the zone color; right-click a component → **Color…** for components.
+
 ## While it runs
 
 The card shows a progress bar with the inner node that is running, and if something fails, a red strip says which inner node failed and why (✕ dismisses it; the next run clears it).

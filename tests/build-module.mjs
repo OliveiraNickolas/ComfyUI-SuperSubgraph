@@ -24,4 +24,8 @@ src += `\nexport { ${EXPORTS.join(", ")} };\n`;
 
 fs.mkdirSync(path.join(HERE, ".build"), { recursive: true });
 fs.writeFileSync(path.join(HERE, ".build", "mod.mjs"), src);
+// Módulos irmãos importados pelo principal ("./super_subgraph_css.js") vão junto.
+for (const f of fs.readdirSync(path.dirname(SRC))) {
+  if (f.endsWith(".js") && f !== path.basename(SRC)) fs.copyFileSync(path.join(path.dirname(SRC), f), path.join(HERE, ".build", f));
+}
 console.log("built tests/.build/mod.mjs");
