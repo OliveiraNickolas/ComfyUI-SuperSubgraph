@@ -2288,6 +2288,11 @@ textarea.lego-in{resize:vertical;min-height:75px;font-family:ui-monospace,SFMono
 .lego-ctx-item:hover{background:var(--lego-accent);color:#fff}
 .lego-ctx-item.danger:hover{background:#ef4444;color:#fff}
 .lego-ctx-label{flex:1}
+.lego-align-bar{display:inline-flex;align-items:center;gap:2px;padding:2px 4px;border-radius:7px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.3);letter-spacing:0;order:0}
+.lego-align-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:22px;padding:0;border:0;border-radius:5px;background:transparent;color:#7dd3fc;cursor:pointer}
+.lego-align-btn:hover:not(:disabled){background:rgba(56,189,248,.22);color:#fff}
+.lego-align-btn:disabled{opacity:.3;cursor:default}
+.lego-align-sep{width:1px;height:14px;margin:0 3px;background:rgba(56,189,248,.3)}
 .lego-color-grid{display:grid;grid-template-columns:repeat(5,24px);gap:6px;padding:4px}
 .lego-color-swatch{width:24px;height:24px;border-radius:6px;border:2px solid rgba(255,255,255,.12);cursor:pointer;padding:0}
 .lego-color-swatch.on{border-color:#fff}

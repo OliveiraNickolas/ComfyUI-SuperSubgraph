@@ -38,6 +38,12 @@ In edit mode, right-click a component for **Properties**, **Duplicate** (Ctrl+D)
 The card shows a progress bar with the inner node that is running, and if something fails, a red strip says which inner node failed and why (✕ dismisses it; the next run clears it).
 Numbers with ComfyUI's *control after generate* (seeds) get a small mode button next to them — **FIX**, **+1**, **−1** or 🎲 random — click to cycle. It works for nodes inside a SuperSubgraph too.
 
+## Aligning components
+
+In edit mode, select 2 or more components of a zone (Shift/Ctrl + click, or drag a box) and alignment buttons appear at the top of the zone:
+align left / center / right, top / middle / bottom, **arrange in a row** or **in a column** (16px apart), distribute horizontally / vertically (3+),
+and same width / height / size (taken from the last one selected). Resizing one of the selected components by its corner resizes all of them by the same amount.
+
 ## Inputs and outputs of a Super Subgraph
 
 Inside a SuperSubgraph, purple tags show the border: `in_N →` on inner inputs fed from outside, `→ out_N` on inner outputs that go outside.

@@ -4118,6 +4118,23 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       let finalW = origW;
       let finalH = origH;
 
+      // Redimensionar um dos selecionados leva junto os outros selecionados
+      // soltos da mesma zona: cada um recebe a mesma variação de tamanho.
+      const others = (state.selectedNames?.has(ctrl.name) && state.selectedNames.size > 1)
+        ? (sectionCtrls || []).filter((c) => c !== ctrl && state.selectedNames.has(c.name)).map((c) => ({
+          c, w0: axW(c), h0: axH(c), min: getComponentMinDimensions(c),
+          row: [...(container.querySelectorAll?.(".lego-row") || [])].find((r) => r.dataset.name === c.name) || null,
+        }))
+        : [];
+      const resizeOthers = () => {
+        const dw = finalW - origW, dh = finalH - origH;
+        for (const o of others) {
+          o.c.w = Math.max(o.min.minW, Math.round((o.w0 + dw) / GRID) * GRID);
+          o.c.h = Math.max(o.min.minH, Math.round((o.h0 + dh) / GRID) * GRID);
+          if (o.row) { o.row.style.width = `${o.c.w}px`; o.row.style.height = `${o.c.h}px`; }
+        }
+      };
+
       const onMoveCorner = (ev) => {
         ev.stopPropagation();
         ev.preventDefault();
@@ -4252,6 +4269,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
 
         ctrl.w = finalW;
         ctrl.h = finalH;
+        if (others.length) resizeOthers();
         if (applySliderResponsiveLayout) applySliderResponsiveLayout(finalW, finalH);
         if (updateBoundsFn) updateBoundsFn();
       };
@@ -4276,6 +4294,10 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
         ctrl.h = finalH;
         delete ctrl.width;
         delete ctrl.height;
+        if (others.length) {
+          resizeOthers();
+          for (const o of others) { delete o.c.width; delete o.c.height; }
+        }
         if (finalW !== origW || finalH !== origH) {
           pushUndoSnapshot(host, undoSnapshot);
         }
@@ -7000,6 +7022,164 @@ function walkControls(layout, fn) {
   }
 }
 
+/* ── Alinhamento automático (estilo ComfyUI-Align) ────────────────────────
+ * Vale para os componentes SOLTOS selecionados de uma mesma zona (itens de
+ * grupo não têm x/y: quem os posiciona é o grupo). Com 2+ selecionados,
+ * os botões aparecem no topo da zona, ao lado do título.
+ */
+const ALIGN_GAP = GRID;
+
+/** Componentes soltos selecionados, agrupados pela lista (zona) onde moram. */
+function selectedLooseByList(layout, state) {
+  const byList = new Map();
+  const names = state.selectedNames || new Set();
+  walkControls(layout, (c, list, sec, parentGroup) => {
+    if (parentGroup || !names.has(c.name)) return;
+    if (!byList.has(list)) byList.set(list, []);
+    byList.get(list).push(c);
+  });
+  return byList;
+}
+
+const axX = (c) => (typeof c.x === "number" ? c.x : 0);
+const axY = (c) => (typeof c.y === "number" ? c.y : 0);
+const axW = (c) => (typeof c.w === "number" ? c.w : 256);
+const axH = (c) => (typeof c.h === "number" ? c.h : 46);
+const snapG = (v) => Math.max(0, Math.round(v / GRID) * GRID);
+
+/** Aplica uma operação de alinhamento/arranjo/tamanho em `ctrls`. */
+function alignControls(ctrls, op, ref = null) {
+  if (ctrls.length < 2) return false;
+  const minX = Math.min(...ctrls.map(axX)), minY = Math.min(...ctrls.map(axY));
+  const maxR = Math.max(...ctrls.map((c) => axX(c) + axW(c))), maxB = Math.max(...ctrls.map((c) => axY(c) + axH(c)));
+  const midX = (minX + maxR) / 2, midY = (minY + maxB) / 2;
+  const key = ref && ctrls.includes(ref) ? ref : ctrls[ctrls.length - 1];
+  const minDim = (c) => getComponentMinDimensions(c);
+  switch (op) {
+    case "left": ctrls.forEach((c) => { c.x = minX; }); break;
+    case "right": ctrls.forEach((c) => { c.x = snapG(maxR - axW(c)); }); break;
+    case "hcenter": ctrls.forEach((c) => { c.x = snapG(midX - axW(c) / 2); }); break;
+    case "top": ctrls.forEach((c) => { c.y = minY; }); break;
+    case "bottom": ctrls.forEach((c) => { c.y = snapG(maxB - axH(c)); }); break;
+    case "vcenter": ctrls.forEach((c) => { c.y = snapG(midY - axH(c) / 2); }); break;
+    case "row": {
+      // Em linha: da esquerda para a direita, topos alinhados, espaço fixo.
+      let x = minX;
+      [...ctrls].sort((a, b) => axX(a) - axX(b) || axY(a) - axY(b)).forEach((c) => { c.x = x; c.y = minY; x = snapG(x + axW(c) + ALIGN_GAP); });
+      break;
+    }
+    case "column": {
+      // Em coluna: de cima para baixo, esquerdas alinhadas, espaço fixo.
+      let y = minY;
+      [...ctrls].sort((a, b) => axY(a) - axY(b) || axX(a) - axX(b)).forEach((c) => { c.y = y; c.x = minX; y = snapG(y + axH(c) + ALIGN_GAP); });
+      break;
+    }
+    case "hdist": {
+      if (ctrls.length < 3) return false;
+      const list = [...ctrls].sort((a, b) => axX(a) - axX(b));
+      const free = (maxR - minX) - list.reduce((a, c) => a + axW(c), 0);
+      const gap = free / (list.length - 1);
+      let x = minX;
+      list.forEach((c) => { c.x = snapG(x); x += axW(c) + gap; });
+      break;
+    }
+    case "vdist": {
+      if (ctrls.length < 3) return false;
+      const list = [...ctrls].sort((a, b) => axY(a) - axY(b));
+      const free = (maxB - minY) - list.reduce((a, c) => a + axH(c), 0);
+      const gap = free / (list.length - 1);
+      let y = minY;
+      list.forEach((c) => { c.y = snapG(y); y += axH(c) + gap; });
+      break;
+    }
+    case "samew": ctrls.forEach((c) => { c.w = Math.max(minDim(c).minW, axW(key)); }); break;
+    case "sameh": ctrls.forEach((c) => { c.h = Math.max(minDim(c).minH, axH(key)); }); break;
+    case "samesize": ctrls.forEach((c) => { c.w = Math.max(minDim(c).minW, axW(key)); c.h = Math.max(minDim(c).minH, axH(key)); }); break;
+    default: return false;
+  }
+  for (const c of ctrls) { delete c.width; delete c.height; }
+  return true;
+}
+
+/** Alinha a seleção (zona a zona), com Undo. */
+function alignSelected(host, state, op) {
+  const layout = host.properties[PROP];
+  const ref = findSelected(layout, state)?.ctrl || null;
+  let did = false;
+  for (const ctrls of selectedLooseByList(layout, state).values()) {
+    if (ctrls.length < 2) continue;
+    if (!did) pushUndo(host);
+    did = alignControls(ctrls, op, ref) || did;
+  }
+  if (did) state.refresh();
+  return did;
+}
+
+const ALIGN_OPS = [
+  ["left", "Align left"], ["hcenter", "Align horizontal centers"], ["right", "Align right"],
+  ["top", "Align top"], ["vcenter", "Align vertical centers"], ["bottom", "Align bottom"],
+  null,
+  ["row", "Arrange in a row (left to right)"], ["column", "Arrange in a column (top to bottom)"],
+  ["hdist", "Distribute horizontally (3+)"], ["vdist", "Distribute vertically (3+)"],
+  null,
+  ["samew", "Same width (as the last selected)"], ["sameh", "Same height (as the last selected)"], ["samesize", "Same size (as the last selected)"],
+];
+
+/** Ícone (SVG 16x16) de cada operação. */
+function alignIcon(op) {
+  const R = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1" fill="currentColor"/>`;
+  const L = (x1, y1, x2, y2) => `<path d="M${x1} ${y1}L${x2} ${y2}" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`;
+  const body = {
+    left: L(2, 1, 2, 15) + R(4, 3, 9, 4) + R(4, 9, 6, 4),
+    hcenter: L(8, 1, 8, 15) + R(3, 3, 10, 4) + R(5, 9, 6, 4),
+    right: L(14, 1, 14, 15) + R(3, 3, 9, 4) + R(6, 9, 6, 4),
+    top: L(1, 2, 15, 2) + R(3, 4, 4, 9) + R(9, 4, 4, 6),
+    vcenter: L(1, 8, 15, 8) + R(3, 3, 4, 10) + R(9, 5, 4, 6),
+    bottom: L(1, 14, 15, 14) + R(3, 3, 4, 9) + R(9, 6, 4, 6),
+    row: R(1, 5, 4, 6) + R(6, 5, 4, 6) + R(11, 5, 4, 6),
+    column: R(5, 1, 6, 4) + R(5, 6, 6, 4) + R(5, 11, 6, 4),
+    hdist: L(1, 2, 1, 14) + L(15, 2, 15, 14) + R(3, 4, 3, 8) + R(10, 4, 3, 8),
+    vdist: L(2, 1, 14, 1) + L(2, 15, 14, 15) + R(4, 3, 8, 3) + R(4, 10, 8, 3),
+    samew: L(2, 2, 14, 2) + R(2, 5, 12, 3) + R(2, 10, 12, 3),
+    sameh: L(2, 2, 2, 14) + R(5, 2, 3, 12) + R(10, 2, 3, 12),
+    samesize: R(2, 2, 5, 5) + R(9, 2, 5, 5) + R(2, 9, 5, 5) + R(9, 9, 5, 5),
+  }[op] || "";
+  return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">${body}</svg>`;
+}
+
+/** Barra flutuante sobre a seleção de cada zona com 2+ componentes soltos selecionados. */
+function renderAlignBars(host, state) {
+  const card = host?.__legoHost;
+  if (!card) return;
+  card.querySelectorAll(".lego-align-bar").forEach((b) => b.remove());
+  if (!state.edit || (state.selectedNames?.size || 0) < 2) return;
+  const byList = selectedLooseByList(host.properties[PROP], state);
+  for (const box of card.querySelectorAll(".lego-sec-controls")) {
+    const ctrls = byList.get(box.__legoList);
+    if (!ctrls || ctrls.length < 2) continue;
+    const bar = el("div", "lego-align-bar");
+    bar.addEventListener("pointerdown", (e) => e.stopPropagation());
+    bar.addEventListener("dblclick", (e) => e.stopPropagation());
+    for (const it of ALIGN_OPS) {
+      if (!it) { bar.append(el("span", "lego-align-sep")); continue; }
+      const [op, title] = it;
+      const b = el("button", "lego-align-btn");
+      b.type = "button";
+      b.dataset.op = op;
+      b.title = title;
+      b.innerHTML = alignIcon(op);
+      if ((op === "hdist" || op === "vdist") && ctrls.length < 3) b.disabled = true;
+      b.addEventListener("click", (e) => { e.stopPropagation(); alignSelected(host, state, op); });
+      bar.append(b);
+    }
+    // No topo da zona, ao lado do título (antes das ações da zona).
+    const head = box.closest(".lego-sec")?.querySelector(":scope > .lego-sec-h");
+    if (!head) continue;
+    const actions = head.querySelector(":scope > .lego-sec-actions");
+    if (actions) head.insertBefore(bar, actions); else head.append(bar);
+  }
+}
+
 /**
  * Remove do layout todo componente cujo nome esteja em `names`.
  * Coleta antes e remove depois: dar `splice` dentro do `walkControls` pulava o
@@ -7392,6 +7572,7 @@ function adaptInspectorWithDialog() {
 
 /** A janela flutuante. Some quando não há nada selecionado ou fora da edição. */
 function renderObjectInspector(host, state, force) {
+  renderAlignBars(host, state);
   const layout = host.properties[PROP];
   if (!state.edit) return closeObjectInspector();
   // Sem `force`, só repinta o que já está aberto: ele nunca aparece sozinho.
@@ -7539,9 +7720,7 @@ function renderObjectInspector(host, state, force) {
       b.style.padding = "6px 2px";
       b.style.justifyContent = "center";
       b.addEventListener("click", () => {
-        pushUndo(host);
         fn();
-        state.refresh();
         renderObjectInspector(host, state, false);
       });
       return b;
@@ -7555,75 +7734,17 @@ function renderObjectInspector(host, state, force) {
       return res;
     };
 
-    alignRow.append(
-      mkAlignBtn("⇤ Left", "Align left edges (Figma)", () => {
-        const ctrls = getSelCtrls();
-        if (!ctrls.length) return;
-        const minX = Math.min(...ctrls.map((c) => (typeof c.x === "number" ? c.x : 0)));
-        ctrls.forEach((c) => { c.x = minX; });
-      }),
-      mkAlignBtn("⤒ Top", "Align top edges (Figma)", () => {
-        const ctrls = getSelCtrls();
-        if (!ctrls.length) return;
-        const minY = Math.min(...ctrls.map((c) => (typeof c.y === "number" ? c.y : 0)));
-        ctrls.forEach((c) => { c.y = minY; });
-      }),
-      mkAlignBtn("⇥ Right", "Align right edges (Figma)", () => {
-        const ctrls = getSelCtrls();
-        if (!ctrls.length) return;
-        const maxR = Math.max(...ctrls.map((c) => (typeof c.x === "number" ? c.x : 0) + (typeof c.w === "number" ? c.w : 100)));
-        ctrls.forEach((c) => {
-          const w = typeof c.w === "number" ? c.w : 100;
-          c.x = Math.max(0, Math.round((maxR - w) / 16) * 16);
-        });
-      }),
-      mkAlignBtn("⤓ Bottom", "Align bottom edges (Figma)", () => {
-        const ctrls = getSelCtrls();
-        if (!ctrls.length) return;
-        const maxB = Math.max(...ctrls.map((c) => (typeof c.y === "number" ? c.y : 0) + (typeof c.h === "number" ? c.h : 46)));
-        ctrls.forEach((c) => {
-          const h = typeof c.h === "number" ? c.h : 46;
-          c.y = Math.max(0, Math.round((maxB - h) / 16) * 16);
-        });
-      })
-    );
-
-    multiBox.append(alignLabel, alignRow);
-
-    if (selCount >= 3) {
-      const distRow = el("div", "lego-oi-align-row");
-      distRow.style.display = "grid";
-      distRow.style.gridTemplateColumns = "1fr 1fr";
-      distRow.style.gap = "4px";
-
-      distRow.append(
-        mkAlignBtn("⇋ Distribute X", "Distribute horizontal spacing evenly", () => {
-          const ctrls = getSelCtrls();
-          if (ctrls.length < 3) return;
-          ctrls.sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
-          const first = ctrls[0];
-          const last = ctrls[ctrls.length - 1];
-          const totalSpan = (last.x ?? 0) - (first.x ?? 0);
-          const step = totalSpan / (ctrls.length - 1);
-          ctrls.forEach((c, idx) => {
-            c.x = Math.max(0, Math.round((first.x + idx * step) / 16) * 16);
-          });
-        }),
-        mkAlignBtn("⇅ Distribute Y", "Distribute vertical spacing evenly", () => {
-          const ctrls = getSelCtrls();
-          if (ctrls.length < 3) return;
-          ctrls.sort((a, b) => (a.y ?? 0) - (b.y ?? 0));
-          const first = ctrls[0];
-          const last = ctrls[ctrls.length - 1];
-          const totalSpan = (last.y ?? 0) - (first.y ?? 0);
-          const step = totalSpan / (ctrls.length - 1);
-          ctrls.forEach((c, idx) => {
-            c.y = Math.max(0, Math.round((first.y + idx * step) / 16) * 16);
-          });
-        })
-      );
-      multiBox.append(distRow);
+    alignRow.style.gridTemplateColumns = "repeat(5, 1fr)";
+    for (const it of ALIGN_OPS) {
+      if (!it) continue;
+      const [op, title] = it;
+      const b = mkAlignBtn("", title, () => alignSelected(host, state, op));
+      b.innerHTML = alignIcon(op);
+      b.dataset.op = op;
+      if ((op === "hdist" || op === "vdist") && selCount < 3) b.disabled = true;
+      alignRow.append(b);
     }
+    multiBox.append(alignLabel, alignRow);
 
     const dupAllBtn = el("button", "lego-btn", `Duplicate Selected (${selCount})`);
     dupAllBtn.style.marginTop = "8px";
@@ -9621,6 +9742,7 @@ function attach(node) {
       state.outputViews = [];
       host.replaceChildren(buildCard(node, state));
       paintRun(node);
+      renderAlignBars(node, state);
       // Depois do desenho: o `buildControl` normaliza x/y/w/h e nomes.
       node.__legoLastSnap = JSON.stringify(node.properties?.[PROP] || {});
       hideNative(node);
