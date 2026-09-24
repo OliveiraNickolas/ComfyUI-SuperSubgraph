@@ -22,7 +22,7 @@ const ids = await E(async () => {
 });
 await pg.waitForTimeout(600);
 // 1. modo de edição (lápis) e duplo clique na zona vazia do cartão
-await pg.locator(".lego-head .lego-iconbtn:not(.lego-ss-enter)").last().click(); await pg.waitForTimeout(300);
+await pg.locator(".lego-head-tools .lego-iconbtn:not(.lego-ss-enter)").last().click(); await pg.waitForTimeout(300);
 await pg.locator(".lego-zone-dropzone").dblclick(); await pg.waitForTimeout(400);
 t("double-click on the empty zone opens the selector", await pg.locator(".lego-comfy-dialog").count() === 1);
 // 2. Target Picker
