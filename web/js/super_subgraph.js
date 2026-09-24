@@ -2640,6 +2640,16 @@ const CSS_OUTPUT = `
 
 /* Arraste entre grupos, zonas e sub-abas: feedback de entrada e saída */
 const CSS_DRAG = `
+.lego-whole-node{display:flex;flex-direction:column;gap:6px;margin:8px 0 4px;padding:8px;border-radius:8px;
+  background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,0.35)}
+.lego-whole-node-title{font-size:12px;font-weight:700;color:#e5e7eb}
+.lego-whole-node-opts{display:flex;gap:6px}
+.lego-whole-node-opts.in-details{margin-top:8px}
+.lego-whole-node-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:7px 10px;
+  border-radius:6px;border:1px solid rgba(59,130,246,0.5);background:rgba(59,130,246,0.18);color:#e5e7eb;
+  font-size:12px;font-weight:600;cursor:pointer}
+.lego-whole-node-btn:hover{background:rgba(59,130,246,0.32)}
+.lego-whole-node-or{font-size:11.5px;color:var(--lego-dim,#a0a0a0);font-weight:600;margin:6px 0 2px}
 .lego-segment-box{position:relative}
 .lego-segment-box.drop-into{outline:2px dashed var(--lego-accent,#3b82f6)!important;outline-offset:2px;
   background:rgba(59,130,246,0.12)!important}
@@ -6629,6 +6639,82 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
 }
 
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Nó inteiro como widget
+
+   Em vez de montar parâmetro por parâmetro, um nó do workflow vira de uma vez
+   um grupo pronto: para cada widget dele, um Label com o nome e o controle
+   ligado ao widget (Load LoRA -> Label + Dropdown + Label + Stepper...).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Itens (label + controle) que representam todos os widgets do nó. */
+function wholeNodeItems(host, node) {
+  const items = [];
+  for (const w of (node.widgets || []).filter(usable)) {
+    let kind = detectMediaKind(w, describeWidget(w));
+    // Número vira Stepper: é o controle compacto que cabe numa linha de grupo.
+    if (kind === "slider") kind = "number";
+    const text = prettify(w.name);
+    const control = { kind, bind: node === host ? w.name : `${node.id}/${w.name}`, label: text, labelPos: "none" };
+    if (is2DKind(kind)) control.h = kind === "textarea" ? 80 : 120;
+    // O botão já escreve o próprio nome; os demais ganham um Label na frente.
+    if (kind !== "button") items.push({ kind: "label", text, label: text });
+    items.push(control);
+  }
+  return items;
+}
+
+/**
+ * Grupo pronto com o nó inteiro. `orientation`: "row" (grupo horizontal,
+ * rótulo e controle lado a lado) ou "column" (grupo vertical, empilhado).
+ */
+function buildWholeNodeCtrl(host, node, orientation, pos) {
+  const layout = host.properties[PROP];
+  const items = wholeNodeItems(host, node);
+  const vertical = orientation === "column";
+  const has2D = items.some((it) => is2DKind(it.kind));
+  const avail = Math.max(320, Math.round((host.size?.[0] || MIN_W) - 80));
+  const snap = (v) => Math.round(v / GRID) * GRID;
+  for (const it of items) {
+    // Label do tamanho do texto; o controle ocupa o resto da linha.
+    if (it.kind === "label" && !vertical) it.w = Math.max(48, Math.min(176, snap(String(it.text).length * 7 + 16)));
+  }
+  // Em linha: Stepper, Switch e botão têm largura fixa de que precisam; o
+  // espaço que sobra na zona vai para quem mostra texto longo (dropdown de
+  // modelo, campo de texto), que é quem sofre quando fica espremido.
+  const FIXED = { number: 128, toggle: 56, button: 120 };
+  let w = 288;
+  if (!vertical) {
+    const ctrlsRow = items.filter((it) => it.kind !== "label");
+    const flex = ctrlsRow.filter((it) => !FIXED[it.kind]);
+    const used = 32 + items.length * 8
+      + items.filter((it) => it.kind === "label").reduce((a, it) => a + it.w, 0)
+      + ctrlsRow.reduce((a, it) => a + (FIXED[it.kind] || 0), 0);
+    const each = flex.length ? Math.min(320, snap((avail - used) / flex.length)) : 0;
+    if (!flex.length || each >= 120) {
+      for (const it of ctrlsRow) it.w = FIXED[it.kind] || each;
+      w = Math.max(320, snap(used + each * flex.length));
+    } else {
+      // Não cabe em linha nesta zona: tudo flexível, dentro da largura dela.
+      for (const it of ctrlsRow) delete it.w;
+      w = avail;
+    }
+  }
+  const group = {
+    kind: vertical ? "vsegment" : "segment",
+    label: node.title || node.type || `Node #${node.id}`,
+    // Nasce dentro da largura da zona, mesmo se o clique foi perto da borda.
+    x: Math.max(16, Math.min(pos?.x ?? 16, avail - w)),
+    y: pos?.y ?? 16,
+    w,
+    h: vertical
+      ? snap(items.reduce((a, it) => a + (it.kind === "label" ? 20 : (it.h || 36)) + 8, 16))
+      : (has2D ? 160 : 48),
+    items,
+  };
+  return renameClone(layout, group);
+}
+
 function detectMediaKind(w, desc) {
   if (isVideoCombo(w)) return "video";
   if (isAudioCombo(w)) return "audio";
@@ -6876,7 +6962,7 @@ function getNodeAtEvent(canvas, e) {
 }
 
 /** Inicia o Modo de Seleção Visual no Workflow (Descompactado) */
-function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false }) {
+function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false, allowWholeNode = false }) {
   backdrop.style.display = "none";
 
   const canvas = app.canvas;
@@ -6969,6 +7055,27 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false 
     wList.style.overflowY = "auto";
 
     const usableWidgets = (hitNode.widgets || []).filter(w => usable(w));
+
+    // Nó inteiro: um grupo pronto com todos os parâmetros, em linha ou coluna.
+    if (allowWholeNode && usableWidgets.length) {
+      const whole = el("div", "lego-whole-node");
+      whole.append(el("div", "lego-whole-node-title", "Whole node as a widget"));
+      const opts = el("div", "lego-whole-node-opts");
+      for (const [orientation, label, g] of [["row", "Row", "hgroup"], ["column", "Column", "vgroup"]]) {
+        const b = el("button", "lego-whole-node-btn");
+        b.innerHTML = `${glyph(g, 15)}<span>${label}</span>`;
+        b.title = `All ${usableWidgets.length} parameters of this node in a ${orientation === "row" ? "horizontal" : "vertical"} group`;
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onSelect({ isWholeNode: true, node: hitNode, orientation, label: nTitle });
+          cleanup();
+        });
+        opts.append(b);
+      }
+      whole.append(opts);
+      popup.append(whole);
+      popup.append(el("div", "lego-whole-node-or", "or a single parameter:"));
+    }
 
     if (!usableWidgets.length) {
       wList.append(el("div", "lego-empty", "This node has no configurable parameters."));
@@ -7354,6 +7461,8 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
       host,
       backdrop,
       pickNode: !!sourceFor,
+      // Nó inteiro só faz sentido criando componentes, não ligando um existente.
+      allowWholeNode: typeof targetCallback !== "function",
       onSelect: (target) => {
         if (!target) return;
         selectedTarget = target;
@@ -8174,11 +8283,55 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
     }
     submitBtn.addEventListener("click", insertSelectedTarget);
     detailsPanel.append(submitBtn);
+
+    // Atalho: o nó deste parâmetro inteiro, como widget pronto.
+    if (typeof targetCallback !== "function" && t.node && (t.node.widgets || []).some(usable)) {
+      const wholeRow = el("div", "lego-whole-node-opts in-details");
+      for (const [orientation, label, g] of [["row", "Whole node — row", "hgroup"], ["column", "Whole node — column", "vgroup"]]) {
+        const b = el("button", "lego-whole-node-btn");
+        b.innerHTML = `${glyph(g, 14)}<span>${esc(label)}</span>`;
+        b.title = `All parameters of ${cleanTitle} (#${node.id}) as one widget`;
+        b.addEventListener("click", () => insertWholeNode(t.node, orientation));
+        wholeRow.append(b);
+      }
+      detailsPanel.append(wholeRow);
+    }
+  }
+
+  /** Insere o nó inteiro: como grupo novo, ou como itens do grupo aberto. */
+  function insertWholeNode(node, orientation) {
+    if (!node) return;
+    pushUndo(host);
+    const layout = host.properties[PROP];
+    if (segmentCtrl) {
+      // Dentro de um grupo não cabe outro grupo: entram os itens.
+      const tmp = renameClone(layout, { kind: "segment", items: wholeNodeItems(host, node) });
+      if (!Array.isArray(segmentCtrl.items)) segmentCtrl.items = [];
+      segmentCtrl.items.push(...tmp.items);
+      state.selectedName = segmentCtrl.name;
+      state.selectedNames = new Set(segmentCtrl.name ? [segmentCtrl.name] : []);
+    } else {
+      const list = section.controls || (section.controls = []);
+      const group = buildWholeNodeCtrl(host, node, orientation, initialPos);
+      const spot = findFreeSpot(list, group.x, group.y, group.w, group.h);
+      group.x = spot.x;
+      group.y = spot.y;
+      list.push(group);
+      state.selectedName = group.name;
+      state.selectedNames = new Set([group.name]);
+    }
+    backdrop.remove();
+    state.refresh();
   }
 
   // Executa a inserção / salvamento
   function insertSelectedTarget() {
     if (!selectedTarget) return;
+
+    if (selectedTarget.isWholeNode) {
+      insertWholeNode(selectedTarget.node, selectedTarget.orientation);
+      return;
+    }
 
     // Modo segmento: adiciona o elemento escolhido (cru ou alvo) dentro do segmento
     if (segmentCtrl) {
