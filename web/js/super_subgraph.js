@@ -2598,6 +2598,32 @@ const CSS_FORM = `
 `;
 
 /* ── Toast de Feedback Rápido ── */
+/* Exibição de saídas (Image / Video / Audio Output) */
+const CSS_OUTPUT = `
+.lego-row.is-output{flex-direction:column;align-items:stretch;gap:4px}
+.lego-row.is-output>.lego-out-box{flex:1;min-height:0}
+.lego-out-box{display:flex;flex-direction:column;gap:4px;width:100%;height:100%;min-height:0;box-sizing:border-box}
+.lego-out-stage{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;
+  border-radius:8px;background:rgba(0,0,0,0.55);border:1.5px solid var(--lego-line);overflow:hidden;
+  box-shadow:inset 0 2px 10px rgba(0,0,0,0.6)}
+.lego-out-stage img,.lego-out-stage video{width:100%;height:100%;object-fit:contain;display:block}
+.lego-out-stage img{cursor:zoom-in}
+.lego-sec-controls.in-edit .lego-out-stage img{cursor:inherit}
+.lego-out-box.is-audio .lego-out-stage{flex-direction:column;gap:6px;padding:8px;box-sizing:border-box}
+.lego-out-stage audio{width:100%;height:32px}
+.lego-out-audio-name{font-size:11px;color:var(--lego-dim);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lego-out-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  padding:8px;text-align:center;font-size:11px;color:var(--lego-dim);opacity:.75}
+.lego-out-bar{display:flex;align-items:center;justify-content:center;gap:8px;flex:none}
+.lego-out-nav{display:inline-flex;align-items:center;justify-content:center;background:var(--lego-surface,#222);
+  color:inherit;border:1px solid var(--lego-line);border-radius:5px;width:24px;height:20px;line-height:1;
+  font-size:16px;cursor:pointer;padding:0 0 2px}
+.lego-out-nav:hover{background:var(--lego-surface-hover,#2a2a2a)}
+.lego-out-count{font-size:11px;color:var(--lego-dim);min-width:40px;text-align:center;font-variant-numeric:tabular-nums}
+.lego-out-caption{font-size:11.5px;font-weight:600;color:var(--lego-dim);flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lego-segment-item.kind-outimage,.lego-segment-item.kind-outvideo,.lego-segment-item.kind-outaudio{flex-direction:column;align-items:stretch}
+`;
+
 function showLegoToast(msg) {
   let toast = document.getElementById("lego-action-toast");
   if (!toast) {
@@ -2970,7 +2996,7 @@ function injectCSS() {
   if (document.getElementById("lego-style")) return;
   const s = document.createElement("style");
   s.id = "lego-style";
-  s.textContent = CSS + CSS_FORM;
+  s.textContent = CSS + CSS_FORM + CSS_OUTPUT;
   document.head.appendChild(s);
 }
 
@@ -3287,6 +3313,25 @@ function autoLayout(node) {
   if (bins.media.length) {
     tabs.push({ name: "Media", sections: [{ header: "REFERENCE GRID", grid: 3, controls: bins.media }] });
   }
+  // Subgrafo com nó de saída (Preview/Save...) ganha a aba Output já montada,
+  // em modo automático: mostra o último resultado de cada tipo.
+  const outKinds = new Set();
+  for (const n of node.subgraph?._nodes || node.subgraph?.nodes || []) {
+    const type = String(n.type || "");
+    const isOut = n.constructor?.nodeData?.output_node || /(preview|save)|videocombine/i.test(type);
+    if (!isOut) continue;
+    // Só o que é mídia: SaveLatent, por exemplo, também é nó de saída.
+    if (/video|vhs|combine/i.test(type)) outKinds.add("outvideo");
+    else if (/audio/i.test(type)) outKinds.add("outaudio");
+    else if (/image/i.test(type)) outKinds.add("outimage");
+  }
+  if (outKinds.size) {
+    const outs = ["outimage", "outvideo", "outaudio"].filter((k) => outKinds.has(k)).map((k) => ({
+      kind: k, label: "", w: 288, h: k === "outaudio" ? 96 : 256,
+    }));
+    tabs.push({ name: "Output", sections: [{ header: "OUTPUT", controls: outs }] });
+  }
+
   if (!tabs.length) tabs.push({ name: "Controls", sections: [sec("PARAMETERS", [])] });
 
   const isSub = typeof node.isSubgraphNode === "function" ? node.isSubgraphNode() : !!node.subgraph;
@@ -4308,8 +4353,231 @@ function mkStepNumber(node, w, ctrl, state) {
   return wrap;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Exibição de saídas (Image / Video / Audio Output)
+
+   Não ligam a um widget, e sim a um NÓ: mostram o que ele gerou na última
+   execução. O servidor avisa pelo evento `executed` do websocket, cujo
+   `detail.node` é o id de execução — dentro de um subgrafo ele vem prefixado
+   pelo caminho ("12:5" = nó 5 dentro do subgrafo 12). `ctrl.source` guarda o
+   id do nó escolhido; vazio é o modo automático: o output mais recente do tipo
+   pedido que saiu de dentro do subgrafo (ou do próprio nó, se não for um).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const OUTPUT_KINDS = { outimage: "image", outvideo: "video", outaudio: "audio" };
+const isOutputKind = (k) => Object.prototype.hasOwnProperty.call(OUTPUT_KINDS, k);
+
+/** Último output de cada id de execução, com a ordem de chegada. */
+const OUTPUTS = new Map();
+let OUTPUT_SEQ = 0;
+
+function recordOutput(key, output) {
+  if (key == null || !output || typeof output !== "object") return;
+  OUTPUTS.set(String(key), { output, seq: ++OUTPUT_SEQ });
+}
+
+/** Avisa todos os cartões para repintarem as áreas de output. */
+function notifyOutputViews() {
+  for (const n of ATTACHED) {
+    for (const v of n.__legoState?.outputViews || []) {
+      try { v.update(); } catch (e) { console.warn(LOG, "output view update failed", e); }
+    }
+  }
+}
+
+/** Arquivos de um output do ComfyUI, com o tipo de mídia de cada um. */
+function outputFiles(output) {
+  const files = [];
+  const add = (list, hint) => {
+    for (const it of Array.isArray(list) ? list : []) {
+      if (it && typeof it.filename === "string") files.push({ ...it, hint });
+    }
+  };
+  add(output.images, "image");   // PreviewImage / SaveImage / SaveVideo (animated)
+  add(output.gifs, "video");     // VideoHelperSuite
+  add(output.video, "video");
+  add(output.videos, "video");
+  add(output.audio, "audio");    // PreviewAudio / SaveAudio
+  add(output.audios, "audio");
+  for (const f of files) {
+    const fmt = String(f.format || "");
+    if (RE_AUDIO.test(f.filename) || fmt.startsWith("audio/")) f.media = "audio";
+    else if (RE_VIDEO.test(f.filename) || fmt.startsWith("video/")) f.media = "video";
+    else if (RE_IMAGE.test(f.filename) || fmt.startsWith("image/")) f.media = "image";
+    else f.media = f.hint;
+  }
+  return files;
+}
+
+function outputURL(file, seq) {
+  const q = new URLSearchParams({
+    filename: file.filename,
+    subfolder: file.subfolder || "",
+    type: file.type || "output",
+  });
+  if (file.format) q.set("format", file.format);
+  q.set("rand", String(seq));
+  return api.apiURL(`/view?${q.toString()}`);
+}
+
+/** O nó de origem está dentro do subgrafo deste host? */
+function isInsideHost(host, id) {
+  const nodes = host.subgraph?._nodes || host.subgraph?.nodes || [];
+  return nodes.some((n) => String(n.id) === String(id));
+}
+
+/** Output mais recente com arquivos do tipo `media` para o controle. */
+function latestOutputFor(host, ctrl, media) {
+  const src = ctrl.source != null && ctrl.source !== "" ? String(ctrl.source) : "";
+  let match;
+  if (!src) {
+    const pre = `${host.id}:`;
+    match = host.subgraph ? (k) => k.startsWith(pre) : (k) => k === String(host.id);
+  } else {
+    const base = isInsideHost(host, src) ? `${host.id}:${src}` : src;
+    match = (k) => k === base || k.startsWith(`${base}:`);
+  }
+
+  let best = null;
+  const scan = (test) => {
+    for (const [key, rec] of OUTPUTS) {
+      if (!test(key) || (best && rec.seq <= best.seq)) continue;
+      const files = outputFiles(rec.output).filter((f) => f.media === media);
+      if (files.length) best = { key, seq: rec.seq, files };
+    }
+  };
+  scan(match);
+  // Fonte explícita que não bateu pelo caminho (grafo aberto dentro de outro
+  // subgrafo, por exemplo): aceita qualquer id de execução que termine nela.
+  if (!best && src) scan((k) => k.endsWith(`:${src}`));
+  return best;
+}
+
+/** Nós que podem servir de fonte: os do subgrafo primeiro, depois os do grafo. */
+function listOutputSources(host) {
+  const out = [];
+  const seen = new Set();
+  const isOutputNode = (n) => !!(n.constructor?.nodeData?.output_node
+    || /(preview|save).*(image|video|audio)|videocombine|(image|video|audio).*(preview|save)/i.test(String(n.type || "")));
+  const push = (n, scope) => {
+    if (!n || n === host || seen.has(`${scope}:${n.id}`)) return;
+    seen.add(`${scope}:${n.id}`);
+    out.push({ id: String(n.id), node: n, scope, isOutput: isOutputNode(n) });
+  };
+  for (const n of host.subgraph?._nodes || host.subgraph?.nodes || []) push(n, "sub");
+  for (const n of host.graph?._nodes || host.graph?.nodes || []) push(n, "graph");
+  // Nós de saída primeiro; o resto fica disponível para nós customizados.
+  out.sort((a, b) => (b.isOutput - a.isOutput) || (a.scope === b.scope ? 0 : a.scope === "sub" ? -1 : 1));
+  return out;
+}
+
+function outputSourceLabel(host, ctrl) {
+  const src = ctrl.source != null && ctrl.source !== "" ? String(ctrl.source) : "";
+  if (!src) return host.subgraph ? "Auto — latest inside this subgraph" : "Auto — this node";
+  const n = findNodeInHostScope(host, src);
+  return n ? `#${n.id} ${n.title || n.type}` : `#${src} (missing)`;
+}
+
+/** Lista suspensa para escolher o nó de origem de um controle de output. */
+function openOutputSourcePicker(anchor, host, ctrl, state) {
+  const sources = listOutputSources(host);
+  const labels = [
+    host.subgraph ? "Auto — latest inside this subgraph" : "Auto — this node",
+    ...sources.map((s) => `${s.scope === "sub" ? "[subgraph]" : "[graph]"} #${s.id} ${s.node.title || s.node.type}${s.isOutput ? "" : "  (no output flag)"}`),
+  ];
+  const current = ctrl.source ? labels[1 + sources.findIndex((s) => s.id === String(ctrl.source))] : labels[0];
+  openDropdown(anchor, labels, current, (_v, idx) => {
+    pushUndo(host);
+    if (idx === 0) delete ctrl.source;
+    else if (sources[idx - 1]) ctrl.source = sources[idx - 1].id;
+    state.refresh();
+  });
+}
+
+/** A área que mostra o output: imagem, vídeo ou áudio, com navegação no lote. */
+function mkOutputView(host, ctrl, state) {
+  const media = OUTPUT_KINDS[ctrl.kind] || "image";
+  const box = el("div", `lego-out-box is-${media}`);
+  const stage = el("div", "lego-out-stage");
+  const bar = el("div", "lego-out-bar");
+  const prev = el("button", "lego-out-nav", "‹");
+  const count = el("span", "lego-out-count");
+  const next = el("button", "lego-out-nav", "›");
+  prev.title = "Previous";
+  next.title = "Next";
+  bar.append(prev, count, next);
+  box.append(stage, bar);
+
+  let files = [];
+  let seq = 0;
+  let idx = 0;
+  let sig = null;
+
+  const render = () => {
+    stage.replaceChildren();
+    bar.style.display = files.length > 1 ? "" : "none";
+    if (!files.length) {
+      const empty = el("div", "lego-out-empty");
+      empty.append(glyphEl(media === "image" ? "media" : media, 26));
+      empty.append(el("span", null, `No ${media} output yet — run the workflow`));
+      stage.append(empty);
+      return;
+    }
+    idx = Math.min(Math.max(0, idx), files.length - 1);
+    count.textContent = `${idx + 1} / ${files.length}`;
+    const f = files[idx];
+    const url = outputURL(f, seq);
+    stage.title = f.filename;
+    if (media === "video") {
+      const v = el("video");
+      v.src = url;
+      v.controls = true;
+      v.loop = true;
+      v.muted = true;
+      v.autoplay = true;
+      v.playsInline = true;
+      stage.append(v);
+    } else if (media === "audio") {
+      const a = el("audio");
+      a.src = url;
+      a.controls = true;
+      a.preload = "metadata";
+      stage.append(el("div", "lego-out-audio-name", f.filename), a);
+    } else {
+      const img = el("img");
+      img.src = url;
+      img.alt = f.filename;
+      img.draggable = false;
+      img.addEventListener("click", () => { if (!state.edit) window.open(url, "_blank"); });
+      stage.append(img);
+    }
+  };
+
+  const update = () => {
+    const res = latestOutputFor(host, ctrl, media);
+    const nextSig = res ? `${res.key}#${res.seq}` : "";
+    if (nextSig === sig) return;   // nada novo: não recarrega a mídia
+    sig = nextSig;
+    files = res ? res.files : [];
+    seq = res ? res.seq : 0;
+    idx = 0;
+    render();
+  };
+
+  for (const b of [prev, next]) b.addEventListener("pointerdown", eatPointer);
+  prev.addEventListener("click", (e) => { e.stopPropagation(); idx = (idx - 1 + files.length) % files.length; render(); });
+  next.addEventListener("click", (e) => { e.stopPropagation(); idx = (idx + 1) % files.length; render(); });
+  // Controles nativos de vídeo/áudio: o clique não pode virar arraste do nó.
+  stage.addEventListener("pointerdown", eatPointer);
+
+  update();
+  if (state) (state.outputViews || (state.outputViews = [])).push({ update });
+  return box;
+}
+
 function getComponentMinDimensions(ctrl) {
   const k = ctrl?.kind || "";
+  if (isOutputKind(k)) return { minW: 120, minH: k === "outaudio" ? 64 : 96 };
   if (k === "hdivider") return { minW: 16, minH: 16 };
   if (k === "vdivider") return { minW: 16, minH: 16 };
   if (k === "label") return { minW: 32, minH: 16 };
@@ -4340,7 +4608,9 @@ function addItemToSegment(host, state, segmentCtrl, itemDef) {
     w: itemDef.w ?? (itemDef.kind === "vdivider" ? 24 : (itemDef.kind === "hdivider" ? 160 : tool.w)),
     h: itemDef.h ?? (is2D ? tool.h : (itemDef.kind === "hdivider" ? 16 : (itemDef.kind === "vdivider" ? 24 : undefined))),
   };
-  if (itemDef.kind === "label") {
+  if (isOutputKind(itemDef.kind)) {
+    newItem.label = "";   // a mídia já se identifica; rótulo só se o usuário quiser
+  } else if (itemDef.kind === "label") {
     newItem.text = itemDef.text || "Label";
     newItem.label = itemDef.label || "Label";
   } else if (itemDef.kind === "text" || itemDef.kind === "textarea") {
@@ -4386,9 +4656,10 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
     const isLabelItem = item.kind === "label";
     const isContainerItem = item.kind === "group" || item.kind === "segment" || item.kind === "vsegment";
     const isCosmeticItem = isDividerItem || isLabelItem;
-    const hit = (!isCosmeticItem && !isContainerItem && item.bind) ? resolveBind(host, item.bind) : null;
+    const isOutputItem = isOutputKind(item.kind);
+    const hit = (!isCosmeticItem && !isContainerItem && !isOutputItem && item.bind) ? resolveBind(host, item.bind) : null;
     const isBound = !!hit;
-    const isUnbound = !isCosmeticItem && !isContainerItem && !isBound;
+    const isUnbound = !isCosmeticItem && !isContainerItem && !isOutputItem && !isBound;
     const isSelected = (state?.selectedName && state.selectedName === item.name) || (state?.selectedNames && state.selectedNames.has(item.name));
 
     const itemWrap = el(
@@ -4407,7 +4678,8 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       itemWrap.classList.add("has-custom-w");
     }
     const isMediaItem = item.kind === "media" || item.kind === "video" || item.kind === "audio";
-    const defaultH = (item.kind === "textarea") ? 80 :
+    const defaultH = isOutputItem ? (item.kind === "outaudio" ? 96 : 160) :
+      (item.kind === "textarea") ? 80 :
       (isMediaItem ? 120 :
       (item.kind === "hdivider" ? 16 :
       (item.kind === "vdivider" ? 24 : null)));
@@ -4443,8 +4715,17 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
 
       const actionsWrap = el("div", "lego-item-actions");
 
-      // Ícone de corrente (link) à esquerda do 'x'
-      if (!isDividerItem && !isLabelItem && !isContainerItem) {
+      // Ícone de corrente (link) à esquerda do 'x'. No output ele escolhe o
+      // NÓ de origem em vez de um widget.
+      if (isOutputItem) {
+        const srcSubBtn = glyphBtn("lego-item-link-btn is-bound", "link", 10);
+        srcSubBtn.title = `Source: ${outputSourceLabel(host, item)} (click to change)`;
+        srcSubBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openOutputSourcePicker(srcSubBtn, host, item, state);
+        });
+        actionsWrap.append(srcSubBtn);
+      } else if (!isDividerItem && !isLabelItem && !isContainerItem) {
         const linkSubBtn = glyphBtn(
           `lego-item-link-btn ${isBound ? "is-bound" : "is-unbound"}`,
           "link",
@@ -4598,6 +4879,14 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
         });
       }
       itemWrap.append(textSpan);
+    } else if (isOutputItem) {
+      const labelPos = item.labelPos || "left";
+      if (labelPos !== "none" && item.label && item.label !== item.name) {
+        itemWrap.append(el("span", "lego-item-label", item.label));
+      }
+      const view = mkOutputView(host, item, state);
+      view.style.flex = "1";
+      itemWrap.append(view);
     } else if (!hit) {
       // Elemento Unbound: renderiza normal, com a cara nativa do controle!
       const labelPos = item.labelPos || "left";
@@ -4986,7 +5275,8 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   const isLabel = ctrl.kind === "label";
   const isCosmetic = isDivider || isLabel;
   const isGroup = ctrl.kind === "group" || isSegmentLike;
-  const hit = (isGroup || isCosmetic) ? null : resolveBind(host, ctrl.bind);
+  const isOutput = isOutputKind(ctrl.kind);
+  const hit = (isGroup || isCosmetic || isOutput) ? null : resolveBind(host, ctrl.bind);
   const isMediaLike = (k) => k === "media" || k === "video" || k === "audio";
   const isHitMedia = isImageCombo(hit?.widget) || isVideoCombo(hit?.widget) || isAudioCombo(hit?.widget);
   const isMedia = isMediaLike(ctrl.kind) || isHitMedia;
@@ -5016,6 +5306,16 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     row = el("div", `lego-row is-segment ${ctrl.kind === "vsegment" ? "vertical" : "horizontal"}`);
     const innerBox = buildSegment(host, ctrl, state, sectionCtrls);
     row.append(innerBox);
+  } else if (isOutput) {
+    // Output liga a um NÓ, não a widget: nunca passa pelo caminho do bind.
+    row = el("div", "lego-row is-output");
+    if (ctrl.label && ctrl.label !== ctrl.name && ctrl.labelPos !== "none") {
+      const cap = el("div", "lego-out-caption", ctrl.label);
+      if (ctrl.labelPos === "right") cap.style.textAlign = "right";
+      row.append(cap);
+    }
+    row.title = `${ctrl.name || ctrl.kind} — ${outputSourceLabel(host, ctrl)}`;
+    row.append(mkOutputView(host, ctrl, state));
   } else if (isGroup) {
     row = buildGroup(host, ctrl, state, sectionCtrls);
   } else {
@@ -5063,7 +5363,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
 
   let applySliderResponsiveLayout = null;
 
-  if (!isGroup && !isDivider && !isLabel) {
+  if (!isGroup && !isDivider && !isLabel && !isOutput) {
 
   if (!hit) {
     if (ctrl.bind === "" || !ctrl.bind) {
@@ -5230,7 +5530,9 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     editBtn.addEventListener("pointerdown", eatPointer);
     editBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      openInspector({ host, layout: host.properties[PROP], section: { controls: sectionCtrls }, ctrl, state });
+      // O seletor de parâmetros liga a widgets; output se configura no Inspetor.
+      if (isOutput) selectComponent(host, state, ctrl, sectionCtrls, true);
+      else openInspector({ host, layout: host.properties[PROP], section: { controls: sectionCtrls }, ctrl, state });
     });
     floatingActions.append(editBtn);
 
@@ -5250,7 +5552,17 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
 
     // Ícone de corrente (link / bind) imediatamente à esquerda do 'x'
     // Grupos verticais, horizontais, divisores e labels não recebem link (não linkam em nada)
-    if (!isDivider && !isGroup && !isLabel) {
+    if (isOutput) {
+      // No output o elo escolhe o NÓ de origem (ou o modo automático).
+      const srcBtn = glyphBtn("lego-iconbtn btn-link is-bound", "link", 10);
+      srcBtn.title = `Source: ${outputSourceLabel(host, ctrl)} (click to change)`;
+      srcBtn.addEventListener("pointerdown", eatPointer);
+      srcBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openOutputSourcePicker(srcBtn, host, ctrl, state);
+      });
+      floatingActions.append(srcBtn);
+    } else if (!isDivider && !isGroup && !isLabel) {
       const isBound = !!hit;
       const linkBtn = glyphBtn(
         `lego-iconbtn btn-link ${isBound ? "is-bound" : "is-unbound"}`,
@@ -6484,7 +6796,45 @@ const RAW_UI_ELEMENTS = [
     defaultH: 140
   },
 
-  // ── 3. ACTIONS ──
+  // ── 3. OUTPUT ──
+  {
+    isRaw: true,
+    kind: "outimage",
+    category: "Output",
+    name: "Image Output",
+    label: "Image Output",
+    detail: "Shows generated images",
+    scope: "UI Element",
+    desc: "Displays the images generated by the workflow (Preview/Save Image), updated live on every run. Browse batches with the arrows.",
+    defaultW: 256,
+    defaultH: 224
+  },
+  {
+    isRaw: true,
+    kind: "outvideo",
+    category: "Output",
+    name: "Video Output",
+    label: "Video Output",
+    detail: "Plays generated videos",
+    scope: "UI Element",
+    desc: "Plays the videos generated by the workflow (Save Video, Video Combine), updated live on every run.",
+    defaultW: 256,
+    defaultH: 224
+  },
+  {
+    isRaw: true,
+    kind: "outaudio",
+    category: "Output",
+    name: "Audio Output",
+    label: "Audio Output",
+    detail: "Plays generated audio",
+    scope: "UI Element",
+    desc: "Plays the audio generated by the workflow (Preview/Save Audio), updated live on every run.",
+    defaultW: 256,
+    defaultH: 96
+  },
+
+  // ── 4. ACTIONS ──
   {
     isRaw: true,
     kind: "button",
@@ -6498,7 +6848,7 @@ const RAW_UI_ELEMENTS = [
     defaultH: 42
   },
 
-  // ── 4. LAYOUT & COSMETIC ──
+  // ── 5. LAYOUT & COSMETIC ──
   {
     isRaw: true,
     kind: "label",
@@ -6626,6 +6976,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
     { id: "raw", label: "Components", glyph: "blank" },
     { id: "inputs", label: "Inputs", glyph: "text", isCategory: true },
     { id: "media", label: "Media", glyph: "media", isCategory: true },
+    { id: "output", label: "Outputs", glyph: "video", isCategory: true },
     { id: "actions", label: "Actions", glyph: "button", isCategory: true },
     { id: "layout", label: "Layout", glyph: "zone", isCategory: true },
     { id: "text", label: "Text Inputs", glyph: "text" },
@@ -6860,6 +7211,8 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
         } else if (activeFilter === "media") {
           const isMed = t.kind === "media" || t.kind === "video" || t.kind === "audio";
           if (!isMed) return false;
+        } else if (activeFilter === "output") {
+          if (!isOutputKind(t.kind)) return false;
         } else if (activeFilter === "actions") {
           if (t.kind !== "button") return false;
         } else if (activeFilter === "layout") {
@@ -7164,6 +7517,13 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
         `;
       } else if (t.kind === "textarea") {
         previewContainer.innerHTML = `<textarea class="lego-in" style="height:70px; resize:none;" placeholder="Text Multiline / Prompt..."></textarea>`;
+      } else if (isOutputKind(t.kind)) {
+        const m = OUTPUT_KINDS[t.kind];
+        previewContainer.innerHTML = `
+          <div class="lego-out-box is-${m}" style="height:${m === "audio" ? 80 : 150}px;">
+            <div class="lego-out-stage"><div class="lego-out-empty">${glyph(m === "image" ? "media" : m, 26)}<span>Latest ${m} output appears here</span></div></div>
+          </div>
+        `;
       } else if (t.kind === "button") {
         previewContainer.innerHTML = `<button class="lego-btn primary" style="height:36px; padding:0 20px; font-size:13px; font-weight:600; border-radius:6px; cursor:pointer;">Action Button</button>`;
       } else {
@@ -7175,6 +7535,8 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
         ? "Cosmetic element for organizing and annotating sections on the canvas. Does not require any workflow parameter."
         : (t.kind === "segment" || t.kind === "vsegment")
           ? "Container for grouping multiple controls. Drop into the form, then click [+] to add sub-controls."
+          : isOutputKind(t.kind)
+          ? "Works right away: shows the latest output of this type from inside the subgraph. Use the chain icon or Object Properties to pin a specific node."
           : "After dropping the component into the form, click it to assign a function — the workflow parameter it will control.";
       const hint = el("div", null, hintText);
       hint.style.cssText = "font-size:11.5px; color:#38bdf8; background:rgba(56,189,248,0.1); padding:8px 12px; border-radius:6px; line-height:1.4;";
@@ -7446,6 +7808,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
       if (selectedTarget.kind === "segment" || selectedTarget.kind === "vsegment") {
         newCtrl.items = [];
       }
+      if (isOutputKind(selectedTarget.kind)) newCtrl.label = "";
 
       pushUndo(host);
       ensureComponentName(host.properties[PROP], newCtrl);
@@ -7881,6 +8244,15 @@ const TOOLBOX_CATEGORIES = [
     ]
   },
   {
+    id: "output",
+    label: "Output",
+    tools: [
+      { kind: "outimage", icon: "media",    label: "Image Output",      prefix: "ImageOut", w: 256,        h: 224 },
+      { kind: "outvideo", icon: "video",    label: "Video Output",      prefix: "VideoOut", w: 256,        h: 224 },
+      { kind: "outaudio", icon: "audio",    label: "Audio Output",      prefix: "AudioOut", w: 256,        h: 96 },
+    ]
+  },
+  {
     id: "actions",
     label: "Actions",
     tools: [
@@ -8042,6 +8414,8 @@ function makeComponent(layout, kind, x, y) {
     ctrl.value = "";
   }
   if (t.kind === "segment" || t.kind === "vsegment") ctrl.items = [];
+  // Output não tem rótulo por padrão: a própria mídia já se identifica.
+  if (isOutputKind(t.kind)) ctrl.label = "";
   return ctrl;
 }
 
@@ -8706,6 +9080,37 @@ function renderObjectInspector(host, state, force) {
   });
   if (!isContainer && !isDivider && !isLabel) props.append(propRow("Type", kindBtn));
   INSPECTOR.append(props);
+
+  if (isOutputKind(ctrl.kind)) {
+    /* ── origem: o nó cujo output este componente mostra ── */
+    INSPECTOR.append(el("div", "lego-oi-sec", "Output"));
+    const og = el("div", "lego-oi-grid");
+    const srcBtn = el("button", "lego-oi-pick");
+    srcBtn.innerHTML = `<span>${esc(outputSourceLabel(host, ctrl))}</span>${glyph("chevron", 12)}`;
+    srcBtn.title = "Node whose output this component shows. Auto = latest output of this type.";
+    srcBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openOutputSourcePicker(srcBtn, host, ctrl, state);
+    });
+    og.append(propRow("Source", srcBtn));
+    INSPECTOR.append(og);
+
+    const footO = el("div", "lego-oi-foot");
+    const dupO = glyphTextBtn("lego-btn", "copy", "Duplicate", 12);
+    dupO.addEventListener("click", () => duplicateComponent(host, state, ctrl, list));
+    const delO = glyphTextBtn("lego-btn danger", "trash", "Delete", 12);
+    delO.addEventListener("click", () => {
+      pushUndo(host);
+      const i = list.findIndex((c) => c === ctrl || c.name === ctrl.name);
+      if (i >= 0) list.splice(i, 1);
+      state.selectedName = null;
+      state.selectedNames?.delete(ctrl.name);
+      state.refresh();
+    });
+    footO.append(dupO, delO);
+    INSPECTOR.append(footO);
+    return;
+  }
 
   if (isDivider || isLabel) {
     const footD = el("div", "lego-oi-foot");
@@ -10306,6 +10711,7 @@ function attach(node) {
     selectedName: null, // nome do componente aberto no Inspetor de Objetos
     selectedNames: new Set(), // conjunto de componentes selecionados (multi-seleção)
     watchers: new Map(),
+    outputViews: [],   // áreas de output vivas, repintadas a cada `executed`
     ro: null,
     pending: false,
     lastTick: 0,
@@ -10336,6 +10742,7 @@ function attach(node) {
         pushUndoSnapshot(node, node.__legoLastSnap);
       }
       state.watchers.clear();
+      state.outputViews = [];
       host.replaceChildren(buildCard(node, state));
       // Depois do desenho: o `buildControl` normaliza x/y/w/h e nomes.
       node.__legoLastSnap = JSON.stringify(node.properties?.[PROP] || {});
@@ -10470,6 +10877,20 @@ app.registerExtension({
 
   async setup() {
     injectCSS();
+
+    // Outputs gerados: guarda o último de cada id de execução e repinta as
+    // áreas de Image/Video/Audio Output dos cartões.
+    api.addEventListener("executed", (e) => {
+      const d = e?.detail;
+      if (!d?.output) return;
+      recordOutput(d.node, d.output);
+      if (d.display_node != null && String(d.display_node) !== String(d.node)) recordOutput(d.display_node, d.output);
+      notifyOutputViews();
+    });
+    // Outputs que o frontend já guardava (execução anterior ao carregamento).
+    try {
+      for (const [k, v] of Object.entries(app.nodeOutputs || {})) if (!OUTPUTS.has(k)) recordOutput(k, v);
+    } catch { /* frontend sem nodeOutputs */ }
     const sweep = () => {
       const graphs = [app.rootGraph || app.graph];
       const cur = app.canvas?.getCurrentGraph?.();
