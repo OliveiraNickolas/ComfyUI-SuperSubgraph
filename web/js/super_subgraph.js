@@ -2683,6 +2683,14 @@ const CSS_OUTPUT = `
 
 /* Arraste entre grupos, zonas e sub-abas: feedback de entrada e saída */
 const CSS_DRAG = `
+.lego-pick-overlay{position:fixed;inset:0;pointer-events:none;z-index:9990}
+.lego-pick-box{position:fixed;box-sizing:border-box;border-radius:8px;pointer-events:none}
+.lego-pick-box.whole{border:2.5px solid #a855f7;box-shadow:0 0 0 3px rgba(168,85,247,0.25),0 0 18px rgba(168,85,247,0.55)}
+.lego-pick-box.widget{border:2px solid #22c55e;border-radius:6px;background:rgba(34,197,94,0.12);box-shadow:0 0 10px rgba(34,197,94,0.45)}
+.lego-picker-promote-btn{display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:none;cursor:pointer;
+  background:#a855f7;color:#fff;font:700 13px system-ui,sans-serif}
+.lego-picker-promote-btn:disabled{opacity:.45;cursor:default}
+.lego-picker-promote-btn:not(:disabled):hover{background:#9333ea}
 .lego-ss-enter{margin-left:auto;margin-right:6px}
 .lego-ss-nav{position:fixed;top:50px;left:220px;z-index:1000;display:flex;align-items:center;gap:8px;height:32px;box-sizing:border-box;
   padding:0 10px 0 6px;border-radius:8px;background:rgba(24,24,28,0.94);border:1px solid rgba(168,85,247,0.55);
@@ -6844,16 +6852,37 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
    ligado ao widget (Load LoRA -> Label + Dropdown + Label + Stepper...).
    ══════════════════════════════════════════════════════════════════════════ */
 
-/** Itens (label + controle) que representam todos os widgets do nó. */
-function wholeNodeItems(host, node) {
+/** Rótulo de um widget: o nome dado pelo usuário (renomeado/promovido) ou o técnico formatado. */
+function widgetLabel(w) {
+  return (typeof w.label === "string" && w.label.trim() && w.label !== w.name) ? w.label.trim() : prettify(w.name);
+}
+
+/** Componente solto para um único parâmetro de um nó. */
+function singleCtrlFor(host, node, w) {
+  const kind = detectMediaKind(w, describeWidget(w));
+  const media = kind === "media" || kind === "video" || kind === "audio";
+  const c = {
+    kind,
+    bind: node === host ? w.name : `${node.id}/${w.name}`,
+    label: widgetLabel(w),
+    w: media ? 288 : kind === "textarea" ? 320 : 256,
+    h: media ? 144 : kind === "textarea" ? 96 : 48,
+  };
+  if (RE_SEED.test(w.name)) c.seed = true;
+  return c;
+}
+
+/** Itens (label + controle) que representam os widgets do nó (todos, ou só `onlyNames`). */
+function wholeNodeItems(host, node, onlyNames) {
   const items = [];
   for (const w of (node.widgets || []).filter(usable)) {
+    if (onlyNames && !onlyNames.has(w.name)) continue;
     let kind = detectMediaKind(w, describeWidget(w));
     // Número vira Stepper: é o controle compacto que cabe numa linha de grupo.
     if (kind === "slider") kind = "number";
     // O nome que o usuário deu ao parâmetro (widget renomeado/promovido)
     // vale mais que o nome técnico.
-    const text = (typeof w.label === "string" && w.label.trim() && w.label !== w.name) ? w.label.trim() : prettify(w.name);
+    const text = widgetLabel(w);
     const control = { kind, bind: node === host ? w.name : `${node.id}/${w.name}`, label: text, labelPos: "none" };
     if (is2DKind(kind)) control.h = kind === "textarea" ? 80 : 120;
     // O botão já escreve o próprio nome; os demais ganham um Label na frente.
@@ -7164,8 +7193,14 @@ function getNodeAtEvent(canvas, e) {
 }
 
 /** Inicia o Modo de Seleção Visual no Workflow (Descompactado) */
-function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false, allowWholeNode = false }) {
+function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false, allowWholeNode = false, onPromote = null }) {
   backdrop.style.display = "none";
+  // Seleção múltipla: clique marca/desmarca nós inteiros e parâmetros soltos;
+  // "Promote" entrega tudo de uma vez.
+  const multi = typeof onPromote === "function" && !pickNode;
+  const picks = new Map();   // id do nó -> { node, whole, widgets: Set<nome> }
+  let overlay = null;
+  let overlayRaf = 0;
 
   const canvas = app.canvas;
   const originGraph = canvas.getCurrentGraph?.() || canvas.graph || app.graph;
@@ -7174,9 +7209,13 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
   // Abre o grafo de dentro no canvas: o grafo interno de um Super Subgraph
   // (setGraph direto) ou o subgrafo nativo.
   const ssGraph = ssInnerGraph(host);
-  if (ssGraph && typeof canvas.setGraph === "function") {
+  const savedView = canvas.ds ? { offset: [...canvas.ds.offset], scale: canvas.ds.scale } : null;
+  if (ssGraph && canvas.graph !== ssGraph && typeof canvas.setGraph === "function") {
     canvas.setGraph(ssGraph);
     isInsideSubgraph = true;
+    // Enquadra os nós de dentro: sem isso eles podiam cair sob as barras do
+    // ComfyUI, onde o clique não chega ao canvas.
+    fitCanvasTo(ssGraph);
     canvas.setDirty?.(true, true);
   } else if (host.subgraph) {
     if (typeof canvas.openSubgraph === "function") {
@@ -7196,20 +7235,36 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
       <span class="lego-pulse-icon lego-glyph-wrap">${glyph("target", 24)}</span>
       <div>
         <div style="font-weight:700;font-size:14px;color:#fff;letter-spacing:0.02em;">TARGET PICKER ACTIVE</div>
-        <div style="font-size:12px;color:rgba(255,255,255,0.75);">${pickNode ? "Click the node whose output this component should show" : "Click any node on the canvas to pick the parameter to control"}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,0.75);">${pickNode
+          ? "Click the node whose output this component should show"
+          : multi
+            ? "Click a node title to pick the whole node, or a parameter to pick just it · click again to unpick"
+            : "Click any node on the canvas to pick the parameter to control"}</div>
       </div>
     </div>
   `;
+  let promoteBtn = null;
+  const updateHud = () => {
+    if (!promoteBtn) return;
+    let n = 0;
+    for (const p of picks.values()) n += p.whole ? 1 : p.widgets.size;
+    promoteBtn.disabled = n === 0;
+    promoteBtn.querySelector("span").textContent = n ? `Promote (${n})` : "Promote";
+  };
 
   const cleanup = () => {
     hud.remove();
     document.querySelector(".lego-node-picker-popup")?.remove();
     window.removeEventListener("pointerdown", onCanvasPointerDown, true);
+    window.removeEventListener("keydown", onPickKey, true);
+    cancelAnimationFrame(overlayRaf);
+    overlay?.remove();
 
     // Retorna para o grafo principal se entrou no subgrafo
     if (isInsideSubgraph && ssGraph) {
-      // Volta do grafo interno do Super Subgraph para onde estava.
+      // Volta do grafo interno do Super Subgraph para onde estava, com a vista de antes.
       if (originGraph && typeof canvas.setGraph === "function") canvas.setGraph(originGraph);
+      if (savedView && canvas.ds) { canvas.ds.offset = savedView.offset; canvas.ds.scale = savedView.scale; }
       canvas.setDirty?.(true, true);
     } else if (isInsideSubgraph) {
       if (typeof canvas.closeSubgraph === "function") {
@@ -7225,13 +7280,118 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
     backdrop.style.display = "";
   };
 
-  const cancelBtn = glyphTextBtn("lego-picker-cancel-btn", "close", "Cancel and return", 14);
+  const cancelBtn = glyphTextBtn("lego-picker-cancel-btn", "close", multi ? "Cancel" : "Cancel and return", 14);
   cancelBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     cleanup();
   });
+  if (multi) {
+    promoteBtn = glyphTextBtn("lego-picker-promote-btn", "check", "Promote", 14);
+    promoteBtn.title = "Promote everything picked to the card";
+    promoteBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const list = [...picks.values()].filter((p) => p.whole || p.widgets.size);
+      if (!list.length) return;
+      cleanup();
+      onPromote(list);
+    });
+    hud.append(promoteBtn);
+    updateHud();
+  }
   hud.append(cancelBtn);
   document.body.append(hud);
+
+  function onPickKey(e) {
+    if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); cleanup(); }
+    else if (e.key === "Enter" && multi && picks.size) { e.stopPropagation(); e.preventDefault(); promoteBtn?.click(); }
+  }
+  window.addEventListener("keydown", onPickKey, true);
+
+  /* Bordas de destaque: desenhadas por cima do canvas, seguindo zoom e pan. */
+  const drawPicks = () => {
+    overlayRaf = requestAnimationFrame(drawPicks);
+    if (!overlay) return;
+    overlay.replaceChildren();
+    const ds = canvas.ds;
+    const cr = canvas.canvas?.getBoundingClientRect?.();
+    if (!ds || !cr) return;
+    const T = liteGraph()?.NODE_TITLE_HEIGHT || 30;
+    const box = (x, y, w, h, cls) => {
+      const b = el("div", `lego-pick-box ${cls}`);
+      b.style.left = `${cr.left + (x + ds.offset[0]) * ds.scale}px`;
+      b.style.top = `${cr.top + (y + ds.offset[1]) * ds.scale}px`;
+      b.style.width = `${w * ds.scale}px`;
+      b.style.height = `${h * ds.scale}px`;
+      overlay.append(b);
+    };
+    for (const p of picks.values()) {
+      const n = p.node;
+      if (n.graph !== canvas.graph) continue;
+      if (p.whole) {
+        box(n.pos[0] - 3, n.pos[1] - T - 3, n.size[0] + 6, (n.flags?.collapsed ? 0 : n.size[1]) + T + 6, "whole");
+        continue;
+      }
+      if (n.flags?.collapsed) continue;
+      for (const name of p.widgets) {
+        const w = (n.widgets || []).find((x) => x.name === name);
+        if (!w) continue;
+        const h = w.computedHeight ?? w.computeSize?.(n.size[0])?.[1] ?? liteGraph()?.NODE_WIDGET_HEIGHT ?? 20;
+        box(n.pos[0] + 6, n.pos[1] + (w.y ?? w.last_y ?? 0), n.size[0] - 12, h, "widget");
+      }
+    }
+  };
+  if (multi) {
+    overlay = el("div", "lego-pick-overlay");
+    document.body.append(overlay);
+    overlayRaf = requestAnimationFrame(drawPicks);
+  }
+
+  /** Parâmetro do nó sob o ponto (em coordenadas do canvas), se houver. */
+  const widgetAt = (node, cx, cy) => {
+    let w = null;
+    try { w = node.getWidgetOnPos?.(cx, cy, true) || null; } catch { w = null; }
+    if (!w) {
+      const lx = cx - node.pos[0], ly = cy - node.pos[1];
+      for (const x of node.widgets || []) {
+        if (x.hidden || x.__lego) continue;
+        const h = x.computedHeight ?? x.computeSize?.(node.size[0])?.[1] ?? 20;
+        const y = x.y ?? x.last_y;
+        if (y != null && ly >= y && ly <= y + h && lx >= 0 && lx <= node.size[0]) { w = x; break; }
+      }
+    }
+    return w && usable(w) ? w : null;
+  };
+
+  /** Marca/desmarca: nó inteiro (título/área sem parâmetro) ou só o parâmetro. */
+  const togglePick = (node, e) => {
+    const key = String(node.id);
+    const usableNames = (node.widgets || []).filter(usable).map((w) => w.name);
+    let cx = 0, cy = 0;
+    if (typeof canvas.convertEventToCanvasOffset === "function") [cx, cy] = canvas.convertEventToCanvasOffset(e);
+    else {
+      const r = canvas.canvas.getBoundingClientRect();
+      cx = (e.clientX - r.left) / canvas.ds.scale - canvas.ds.offset[0];
+      cy = (e.clientY - r.top) / canvas.ds.scale - canvas.ds.offset[1];
+    }
+    const w = node.flags?.collapsed ? null : widgetAt(node, cx, cy);
+    const cur = picks.get(key);
+    if (!w) {
+      if (cur?.whole) picks.delete(key);
+      else if (usableNames.length) picks.set(key, { node, whole: true, widgets: new Set() });
+      else showLegoToast("This node has no parameters to promote");
+    } else if (cur?.whole) {
+      // Nó inteiro marcado: clicar num parâmetro tira só ele.
+      const rest = new Set(usableNames.filter((nm) => nm !== w.name));
+      if (rest.size) picks.set(key, { node, whole: false, widgets: rest });
+      else picks.delete(key);
+    } else {
+      const set = cur?.widgets || new Set();
+      if (set.has(w.name)) set.delete(w.name); else set.add(w.name);
+      if (set.size) picks.set(key, { node, whole: false, widgets: set });
+      else picks.delete(key);
+    }
+    updateHud();
+  };
 
   const openNodeWidgetPopup = (hitNode, clientX, clientY) => {
     document.querySelector(".lego-node-picker-popup")?.remove();
@@ -7335,12 +7495,18 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
 
   function onCanvasPointerDown(e) {
     if (e.target.closest(".lego-picker-hud") || e.target.closest(".lego-node-picker-popup")) return;
+    if (multi) {
+      // Só o que está no canvas (ou num nó dele): menus e painéis seguem livres.
+      const onCanvas = e.target === canvas.canvas || !!e.target.closest?.(".dom-widget, [data-node-id], .lg-node");
+      if (!onCanvas || e.button !== 0) return;
+    }
 
     const hitNode = getNodeAtEvent(canvas, e);
     if (!hitNode) return; // Clicou no fundo do canvas: permite pan/zoom nativo!
 
     e.stopPropagation();
     e.preventDefault();
+    if (multi) { togglePick(hitNode, e); return; }
     // Origem de output: o alvo é o próprio nó, não um widget dele.
     if (pickNode) {
       onSelect({
@@ -7675,6 +7841,8 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
       pickNode: !!sourceFor,
       // Nó inteiro só faz sentido criando componentes, não ligando um existente.
       allowWholeNode: typeof targetCallback !== "function",
+      // Criando componentes: seleção múltipla e promoção de uma vez.
+      onPromote: typeof targetCallback !== "function" ? (list) => promotePicks(list) : null,
       onSelect: (target) => {
         if (!target) return;
         selectedTarget = target;
@@ -8508,6 +8676,55 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
       }
       detailsPanel.append(wholeRow);
     }
+  }
+
+  /**
+   * Promove de uma vez o que foi marcado no Target Picker: nó inteiro vira um
+   * widget "nó inteiro"; parâmetro solto vira um componente próprio. Entram
+   * empilhados a partir do ponto de onde o seletor foi aberto — ou, vindo do
+   * "+ Add" de um grupo, como itens dele.
+   */
+  function promotePicks(list) {
+    if (!list?.length) return;
+    pushUndo(host);
+    const layout = host.properties[PROP];
+    const created = [];
+    if (segmentCtrl) {
+      if (!Array.isArray(segmentCtrl.items)) segmentCtrl.items = [];
+      for (const p of list) {
+        const only = p.whole ? null : p.widgets;
+        const tmp = renameClone(layout, { kind: "segment", items: wholeNodeItems(host, p.node, only) });
+        segmentCtrl.items.push(...tmp.items);
+      }
+      if (segmentCtrl.name) created.push(segmentCtrl.name);
+    } else {
+      const zoneList = section.controls || (section.controls = []);
+      const x0 = initialPos?.x ?? 16;
+      let y = initialPos?.y ?? 16;
+      const place = (c) => {
+        const spot = findFreeSpot(zoneList, c.x, c.y, c.w, c.h);
+        c.x = spot.x;
+        c.y = spot.y;
+        zoneList.push(c);
+        ensureComponentName(layout, c);
+        created.push(c.name);
+        y = spot.y + c.h + 16;
+      };
+      for (const p of list) {
+        if (p.whole) {
+          place(buildWholeNodeCtrl(host, p.node, "row", { x: x0, y }));
+          continue;
+        }
+        for (const w of (p.node.widgets || []).filter((x) => p.widgets.has(x.name))) {
+          place({ ...singleCtrlFor(host, p.node, w), x: x0, y });
+        }
+      }
+    }
+    state.selectedNames = new Set(created);
+    state.selectedName = created[created.length - 1] || null;
+    backdrop.remove();
+    state.refresh();
+    showLegoToast(`Promoted ${created.length} item${created.length === 1 ? "" : "s"}`);
   }
 
   /** Insere o nó inteiro: como grupo novo, ou como itens do grupo aberto. */
