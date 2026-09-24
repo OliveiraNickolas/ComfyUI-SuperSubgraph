@@ -2684,11 +2684,11 @@ const CSS_OUTPUT = `
 /* Arraste entre grupos, zonas e sub-abas: feedback de entrada e saída */
 const CSS_DRAG = `
 .lego-ss-enter{margin-left:auto;margin-right:6px}
-.lego-ss-nav{position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:1000;display:flex;align-items:center;gap:10px;
-  padding:6px 10px 6px 8px;border-radius:10px;background:rgba(24,24,28,0.94);border:1px solid rgba(168,85,247,0.55);
+.lego-ss-nav{position:fixed;top:50px;left:220px;z-index:1000;display:flex;align-items:center;gap:8px;height:32px;box-sizing:border-box;
+  padding:0 10px 0 6px;border-radius:8px;background:rgba(24,24,28,0.94);border:1px solid rgba(168,85,247,0.55);
   box-shadow:0 8px 24px rgba(0,0,0,0.45);color:#e5e7eb;font:500 13px system-ui,sans-serif;backdrop-filter:blur(6px)}
 .lego-ss-nav-badge{padding:2px 5px;border-radius:4px;background:#a855f7;color:#fff;font:800 10px/1.2 system-ui,sans-serif}
-.lego-ss-nav-back{display:flex;align-items:center;gap:4px;padding:5px 10px 5px 6px;border-radius:7px;border:1px solid rgba(255,255,255,0.14);
+.lego-ss-nav-back{display:flex;align-items:center;gap:4px;padding:3px 9px 3px 5px;border-radius:7px;border:1px solid rgba(255,255,255,0.14);
   background:rgba(255,255,255,0.06);color:inherit;font:600 12.5px system-ui,sans-serif;cursor:pointer}
 .lego-ss-nav-back:hover{background:rgba(168,85,247,0.28);border-color:rgba(168,85,247,0.7)}
 .lego-ss-nav-crumbs{display:flex;align-items:center;gap:6px;min-width:0}
@@ -12128,7 +12128,28 @@ function renderSuperNavBar() {
   const badge = el("span", "lego-ss-nav-badge", "SS");
   bar.prepend(badge);
   document.body.append(bar);
+  placeSuperNavBar();
 }
+
+/**
+ * A barra fica logo à direita do seletor nativo "Graph" (view-mode-toggle),
+ * na mesma altura dele; sem ele, no canto superior esquerdo do canvas.
+ */
+function placeSuperNavBar() {
+  const bar = document.querySelector(".lego-ss-nav");
+  if (!bar) return;
+  const anchor = document.querySelector('[data-testid="view-mode-toggle"]');
+  const r = anchor?.getBoundingClientRect();
+  if (r && r.width > 0) {
+    bar.style.left = `${Math.round(r.right + 8)}px`;
+    bar.style.top = `${Math.round(r.top + (r.height - bar.offsetHeight) / 2)}px`;
+  } else {
+    const c = app.canvas?.canvas?.getBoundingClientRect?.();
+    bar.style.left = `${Math.round((c?.left || 60) + 12)}px`;
+    bar.style.top = `${Math.round((c?.top || 40) + 10)}px`;
+  }
+}
+window.addEventListener("resize", placeSuperNavBar);
 
 /** Abre o grafo de dentro do Super Subgraph no canvas. */
 function enterSuper(sn) {
@@ -12151,7 +12172,9 @@ function enterSuper(sn) {
       if (app.canvas?.graph !== SS_NAV[SS_NAV.length - 1].inner) {
         SS_NAV.length = 0;
         renderSuperNavBar();
+        return;
       }
+      placeSuperNavBar();   // acompanha o seletor "Graph" se ele mudar de lugar
     }, 500);
   }
 }
