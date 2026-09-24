@@ -1,0 +1,15 @@
+{
+  "name": "comfyui-supersubgraph-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run.mjs unit browser",
+    "test:unit": "node tests/run.mjs unit",
+    "test:browser": "node tests/run.mjs browser",
+    "test:e2e": "node tests/run.mjs e2e"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.3",
+    "playwright-core": "1.56"
+  }
+}

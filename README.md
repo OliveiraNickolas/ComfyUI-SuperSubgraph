@@ -36,3 +36,14 @@ git clone https://github.com/OliveiraNickolas/ComfyUI-SuperSubgraph.git
 ```
 
 Restart ComfyUI and refresh your browser. Updates that change `super_subgraph_node.py` or `__init__.py` need a ComfyUI restart; frontend-only updates just need a browser refresh (Ctrl+F5).
+
+## Tests
+
+```bash
+npm ci
+npm test            # jsdom unit tests + Chromium UI tests
+npm run test:e2e    # needs ComfyUI running with this extension (COMFY_URL, default http://127.0.0.1:8188/)
+```
+
+Set `CHROME_PATH` if Chromium is not found automatically. GitHub Actions runs every suite,
+including the end-to-end suite against a real ComfyUI on CPU.

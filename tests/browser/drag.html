@@ -1,0 +1,32 @@
+<!doctype html><html><body style="background:#1b1b1f;margin:0;padding:20px;font-family:sans-serif"><div id="wrap" style="width:760px"></div>
+<script>
+globalThis.__app = { canvas: { ds: { scale: 1 }, setDirty(){} }, graph: { _nodes: [], setDirtyCanvas(){} } };
+globalThis.__api = { apiURL: p => p, fetchApi: async () => ({ ok:false }), addEventListener(){} };
+</script>
+<script type="module">
+import * as M from "./mod.mjs";
+const widgets = [
+  { name: "steps", type: "number", value: 20, options: { min: 1, max: 100, step: 10 } },
+  { name: "flag", type: "toggle", value: true },
+  { name: "mode", type: "combo", value: "a", options: { values: ["a","b"] } },
+  { name: "flag2", type: "toggle", value: false },
+];
+const host = { id: 1, title: "T", size: [760, 400], properties: {}, widgets, graph: globalThis.__app.graph, flags: {},
+  addDOMWidget(n, t, el) { widgets.push({ name: n, element: el }); document.getElementById("wrap").append(el); return widgets.at(-1); },
+  setSize(s){ this.size = s; }, computeSize(){ return [1,1]; } };
+window.__host = host;
+host.properties.ui_layout = { schema: 2, activeTab: 0, tabs: [{ name: "Main", sections: [
+  { header: "ZONE A", controls: [
+    { name: "HGroup1", kind: "segment", x: 16, y: 16, w: 560, h: 64, items: [
+      { name: "Stepper1", kind: "number", bind: "steps", label: "Steps" },
+      { name: "Switch1", kind: "toggle", bind: "flag", label: "Flag" },
+      { name: "Dropdown1", kind: "combo", bind: "mode", label: "Mode" } ] },
+    { name: "VGroup1", kind: "vsegment", x: 16, y: 112, w: 240, h: 176, items: [ { name: "Label1", kind: "label", text: "Hi", label: "Hi" } ] },
+    { name: "Switch2", kind: "toggle", bind: "flag2", label: "Flag 2", x: 320, y: 128, w: 160, h: 48 } ] },
+  { header: "ZONE B", activeTab: 0, tabs: [ { name: "Alpha", controls: [] }, { name: "Beta", controls: [] }, { name: "Gamma", controls: [] } ] },
+  { header: "ZONE C", controls: [] },
+] }] };
+window.__st = M.attach(host); __st.edit = true; __st.refresh();
+window.__L = () => host.properties.ui_layout.tabs[0].sections;
+window.__ready = true;
+</script></body></html>

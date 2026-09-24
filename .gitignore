@@ -6,3 +6,6 @@ __pycache__/
 *.bak
 .vscode/
 .idea/
+node_modules/
+tests/.build/
+tests/.out/
