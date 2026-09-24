@@ -1,0 +1,24 @@
+<!doctype html><html><body style="background:#1b1b1f;margin:0;padding:20px;font-family:sans-serif"><div id="wrap" style="width:760px"></div>
+<script>
+globalThis.__app = { canvas: { ds: { scale: 1 }, setDirty(){} }, graph: { _nodes: [], setDirtyCanvas(){} } };
+globalThis.__api = { apiURL: p => p, fetchApi: async () => ({ ok:false }), addEventListener(){} };
+</script>
+<script type="module">
+import * as M from "./mod.mjs";
+const lora = { id: 12, type: "LoraLoader", title: "Load LoRA", widgets: [
+  { name: "lora_name", type: "combo", value: "style/anime_v2.safetensors", options: { values: ["style/anime_v2.safetensors", "detail.safetensors"] } },
+  { name: "strength_model", type: "number", value: 1, options: { min: -100, max: 100, step: 0.1, precision: 2 } },
+  { name: "strength_clip", type: "number", value: 1, options: { min: -100, max: 100, step: 0.1, precision: 2 } } ] };
+const clip = { id: 6942, type: "CLIPLoader", title: "Load CLIP", widgets: [
+  { name: "clip_name", type: "combo", value: "qwen3vl_32b.safetensors", options: { values: ["qwen3vl_32b.safetensors"] } },
+  { name: "type", type: "combo", value: "minimax", options: { values: ["minimax","sd3"] } },
+  { name: "device", type: "combo", value: "default", options: { values: ["default","cpu"] } } ] };
+const widgets = [];
+const host = { id: 1, title: "T", size: [760, 400], properties: {}, widgets, graph: globalThis.__app.graph, flags: {}, subgraph: { _nodes: [lora, clip] },
+  addDOMWidget(n, t, el) { widgets.push({ name: n, element: el }); document.getElementById("wrap").append(el); return widgets.at(-1); },
+  setSize(s){ this.size = s; }, computeSize(){ return [1,1]; } };
+host.properties.ui_layout = { schema: 2, activeTab: 0, tabs: [{ name: "Main", sections: [ { header: "ZONE", controls: [] } ] }] };
+window.__host = host; window.__lora = lora;
+window.__st = M.attach(host); __st.edit = true; __st.refresh();
+window.__ready = true;
+</script></body></html>

@@ -1,0 +1,71 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Syntax
+        run: |
+          node --check web/js/super_subgraph.js
+          python3 -m py_compile super_subgraph_node.py __init__.py
+          for f in locales/*/commands.json; do python3 -m json.tool "$f" > /dev/null; done
+      - run: npm ci
+      - name: Unit (jsdom) + browser (Chrome) tests
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: npm test
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ComfyUI-SuperSubgraph
+      - uses: actions/checkout@v4
+        with:
+          repository: comfyanonymous/ComfyUI
+          path: ComfyUI
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install ComfyUI (CPU)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install -r ComfyUI/requirements.txt
+          ln -s "$GITHUB_WORKSPACE/ComfyUI-SuperSubgraph" ComfyUI/custom_nodes/ComfyUI-SuperSubgraph
+      - name: Start ComfyUI
+        working-directory: ComfyUI
+        run: |
+          nohup python main.py --cpu --listen 127.0.0.1 --port 8188 --disable-auto-launch > ../server.log 2>&1 &
+          for i in $(seq 1 120); do curl -sf http://127.0.0.1:8188/ > /dev/null && break; sleep 2; done
+          curl -sf http://127.0.0.1:8188/object_info/SuperSubgraph | grep -q SuperSubgraph
+      - name: E2E tests (real ComfyUI)
+        working-directory: ComfyUI-SuperSubgraph
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: |
+          npm ci
+          node tests/run.mjs e2e
+      - name: Server log
+        if: always()
+        run: tail -n 200 server.log
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: screenshots
+          path: ComfyUI-SuperSubgraph/tests/.out
