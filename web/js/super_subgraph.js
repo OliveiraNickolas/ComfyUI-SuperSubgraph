@@ -2683,6 +2683,13 @@ const CSS_OUTPUT = `
 
 /* Arraste entre grupos, zonas e sub-abas: feedback de entrada e saída */
 const CSS_DRAG = `
+.lego-ss-icon{position:relative;display:inline-block;width:16px;height:16px;flex:none}
+.lego-ss-icon::before{content:"";position:absolute;inset:0;background-color:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m15 15 6 6m-6-6v4.8m0-4.8h4.8'/%3E%3Cpath d='M9 19.8V15m0 0H4.2M9 15l-6 6'/%3E%3Cpath d='M15 4.2V9m0 0h4.8M15 9l6-6'/%3E%3Cpath d='M9 4.2V9m0 0H4.2M9 9 3 3'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m15 15 6 6m-6-6v4.8m0-4.8h4.8'/%3E%3Cpath d='M9 19.8V15m0 0H4.2M9 15l-6 6'/%3E%3Cpath d='M15 4.2V9m0 0h4.8M15 9l6-6'/%3E%3Cpath d='M9 4.2V9m0 0H4.2M9 9 3 3'/%3E%3C/svg%3E") center/contain no-repeat}
+.lego-ss-icon::after{content:"SS";position:absolute;right:-6px;bottom:-5px;padding:1px 2px;border-radius:3px;
+  background:#a855f7;color:#fff;font:800 7px/1 system-ui,sans-serif;letter-spacing:-.02em;
+  box-shadow:0 0 0 1.5px var(--comfy-menu-bg,#1e1e1e)}
 .lego-whole-node{display:flex;flex-direction:column;gap:6px;margin:8px 0 4px;padding:8px;border-radius:8px;
   background:rgba(59,130,246,0.10);border:1px solid rgba(59,130,246,0.35)}
 .lego-whole-node-title{font-size:12px;font-weight:700;color:#e5e7eb}
@@ -12104,8 +12111,10 @@ app.registerExtension({
   commands: [
     {
       id: "SuperSubgraph.ConvertSelection",
-      label: "Convert Selection to Super Subgraph",
-      icon: "pi pi-th-large",
+      label: "Convert Selection to SuperSubgraph",
+      // Mesmo ícone do "Convert to Subgraph" nativo (lucide shrink), com o selo
+      // "SS" — desenhado em CSS (.lego-ss-icon), já que a barra só aceita classe.
+      icon: "lego-ss-icon",
       function: () => convertSelectionToSuper(),
     },
   ],
@@ -12190,7 +12199,7 @@ app.registerExtension({
     const sel = selectedNodes();
     if (!sel.length) return [];
     return [null, {
-      content: `Convert Selection to Super Subgraph (${sel.length})`,
+      content: `Convert Selection to SuperSubgraph (${sel.length})`,
       callback: () => convertSelectionToSuper(sel),
     }];
   },
@@ -12203,7 +12212,7 @@ app.registerExtension({
     const sel = selectedNodes();
     if (sel.length && sel.includes(node)) {
       items.push({
-        content: `Convert Selection to Super Subgraph (${sel.length})`,
+        content: `Convert Selection to SuperSubgraph (${sel.length})`,
         callback: () => convertSelectionToSuper(sel),
       });
     }
