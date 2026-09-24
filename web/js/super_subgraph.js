@@ -2327,6 +2327,17 @@ textarea.lego-in{resize:vertical;min-height:75px;font-family:ui-monospace,SFMono
 .lego-ctx-item:hover{background:var(--lego-accent);color:#fff}
 .lego-ctx-item.danger:hover{background:#ef4444;color:#fff}
 .lego-ctx-label{flex:1}
+.lego-seed-mode{flex:none;min-width:30px;height:24px;margin-left:4px;padding:0 6px;border-radius:6px;border:1px solid var(--lego-line);background:rgba(255,255,255,.05);color:var(--lego-dim);font:700 10.5px/22px system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.lego-seed-mode:hover{border-color:var(--lego-accent);color:var(--lego-text)}
+.lego-seed-mode[data-mode="randomize"],.lego-seed-mode[data-mode="increment"],.lego-seed-mode[data-mode="decrement"]{color:#c4b5fd;border-color:rgba(168,85,247,.5)}
+.lego-run{display:flex;flex-direction:column;gap:5px;margin:0 0 10px}
+.lego-run-label{font-size:11px;color:var(--lego-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lego-run-track{height:4px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+.lego-run-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#a855f7,#22c55e);transition:width .25s}
+.lego-run-error{display:flex;align-items:flex-start;gap:0;padding:7px 10px;border-radius:8px;background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.5);color:#fecaca;font-size:11.5px;line-height:1.35;max-height:64px;overflow:hidden}
+.lego-run-error b{white-space:nowrap}
+.lego-run-error span{flex:1;min-width:0;word-break:break-word}
+.lego-run-close{flex:none;border:0;background:none;color:inherit;opacity:.7;cursor:pointer;padding:0 0 0 6px}
 .lego-ctx-hint{margin-left:18px;font-size:10.5px;opacity:.5}
 .lego-ctx-sep{height:1px;margin:3px 6px;background:var(--lego-line)}
 
@@ -3949,6 +3960,54 @@ function mkSlider(node, w, ctrl, state) {
   return wrap;
 }
 
+/* ── Modo da seed (control after generate) ──────────────────────────────
+ * Número com o widget "control_after_generate" do ComfyUI ao lado ganha um
+ * botão que mostra e troca o modo: fixo, +1, −1 ou aleatório a cada execução.
+ */
+const SEED_MODE_INFO = {
+  fixed: ["FIX", "Fixed: the value stays the same"],
+  increment: ["+1", "Increment: +1 after each run"],
+  decrement: ["\u22121", "Decrement: \u22121 after each run"],
+  randomize: ["", "Randomize: a new random value after each run"],
+};
+function controlWidgetOf(node, w) {
+  // O nome varia com a versão do frontend ("control_after_generate" ou o
+  // próprio valor padrão, "fixed"); o que não muda são os valores do combo.
+  const isCtl = (x) => !!x && x !== w && (
+    (typeof x.name === "string" && /^control_(after|before)_generate$/.test(x.name)) ||
+    (Array.isArray(x.options?.values) && x.options.values.includes("randomize") && x.options.values.includes("increment")));
+  const linked = (w?.linkedWidgets || []).find(isCtl);
+  if (linked) return linked;
+  const list = node?.widgets || [];
+  const next = list[list.indexOf(w) + 1];
+  return isCtl(next) ? next : null;
+}
+function seedModeButton(node, w, state) {
+  const cw = controlWidgetOf(node, w);
+  if (!cw) return null;
+  const b = el("button", "lego-seed-mode");
+  b.type = "button";
+  const modes = () => (Array.isArray(cw.options?.values) && cw.options.values.length ? cw.options.values : Object.keys(SEED_MODE_INFO));
+  const paint = () => {
+    const v = String(cw.value ?? "fixed");
+    const [txt, tip] = SEED_MODE_INFO[v] || [v, v];
+    b.dataset.mode = v;
+    b.innerHTML = v === "randomize" ? glyph("dice", 13) : esc(txt);
+    b.title = `${tip} \u2014 click to change`;
+  };
+  paint();
+  b.addEventListener("pointerdown", eatPointer);
+  b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const list = modes();
+    const next = list[(list.indexOf(cw.value) + 1) % list.length];
+    writeWidget(node, cw, next);
+    paint();
+  });
+  state.watch(cw, paint);
+  return b;
+}
+
 function mkNumber(node, w, ctrl, state) {
   const o = w.options || {};
   const step = ctrl.step ?? realStep(o);
@@ -3988,6 +4047,8 @@ function mkNumber(node, w, ctrl, state) {
     });
     wrap.append(die);
   }
+  const seedMode = seedModeButton(node, w, state);
+  if (seedMode) wrap.append(seedMode);
 
   state.watch(w, paint);
   return wrap;
@@ -4586,6 +4647,9 @@ function mkStepNumber(node, w, ctrl, state) {
     writeWidget(node, w, isInt ? Math.round(v) : v);
     paint();
   });
+
+  const seedMode = seedModeButton(node, w, state);
+  if (seedMode) wrap.append(seedMode);
 
   state.watch(w, paint);
   return wrap;
@@ -12221,6 +12285,7 @@ function attach(node) {
       state.seen.clear();
       state.outputViews = [];
       host.replaceChildren(buildCard(node, state));
+      paintRun(node);
       // Depois do desenho: o `buildControl` normaliza x/y/w/h e nomes.
       node.__legoLastSnap = JSON.stringify(node.properties?.[PROP] || {});
       hideNative(node);
@@ -12387,6 +12452,20 @@ function setupSuperNode(node) {
     // grafo de dentro é gerado na hora de enfileirar.
     w.value = "";
     w.serializeValue = async () => JSON.stringify(await buildSuperApi(node));
+    // O ComfyUI aplica o "control after generate" (seed +1, aleatória...)
+    // só nos widgets dos nós do grafo que ele enfileira; os de dentro de um
+    // Super Subgraph ficavam parados. Este widget repassa para eles
+    // (e um Super Subgraph de dentro repassa adiante).
+    const passQueued = (cb) => (opts) => {
+      for (const n of innerNodesOf(node)) {
+        if (n.mode === 2 || n.mode === 4) continue;   // mudo / bypass
+        for (const iw of n.widgets || []) {
+          try { iw?.[cb]?.(opts); } catch (e) { console.warn(LOG, cb, "failed on inner", n.id, e); }
+        }
+      }
+    };
+    w.beforeQueued = passQueued("beforeQueued");
+    w.afterQueued = passQueued("afterQueued");
   }
 }
 
@@ -13085,6 +13164,110 @@ function watchSuperBoundary() {
   if (!ssBoundaryRaf) ssBoundaryRaf = requestAnimationFrame(drawSuperBoundary);
 }
 
+/* ── Execução vista no cartão ────────────────────────────────────────────
+ * Barra de progresso com o nó de dentro que está rodando, e o erro (com o
+ * nó de dentro que falhou) numa faixa vermelha. Os ids de execução dos nós
+ * de dentro vêm como "<host>.<id>" (Super Subgraph) ou "<host>:<id>" (nativo).
+ */
+const RUN = new Map();   // id do host -> estado
+
+function runOf(host) {
+  const k = String(host.id);
+  let r = RUN.get(k);
+  if (!r) RUN.set(k, (r = { running: false, done: new Set(), cur: null, value: 0, max: 0, err: null }));
+  return r;
+}
+
+function innerIdOf(host, id) {
+  const s = String(id ?? ""), h = String(host.id);
+  if (s.startsWith(`${h}.`)) return s.slice(h.length + 1).split(".")[0];
+  if (s.startsWith(`${h}:`)) return s.slice(h.length + 1).split(":")[0];
+  return null;
+}
+
+function innerTitle(host, iid) {
+  const n = innerNodesOf(host).find((x) => String(x.id) === String(iid));
+  return n ? (n.title || n.type) : `#${iid}`;
+}
+
+function paintRun(node) {
+  const card = node?.__legoHost?.querySelector?.(".lego-card");
+  if (!card) return;
+  const r = RUN.get(String(node.id));
+  let bar = card.querySelector(":scope > .lego-run");
+  if (!r || (!r.running && !r.err)) { bar?.remove(); return; }
+  if (!bar) {
+    bar = el("div", "lego-run");
+    const head = card.querySelector(":scope > .lego-head");
+    if (head) head.after(bar); else card.prepend(bar);
+  }
+  bar.replaceChildren();
+  if (r.running) {
+    const total = innerNodesOf(node).length;
+    const part = r.max ? Math.min(1, r.value / r.max) : 0;
+    const frac = total ? Math.min(1, (r.done.size + part) / total) : part;
+    const label = r.cur
+      ? `Running \u00b7 ${innerTitle(node, r.cur)}${r.max > 1 ? ` ${r.value}/${r.max}` : ""}`
+      : `Running${r.max > 1 ? ` ${r.value}/${r.max}` : "\u2026"}`;
+    const track = el("div", "lego-run-track");
+    const fill = el("div", "lego-run-fill");
+    fill.style.width = `${Math.round(frac * 100)}%`;
+    track.append(fill);
+    bar.append(el("div", "lego-run-label", label), track);
+  }
+  if (r.err) {
+    const box = el("div", "lego-run-error");
+    const where = r.err.where ? `Error in ${innerTitle(node, r.err.where)}` : "Error";
+    box.append(el("b", "", where), el("span", "", `: ${r.err.msg}`));
+    const x = glyphBtn("lego-run-close", "close", 11);
+    x.title = "Dismiss";
+    x.addEventListener("pointerdown", eatPointer);
+    x.addEventListener("click", (e) => { e.stopPropagation(); r.err = null; paintRun(node); });
+    box.append(x);
+    box.title = r.err.msg;
+    bar.append(box);
+  }
+}
+
+function onRunEvent(type, d) {
+  for (const host of ATTACHED) {
+    const r = runOf(host);
+    const h = String(host.id);
+    let changed = false;
+    if (type === "execution_start") {
+      r.running = false; r.done.clear(); r.cur = null; r.value = r.max = 0; r.err = null;
+      changed = true;
+    } else if (type === "progress_state") {
+      for (const n of Object.values(d?.nodes || {})) {
+        const id = String(n.node_id ?? "");
+        const iid = innerIdOf(host, id);
+        if (id !== h && !iid) continue;
+        changed = true;
+        if (n.state === "running") {
+          r.running = true;
+          if (iid) { r.cur = iid; r.value = n.value || 0; r.max = n.max || 0; }
+          else if (!r.cur) { r.value = n.value || 0; r.max = n.max || 0; }
+        } else if (n.state === "finished" && iid) {
+          r.done.add(iid);
+        }
+      }
+    } else if (type === "executing") {
+      if (d == null) { if (r.running) { r.running = false; r.cur = null; changed = true; } }
+      else if (String(d) === h || innerIdOf(host, d)) { if (!r.running) { r.running = true; changed = true; } }
+    } else if (type === "execution_error") {
+      const id = String(d?.node_id ?? "");
+      if (id === h || innerIdOf(host, id)) {
+        r.err = { msg: String(d.exception_message || d.exception_type || "failed").trim(), where: innerIdOf(host, id) || r.cur };
+        r.running = false;
+        changed = true;
+      }
+    } else if (type === "execution_interrupted" || type === "execution_success") {
+      if (r.running) { r.running = false; r.cur = null; changed = true; }
+    }
+    if (changed) paintRun(host);
+  }
+}
+
 /** Altura do cartão em si — o host mede o nó, não o conteúdo. */
 function cardHeight(host) {
   if (!host) return 260;
@@ -13198,6 +13381,9 @@ app.registerExtension({
       if (d.display_node != null && String(d.display_node) !== String(d.node)) recordOutput(d.display_node, d.output);
       notifyOutputViews();
     });
+    for (const type of ["execution_start", "progress_state", "executing", "execution_error", "execution_interrupted", "execution_success"]) {
+      api.addEventListener(type, (e) => { try { onRunEvent(type, e?.detail); } catch (err) { console.warn(LOG, "run feedback", err); } });
+    }
     // Outputs que o frontend já guardava (execução anterior ao carregamento).
     try {
       for (const [k, v] of Object.entries(app.nodeOutputs || {})) if (!OUTPUTS.has(k)) recordOutput(k, v);
