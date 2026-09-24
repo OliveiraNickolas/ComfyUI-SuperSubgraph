@@ -2683,6 +2683,20 @@ const CSS_OUTPUT = `
 
 /* Arraste entre grupos, zonas e sub-abas: feedback de entrada e saída */
 const CSS_DRAG = `
+.lego-ss-enter{margin-left:auto;margin-right:6px}
+.lego-ss-nav{position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:1000;display:flex;align-items:center;gap:10px;
+  padding:6px 10px 6px 8px;border-radius:10px;background:rgba(24,24,28,0.94);border:1px solid rgba(168,85,247,0.55);
+  box-shadow:0 8px 24px rgba(0,0,0,0.45);color:#e5e7eb;font:500 13px system-ui,sans-serif;backdrop-filter:blur(6px)}
+.lego-ss-nav-badge{padding:2px 5px;border-radius:4px;background:#a855f7;color:#fff;font:800 10px/1.2 system-ui,sans-serif}
+.lego-ss-nav-back{display:flex;align-items:center;gap:4px;padding:5px 10px 5px 6px;border-radius:7px;border:1px solid rgba(255,255,255,0.14);
+  background:rgba(255,255,255,0.06);color:inherit;font:600 12.5px system-ui,sans-serif;cursor:pointer}
+.lego-ss-nav-back:hover{background:rgba(168,85,247,0.28);border-color:rgba(168,85,247,0.7)}
+.lego-ss-nav-crumbs{display:flex;align-items:center;gap:6px;min-width:0}
+.lego-ss-nav-crumb{background:none;border:none;color:#a1a1aa;font:500 12.5px system-ui,sans-serif;cursor:pointer;padding:2px 3px;border-radius:4px;
+  white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+button.lego-ss-nav-crumb:hover{color:#fff;background:rgba(255,255,255,0.08)}
+.lego-ss-nav-crumb.current{color:#fff;font-weight:700;cursor:default}
+.lego-ss-nav-sep{color:#71717a}
 .lego-ss-icon{position:relative;display:inline-block;width:16px;height:16px;flex:none}
 .lego-ss-icon::before{content:"";position:absolute;inset:0;background-color:currentColor;
   -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m15 15 6 6m-6-6v4.8m0-4.8h4.8'/%3E%3Cpath d='M9 19.8V15m0 0H4.2M9 15l-6 6'/%3E%3Cpath d='M15 4.2V9m0 0h4.8M15 9l6-6'/%3E%3Cpath d='M9 4.2V9m0 0H4.2M9 9 3 3'/%3E%3C/svg%3E") center/contain no-repeat;
@@ -3667,6 +3681,11 @@ const GLYPHS = {
     '<path d="M3 12h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
   vdivider:
     '<path d="M12 3v18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
+  enter:
+    '<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>' +
+    '<path d="M9.5 16.5 14 12l-4.5-4.5M14 12H3.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>',
+  back:
+    '<path d="M15 5.5 8.5 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>',
   copy:
     '<rect x="8.5" y="8.5" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.9"/>' +
     '<path d="M5.5 15.5H4.5a2 2 0 0 1-2-2V4.5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
@@ -10081,6 +10100,13 @@ function buildCard(host, state) {
   txt.append(titleRow);
   head.append(txt);
 
+  if (isSuperNode(host)) {
+    const enter = glyphBtn("lego-iconbtn lego-ss-enter", "enter", 13, "Open this SuperSubgraph to explore and edit the nodes inside");
+    enter.addEventListener("pointerdown", eatPointer);
+    enter.addEventListener("click", (e) => { e.stopPropagation(); enterSuper(host); });
+    head.append(enter);
+  }
+
   const pencil = glyphBtn(`lego-iconbtn${state.edit ? " on" : ""}`, "pencil", 12);
   pencil.title = "Edit layout mode";
   pencil.addEventListener("pointerdown", eatPointer);
@@ -12051,6 +12077,100 @@ function unpackSuper(sn) {
   showLegoToast("Super Subgraph unpacked");
 }
 
+/* ── Entrar no Super Subgraph ─────────────────────────────────────────────
+ * O canvas passa a mostrar o grafo de dentro (é o mesmo LGraph que executa,
+ * então tudo o que se edita lá vale na próxima fila). Uma pilha guarda de
+ * onde se veio — e a vista de lá — para voltar, inclusive de um Super
+ * Subgraph dentro de outro.
+ */
+const SS_NAV = [];
+let ssNavWatch = null;
+
+function fitCanvasTo(graph) {
+  const c = app.canvas;
+  const nodes = graph?._nodes || graph?.nodes || [];
+  if (!c?.ds || !nodes.length) return;
+  const T = liteGraph()?.NODE_TITLE_HEIGHT || 30;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const n of nodes) {
+    x0 = Math.min(x0, n.pos[0]); y0 = Math.min(y0, n.pos[1] - T);
+    x1 = Math.max(x1, n.pos[0] + (n.size?.[0] || 200)); y1 = Math.max(y1, n.pos[1] + (n.size?.[1] || 80));
+  }
+  const cw = c.canvas?.clientWidth || window.innerWidth;
+  const ch = c.canvas?.clientHeight || window.innerHeight;
+  const scale = Math.max(0.2, Math.min(1.2, Math.min((cw - 160) / (x1 - x0 || 1), (ch - 200) / (y1 - y0 || 1))));
+  c.ds.scale = scale;
+  c.ds.offset = [(cw / scale - (x1 - x0)) / 2 - x0, (ch / scale - (y1 - y0)) / 2 - y0 + 20 / scale];
+}
+
+function renderSuperNavBar() {
+  document.querySelector(".lego-ss-nav")?.remove();
+  if (!SS_NAV.length) return;
+  const bar = el("div", "lego-ss-nav");
+  const back = el("button", "lego-ss-nav-back");
+  back.innerHTML = `${glyph("back", 14)}<span>Back</span>`;
+  back.title = "Leave this SuperSubgraph";
+  back.addEventListener("click", (e) => { e.stopPropagation(); exitSuper(); });
+  bar.append(back);
+  const crumbs = el("div", "lego-ss-nav-crumbs");
+  const root = el("button", "lego-ss-nav-crumb", "Workflow");
+  root.title = "Back to the main workflow";
+  root.addEventListener("click", (e) => { e.stopPropagation(); exitSuper(SS_NAV.length); });
+  crumbs.append(root);
+  SS_NAV.forEach((f, i) => {
+    crumbs.append(el("span", "lego-ss-nav-sep", "\u203a"));
+    const isLast = i === SS_NAV.length - 1;
+    const b = el(isLast ? "span" : "button", `lego-ss-nav-crumb${isLast ? " current" : ""}`, f.host.title || "SuperSubgraph");
+    if (!isLast) b.addEventListener("click", (e) => { e.stopPropagation(); exitSuper(SS_NAV.length - 1 - i); });
+    crumbs.append(b);
+  });
+  bar.append(crumbs);
+  const badge = el("span", "lego-ss-nav-badge", "SS");
+  bar.prepend(badge);
+  document.body.append(bar);
+}
+
+/** Abre o grafo de dentro do Super Subgraph no canvas. */
+function enterSuper(sn) {
+  const c = app.canvas;
+  const inner = ssInnerGraph(sn);
+  if (!c || !inner || typeof c.setGraph !== "function") return;
+  if (c.graph === inner) return;
+  closeObjectInspector();
+  SS_NAV.push({ host: sn, from: c.graph, inner, view: { offset: [...(c.ds?.offset || [0, 0])], scale: c.ds?.scale || 1 } });
+  c.deselectAll?.();
+  c.setGraph(inner);
+  fitCanvasTo(inner);
+  c.setDirty?.(true, true);
+  renderSuperNavBar();
+  // Se o workflow for trocado por fora (abrir outro, voltar pelo breadcrumb
+  // nativo...), a pilha deixa de valer e a barra some.
+  if (!ssNavWatch) {
+    ssNavWatch = setInterval(() => {
+      if (!SS_NAV.length) { clearInterval(ssNavWatch); ssNavWatch = null; return; }
+      if (app.canvas?.graph !== SS_NAV[SS_NAV.length - 1].inner) {
+        SS_NAV.length = 0;
+        renderSuperNavBar();
+      }
+    }, 500);
+  }
+}
+
+/** Volta `levels` níveis (1 = sai do Super Subgraph atual). */
+function exitSuper(levels = 1) {
+  const c = app.canvas;
+  let frame = null;
+  for (let i = 0; i < levels && SS_NAV.length; i++) frame = SS_NAV.pop();
+  if (!frame || !c) { renderSuperNavBar(); return; }
+  c.deselectAll?.();
+  c.setGraph(frame.from);
+  if (c.ds) { c.ds.offset = frame.view.offset; c.ds.scale = frame.view.scale; }
+  c.setDirty?.(true, true);
+  renderSuperNavBar();
+  // O de dentro pode ter mudado (nós novos, removidos): os cartões se refazem.
+  for (const f of [frame, ...SS_NAV]) f.host.__legoState?.refresh();
+}
+
 /** Altura do cartão em si — o host mede o nó, não o conteúdo. */
 function cardHeight(host) {
   if (!host) return 260;
@@ -12217,6 +12337,10 @@ app.registerExtension({
       });
     }
     if (isSuperNode(node)) {
+      items.push({
+        content: "Open SuperSubgraph",
+        callback: () => enterSuper(node),
+      });
       items.push({
         content: "Unpack Super Subgraph",
         callback: () => unpackSuper(node),
