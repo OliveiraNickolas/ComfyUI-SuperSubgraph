@@ -1010,6 +1010,9 @@ const GLYPHS = {
   folder:
     '<path d="M3 6.5h6l2 2.5h10v9.5a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 18.5z" ' +
     'fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>',
+  // Máscara: quadro com um pincel.
+  mask:
+    '<rect x="3" y="3" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M8 13c1.5-3 3.5-4.5 6-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M14.5 14.5l6-6a1.4 1.4 0 0 1 2 2l-6 6-2.6.6z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>',
   folderSearch:
     '<path d="M3 6.5h5.5l2 2H19a1.5 1.5 0 0 1 1.5 1.5v3M3 6.5v11.5A1.5 1.5 0 0 0 4.5 19.5h6.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<circle cx="15.5" cy="15.5" r="3.5" fill="none" stroke="currentColor" stroke-width="1.9"/>' +
@@ -1459,13 +1462,52 @@ function mkButton(node, w, ctrl) {
 /* ── Media grid ─────────────────────────────────────────────────────────── */
 
 function viewURL(name) {
-  const raw = String(name || "");
+  // O Mask Editor grava "clipspace/clipspace-mask-123.png [input]": o sufixo
+  // diz a pasta (input/output/temp) e não faz parte do nome do arquivo.
+  let raw = String(name || "");
+  let type = "input";
+  const m = /\s*\[(input|output|temp)\]$/.exec(raw);
+  if (m) { type = m[1]; raw = raw.slice(0, m.index); }
   const i = raw.lastIndexOf("/");
   const sub = i > 0 ? raw.slice(0, i) : "";
   const file = i > 0 ? raw.slice(i + 1) : raw;
   return api.apiURL(
-    `/view?filename=${encodeURIComponent(file)}&type=input&subfolder=${encodeURIComponent(sub)}&rand=${Math.random()}`
+    `/view?filename=${encodeURIComponent(file)}&type=${type}&subfolder=${encodeURIComponent(sub)}&rand=${Math.random()}`
   );
+}
+
+/**
+ * Abre o Mask Editor do ComfyUI para `node` (um Load Image, inclusive dentro
+ * de um Super Subgraph, que não está no canvas). O editor usa o nó de volta
+ * ("clipspace_return_node") e, ao salvar, grava a imagem mascarada no próprio
+ * widget — o cartão vê a troca pelo watcher e atualiza a miniatura.
+ */
+async function openMaskEditorFor(node, w) {
+  const CA = window.comfyAPI?.app?.ComfyApp;
+  if (typeof CA?.open_maskeditor !== "function") {
+    alert("Super Subgraph: this ComfyUI version has no Mask Editor API.");
+    return false;
+  }
+  if (!w?.value) { showLegoToast("Choose an image first"); return false; }
+  // O editor lê a imagem de `node.imgs`; um nó fora do canvas pode não ter carregado.
+  const src = viewURL(w.value);
+  const key = (u) => { try { const q = new URL(u, location.href).searchParams; return `${q.get("type")}/${q.get("subfolder")}/${q.get("filename")}`; } catch { return ""; } };
+  if (!node.imgs?.length || key(node.imgs[0]?.src) !== key(src)) {
+    const img = new Image();
+    img.src = src;
+    try { await img.decode(); } catch { showLegoToast("Could not load the image"); return false; }
+    node.imgs = [img];
+    node.imageIndex = 0;
+  }
+  CA.clipspace_return_node = node;
+  try {
+    CA.open_maskeditor();
+  } catch (e) {
+    console.error(LOG, "mask editor", e);
+    alert(`Super Subgraph: could not open the Mask Editor (${e.message}).`);
+    return false;
+  }
+  return true;
 }
 
 async function uploadTo(node, w, file) {
@@ -1828,6 +1870,20 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
   // 4. Barra de Controles Inferior
   const bar = el("div", "lego-media-bar");
   bar.append(sel, uploadBtn);
+
+  // Imagem: botão do Mask Editor (pintar a máscara direto do cartão).
+  if (!isVideo && !isAudio && w) {
+    const maskBtn = el("button", "lego-media-upload-btn lego-media-mask-btn");
+    maskBtn.type = "button";
+    maskBtn.innerHTML = glyph("mask", 15);
+    maskBtn.title = "Open in Mask Editor";
+    maskBtn.addEventListener("pointerdown", eatPointer);
+    maskBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openMaskEditorFor(node, w);
+    });
+    bar.append(maskBtn);
+  }
 
   box.append(thumb, bar, fileInput);
 
