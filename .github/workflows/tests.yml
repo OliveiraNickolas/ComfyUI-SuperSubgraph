@@ -25,7 +25,11 @@ jobs:
           CHROME_PATH: /usr/bin/google-chrome
         run: npm test
 
+  # O e2e (ComfyUI de verdade, ~3-4 min) roda no main depois do merge e sob
+  # pedido; nos PRs fica só o rápido (sintaxe + unit + navegador, ~1 min). O
+  # e2e completo já é rodado localmente antes de cada push.
   e2e:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:

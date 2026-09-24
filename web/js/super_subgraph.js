@@ -1185,12 +1185,14 @@ function mkSlider(node, w, ctrl, state) {
     const s = clamp(Math.round((v - min) / step) * step + min);
     return isInt ? Math.round(s) : Number(s.toFixed(dec));
   };
-  const paint = () => {
+  // `force`: repinta o campo mesmo com o cursor nele (depois do Enter), para
+  // o que foi digitado (".2") aparecer já normalizado ("0.2").
+  const paint = (force = false) => {
     const v = clamp(Number(w.value) || 0);
     const pct = max > min ? ((v - min) / (max - min)) * 100 : 0;
     fill.style.width = `${pct}%`;
     knob.style.left = `${pct}%`;
-    if (document.activeElement !== num) num.value = isInt ? String(Math.round(v)) : v.toFixed(dec);
+    if (force === true || document.activeElement !== num) num.value = isInt ? String(Math.round(v)) : String(Number(v.toFixed(dec)));
   };
   paint();
 
@@ -1227,7 +1229,7 @@ function mkSlider(node, w, ctrl, state) {
   num.addEventListener("change", () => {
     const v = parseFloat(num.value);
     writeWidget(node, w, Number.isFinite(v) ? snap(v) : w.value);
-    paint();
+    paint(true);
   });
   num.addEventListener("keydown", (e) => e.stopPropagation());
 
@@ -1293,8 +1295,8 @@ function mkNumber(node, w, ctrl, state) {
   num.type = "text";
   wrap.append(num);
 
-  const paint = () => {
-    if (document.activeElement !== num) num.value = String(w.value ?? "");
+  const paint = (force = false) => {
+    if (force === true || document.activeElement !== num) num.value = String(w.value ?? "");
   };
   paint();
 
@@ -1302,11 +1304,11 @@ function mkNumber(node, w, ctrl, state) {
   num.addEventListener("keydown", (e) => e.stopPropagation());
   num.addEventListener("change", () => {
     let v = parseFloat(num.value);
-    if (!Number.isFinite(v)) { paint(); return; }
+    if (!Number.isFinite(v)) { paint(true); return; }
     if (Number.isFinite(o.min)) v = Math.max(o.min, v);
     if (Number.isFinite(o.max)) v = Math.min(o.max, v);
     writeWidget(node, w, isInt ? Math.round(v) : v);
-    paint();
+    paint(true);
   });
 
   if (ctrl.seed) {
@@ -1938,8 +1940,8 @@ function mkStepNumber(node, w, ctrl, state) {
 
   wrap.append(btnDec, inp, btnInc);
 
-  const paint = () => {
-    if (document.activeElement !== inp) {
+  const paint = (force = false) => {
+    if (force === true || document.activeElement !== inp) {
       const v = Number(w.value) || 0;
       inp.value = isInt ? String(Math.round(v)) : String(v);
     }
@@ -1969,11 +1971,11 @@ function mkStepNumber(node, w, ctrl, state) {
   inp.addEventListener("keydown", (e) => e.stopPropagation());
   inp.addEventListener("change", () => {
     let v = parseFloat(inp.value);
-    if (!Number.isFinite(v)) { paint(); return; }
+    if (!Number.isFinite(v)) { paint(true); return; }
     if (Number.isFinite(min)) v = Math.max(min, v);
     if (Number.isFinite(max)) v = Math.min(max, v);
     writeWidget(node, w, isInt ? Math.round(v) : v);
-    paint();
+    paint(true);
   });
 
   const seedMode = seedModeButton(node, w, state);
