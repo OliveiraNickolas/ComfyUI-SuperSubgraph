@@ -9,7 +9,13 @@ Custom node for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) providing a
 - **Segment Element**: Group multiple controls into composite units inline.
 - **Workflow Parameter Binding**: Bind controls to node parameters in real-time with visual target selection.
 - **Native HiDPI**: Faithful node previews without scaling compression.
-- **Pure Frontend Architecture**: Layout and state persist cleanly in `node.properties.ui_layout`, serializing natively with your workflow.
+- **Layout in the workflow**: Layout and state persist in `node.properties.ui_layout`, serializing natively with your workflow.
+- **Independent Super Subgraph node**: select nodes and use **Convert Selection to Super Subgraph** (selection toolbar, canvas or node right-click menu). The nodes move inside a `SuperSubgraph` node with its own engine — no native subgraph involved. Links crossing the selection become its inputs/outputs, and the card binds straight to the inner widgets. **Unpack Super Subgraph** (node right-click) puts the nodes back.
+
+## How the Super Subgraph engine works
+
+- **Frontend:** the inner nodes live in their own graph, off the canvas, saved in `node.properties.ss_inner`. When you queue, ComfyUI's own `graphToPrompt` turns that graph into the API format (bypass, mute, reroutes and primitives behave as usual).
+- **Backend** (`super_subgraph_node.py`): the node expands that graph at execution time with ComfyUI's *node expansion*. Outside links are wired straight into the inner nodes (`rawLink`), and inner Preview/Save nodes run and show their results on the Super Subgraph node.
 
 ## Installation
 
@@ -20,4 +26,4 @@ cd ComfyUI/custom_nodes
 git clone https://github.com/OliveiraNickolas/ComfyUI-SuperSubgraph.git
 ```
 
-Restart ComfyUI and refresh your browser.
+Restart ComfyUI and refresh your browser. Updates that change `super_subgraph_node.py` or `__init__.py` need a ComfyUI restart; frontend-only updates just need a browser refresh (Ctrl+F5).
