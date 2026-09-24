@@ -973,6 +973,12 @@ export const CSS = `
 }
 
 .lego-head{display:flex;align-items:center;gap:10px}
+/* Cartão fundido ao nó: sem moldura própria, o título fica só na barra do nó. */
+.lego-card.merged,.lego-card.merged.has-node-color{border:0;box-shadow:none;background:transparent;padding:4px 2px 2px}
+.lego-head-tools{display:inline-flex;align-items:center;gap:6px;flex:none;margin-left:auto}
+.lego-sec-h > .lego-head-tools{order:2;margin-left:8px}
+.lego-sec-h::after{order:1}
+.lego-tabs > .lego-head-tools{align-self:center;padding-left:8px}
 .lego-head-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .lego-title-row{display:flex;align-items:center;gap:8px;min-width:0}
 .lego-title{font-size:15px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
