@@ -11810,7 +11810,26 @@ function applySuperSlots(node) {
   });
 }
 
-/** Layout inicial: cada nó de dentro com parâmetros vira um widget "nó inteiro". */
+/**
+ * Layout de um Super Subgraph recém-compactado: VAZIO. Nada é promovido
+ * sozinho — o que aparece no cartão é escolha de quem monta.
+ */
+function emptySuperLayout(node) {
+  node.properties[PROP] = {
+    schema: SCHEMA,
+    title: (node.title || "Super Subgraph").toUpperCase(),
+    subtitle: "Super Subgraph",
+    badge: `${innerNodesOf(node).length} nodes`,
+    activeTab: 0,
+    tabs: [{ name: "Controls", sections: [{ header: "PARAMETERS", controls: [] }] }],
+  };
+  return node.properties[PROP];
+}
+
+/**
+ * Layout automático (só sob pedido, em "Recreate Layout from Widgets"):
+ * cada nó de dentro com parâmetros vira um widget "nó inteiro".
+ */
 function superAutoLayout(node) {
   const base = autoLayout(node);   // cabeçalho e aba Output (se houver Preview/Save dentro)
   node.properties[PROP] = { ...base, tabs: [] };
@@ -11956,7 +11975,7 @@ function convertSelectionToSuper(nodes = selectedNodes()) {
     }
   });
 
-  superAutoLayout(sn);
+  emptySuperLayout(sn);
   attach(sn);
   graph.afterChange?.();
   app.canvas?.selectItems?.([sn]);
