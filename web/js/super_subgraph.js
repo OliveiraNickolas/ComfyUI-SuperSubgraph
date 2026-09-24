@@ -10875,7 +10875,30 @@ function cardHeight(host) {
 }
 
 /**
+ * Largura que o nó precisa para nenhum componente sair pela direita da zona
+ * (0 = a atual basta). Cada zona diz quanto falta; numa zona de 50% cada px a
+ * mais no nó rende meio px na zona, por isso a proporção. Zona de largura fixa
+ * em px não cresce com o nó e fica de fora (senão o nó cresceria sem parar).
+ */
+function requiredNodeWidth(node, host) {
+  const hw = host?.clientWidth || 0;
+  if (!hw) return 0;
+  let extra = 0;
+  for (const box of host.querySelectorAll(".lego-sec-controls")) {
+    const list = box.__legoList;
+    const bw = box.clientWidth;
+    if (!list?.length || !bw) continue;
+    if (/px$/.test(box.closest(".lego-sec")?.style.width || "")) continue;
+    const right = Math.max(...list.map((c) => (typeof c.x === "number" ? c.x : 0) + (typeof c.w === "number" ? c.w : 0)));
+    const over = right + GRID - bw;
+    if (over > 0) extra = Math.max(extra, Math.ceil((over * hw) / bw));
+  }
+  return extra ? Math.ceil((node.size?.[0] || MIN_W) + extra) : 0;
+}
+
+/**
  * Dimensiona o nó a partir do cartão com histerese (mínimo 8px) para evitar flickering.
+ * A largura só cresce sozinha (até os componentes caberem); diminuir é com o usuário.
  */
 function resize(node, host) {
   if (!node || !host) return;
@@ -10885,10 +10908,10 @@ function resize(node, host) {
   const minW = MIN_W;
   const curW = Math.ceil(node.size?.[0] || minW);
   const curH = Math.ceil(node.size?.[1] || 0);
-  const targetW = Math.max(minW, curW);
+  const targetW = Math.max(minW, curW, requiredNodeWidth(node, host));
   const targetH = Math.ceil(top + h + PAD);
 
-  if (Math.abs(curH - targetH) >= 8 || curW < minW) {
+  if (Math.abs(curH - targetH) >= 8 || curW < targetW) {
     node.setSize([targetW, targetH]);
     requestCanvasDirty(node.graph);
   }
