@@ -19,7 +19,7 @@ Quickest way: on an empty card, click **Promote parameters** — the selector op
 - click a node **title** to pick the whole node (purple border) — it becomes a whole-node widget;
 - click a **parameter** to pick just it (green border) — it becomes its own component;
 - click again to unpick; clicking a parameter of a whole-picked node unpicks just that parameter;
-- **Promote (N)** (or Enter) adds everything at once, stacked from where you opened the selector; **Cancel** (or Esc) leaves without changes. Opened from a group's **+ Add**, the picks become items of that group.
+- **Promote (N)** (or Enter) adds everything at once, arranged side by side in rows that fit the zone (in the order the nodes sit on the canvas, top to bottom and left to right), starting where you opened the selector — or below what the zone already has; **Cancel** (or Esc) leaves without changes. Opened from a group's **+ Add**, the picks become items of that group.
 
 If a promoted parameter disappears (its node was deleted or changed), the component shows **widget missing** with **Rebind** (link it to another parameter) and **Remove**.
 

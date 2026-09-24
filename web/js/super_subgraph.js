@@ -6312,25 +6312,41 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
       if (segmentCtrl.name) created.push(segmentCtrl.name);
     } else {
       const zoneList = section.controls || (section.controls = []);
-      const x0 = initialPos?.x ?? 16;
-      let y = initialPos?.y ?? 16;
-      const place = (c) => {
-        const spot = findFreeSpot(zoneList, c.x, c.y, c.w, c.h);
-        c.x = spot.x;
-        c.y = spot.y;
+      // Os componentes saem arrumados: na ordem em que os nós estão no canvas
+      // (de cima para baixo, da esquerda para a direita), lado a lado até a
+      // largura da zona e então uma linha nova, alinhados na grade.
+      const ctrls = [];
+      const rowOf = (n) => Math.round((n.pos?.[1] || 0) / 80);
+      const sorted = [...list].sort((a, b) => (rowOf(a.node) - rowOf(b.node)) || ((a.node.pos?.[0] || 0) - (b.node.pos?.[0] || 0)));
+      for (const p of sorted) {
+        if (p.whole) { ctrls.push(buildWholeNodeCtrl(host, p.node, "row", { x: 0, y: 0 })); continue; }
+        for (const w of (p.node.widgets || []).filter((x) => p.widgets.has(x.name))) ctrls.push({ ...singleCtrlFor(host, p.node, w), x: 0, y: 0 });
+      }
+      // Nomes únicos entre si também: todos nascem antes de entrar na zona.
+      const reserved = new Set();
+      for (const c of ctrls) renameClone(layout, c, reserved);
+      const zoneEl = [...(host.__legoHost?.querySelectorAll(".lego-sec-controls") || [])].find((b) => b.__legoList === zoneList);
+      const availW = Math.max(320, (zoneEl?.clientWidth || (host.size?.[0] || MIN_W) - 72) - GRID);
+      const block = packInRows(ctrls, availW, GRID);
+      // Começa onde o seletor foi aberto; se isso cobrir o que já existe na
+      // zona, o bloco inteiro vai para baixo do conteúdo atual.
+      let x0 = initialPos?.x ?? 16, y0 = initialPos?.y ?? 16;
+      const hits = (dx, dy) => ctrls.some((c) => zoneList.some((o) =>
+        c.x + dx < (o.x || 0) + (o.w || 256) && c.x + dx + c.w > (o.x || 0) &&
+        c.y + dy < (o.y || 0) + (o.h || 46) && c.y + dy + c.h > (o.y || 0)));
+      if (x0 + block.w > availW + GRID) x0 = 16;
+      if (hits(x0, y0)) {
+        x0 = 16;
+        y0 = Math.max(16, ...zoneList.map((o) => (o.y || 0) + (o.h || 46) + GRID));
+      }
+      x0 = Math.round(x0 / GRID) * GRID;
+      y0 = Math.round(y0 / GRID) * GRID;
+      for (const c of ctrls) {
+        c.x += x0;
+        c.y += y0;
         zoneList.push(c);
         ensureComponentName(layout, c);
         created.push(c.name);
-        y = spot.y + c.h + 16;
-      };
-      for (const p of list) {
-        if (p.whole) {
-          place(buildWholeNodeCtrl(host, p.node, "row", { x: x0, y }));
-          continue;
-        }
-        for (const w of (p.node.widgets || []).filter((x) => p.widgets.has(x.name))) {
-          place({ ...singleCtrlFor(host, p.node, w), x: x0, y });
-        }
       }
     }
     state.selectedNames = new Set(created);
@@ -7397,6 +7413,26 @@ function activeSectionOf(layout, state) {
  * Empurra o componente em diagonal enquanto o lugar estiver ocupado — é o que
  * o Delphi faz quando você solta dois seguidos no mesmo ponto.
  */
+/**
+ * Arruma `ctrls` em linhas (x/y relativos a 0,0): lado a lado até `maxW`,
+ * depois quebra; a altura de cada linha é a do maior item dela. Devolve o
+ * tamanho do bloco.
+ */
+function packInRows(ctrls, maxW, gap = GRID) {
+  let x = 0, y = 0, rowH = 0, blockW = 0;
+  for (const c of ctrls) {
+    c.w = Math.ceil((c.w || 256) / GRID) * GRID;
+    c.h = Math.ceil((c.h || 46) / GRID) * GRID;
+    if (x > 0 && x + c.w > maxW) { x = 0; y += rowH + gap; rowH = 0; }
+    c.x = x;
+    c.y = y;
+    x += c.w + gap;
+    rowH = Math.max(rowH, c.h);
+    blockW = Math.max(blockW, c.x + c.w);
+  }
+  return { w: blockW, h: y + rowH };
+}
+
 function findFreeSpot(list, x, y, w, h) {
   const STEP = 16;
   const overlaps = (ax, ay) => (list || []).some((c) => {
