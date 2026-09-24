@@ -56,6 +56,9 @@ const nested = await E(async () => {
 });
 t("nested SuperSubgraph: 2-level breadcrumb " + JSON.stringify(nested.bar), nested.types === "ImageInvert" && /Nested SS/.test(nested.bar) && /Super Subgraph/.test(nested.bar));
 await pg.screenshot({ path: path.join(dir, "enter_nested.png") });
+await pg.keyboard.press("Escape"); await pg.waitForTimeout(400);
+const esc = await E(() => ({ types: (window.app.canvas.graph.nodes || []).map(n => n.type).sort().join(), bar: document.querySelector(".lego-ss-nav")?.innerText || "" }));
+t("Esc goes up one level: " + esc.types, esc.types.includes("ImageScale") && /Esc/.test(esc.bar) && !/Nested SS/.test(esc.bar));
 await pg.locator(".lego-ss-nav-crumb", { hasText: "Workflow" }).click(); await pg.waitForTimeout(400);
 t("'Workflow' crumb jumps back to the root", await E(() => window.app.canvas.graph === window.app.rootGraph && !document.querySelector(".lego-ss-nav")));
 const run2 = await E(async () => {
