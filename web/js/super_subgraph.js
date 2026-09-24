@@ -12413,6 +12413,82 @@ function convertSelectionToSuper(nodes = selectedNodes()) {
   return sn;
 }
 
+const isNativeSubgraphNode = (n) => !!n?.subgraph && typeof n.isSubgraphNode === "function" && n.isSubgraphNode();
+
+/** Troca os ids de nó nos binds ("<id>/<widget>") e fontes de output de um layout. */
+function remapLayoutIds(layout, idMap, hostBinds = new Map()) {
+  const mapId = (id) => (idMap.has(String(id)) ? String(idMap.get(String(id))) : null);
+  const mapBind = (b) => {
+    if (typeof b !== "string" || !b) return b;
+    const slash = b.indexOf("/");
+    if (slash < 0) return hostBinds.get(b) || b;   // widget promovido do nó nativo
+    const id = mapId(b.slice(0, slash));
+    return id ? `${id}${b.slice(slash)}` : b;
+  };
+  const fix = (c) => {
+    if (!c || typeof c !== "object") return;
+    if ("bind" in c) c.bind = mapBind(c.bind);
+    if (c.source != null && mapId(c.source)) c.source = mapId(c.source);
+    for (const it of c.items || []) fix(it);
+  };
+  for (const t of layout?.tabs || []) {
+    for (const sec of t.sections || []) {
+      for (const c of sec.controls || []) fix(c);
+      for (const st of sec.tabs || []) for (const c of st.controls || []) fix(c);
+    }
+  }
+  return layout;
+}
+
+/**
+ * Subgrafo nativo -> Super Subgraph: desfaz o nativo (o próprio ComfyUI
+ * religa tudo por fora) e compacta os mesmos nós no motor próprio. O cartão
+ * do nativo, se houver, vem junto com os binds apontando para os ids novos.
+ */
+function convertNativeToSuper(node) {
+  const graph = node?.graph;
+  const canvas = app.canvas;
+  if (!isNativeSubgraphNode(node) || !graph) return null;
+  if (canvas?.graph !== graph) { alert("Open the graph that contains this subgraph first."); return null; }
+  const innerNodes = [...(node.subgraph.nodes || node.subgraph._nodes || [])];
+  if (!innerNodes.length) { showLegoToast("This subgraph is empty"); return null; }
+  if (innerNodes.some(isNativeSubgraphNode)) {
+    alert("Super Subgraph: this subgraph has native subgraphs inside. Convert or unpack those first.");
+    return null;
+  }
+  if (typeof graph.unpackSubgraph !== "function") {
+    alert("Super Subgraph: this ComfyUI version can't unpack subgraphs.");
+    return null;
+  }
+  const oldIds = innerNodes.map((n) => String(n.id));
+  const title = node.title;
+  const layout = node.properties?.[PROP] ? JSON.parse(JSON.stringify(node.properties[PROP])) : null;
+  // Widgets promovidos do nativo ("proxyWidgets": [[id, nome], ...]) viram "<id>/<nome>".
+  const proxies = Array.isArray(node.properties?.proxyWidgets) ? node.properties.proxyWidgets : [];
+  const before = new Set((graph._nodes || graph.nodes || []).map((n) => n));
+
+  if (!graph.unpackSubgraph(node)) { alert("Super Subgraph: ComfyUI could not unpack this subgraph."); return null; }
+  // Os nós novos entram na mesma ordem dos de dentro.
+  const fresh = (graph._nodes || graph.nodes || []).filter((n) => !before.has(n));
+  const idMap = new Map();
+  if (fresh.length === oldIds.length) oldIds.forEach((id, i) => idMap.set(id, fresh[i].id));
+
+  const sn = convertSelectionToSuper(fresh);
+  if (!sn) return null;
+  if (title) sn.title = title;
+  if (layout) {
+    const hostBinds = new Map();
+    for (const [id, name] of proxies) {
+      const nid = idMap.get(String(id));
+      if (nid != null && typeof name === "string") hostBinds.set(name, `${nid}/${name}`);
+    }
+    sn.properties[PROP] = remapLayoutIds(layout, idMap, hostBinds);
+    sn.__legoState?.refresh();
+  }
+  showLegoToast("Subgraph converted to Super Subgraph");
+  return sn;
+}
+
 /** Desfaz o Super Subgraph: os nós de dentro voltam ao grafo, religados. */
 function unpackSuper(sn) {
   const graph = sn?.graph;
@@ -13002,6 +13078,12 @@ app.registerExtension({
       });
     }
     items.push(...boundaryMenuItems(node));
+    if (isNativeSubgraphNode(node)) {
+      items.push({
+        content: "Convert Subgraph to SuperSubgraph",
+        callback: () => convertNativeToSuper(node),
+      });
+    }
     if (isSuperNode(node)) {
       items.push({
         content: "Open SuperSubgraph",
