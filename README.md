@@ -10,7 +10,7 @@ Custom node for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) providing a
 - **Workflow Parameter Binding**: Bind controls to node parameters in real-time with visual target selection.
 - **Native HiDPI**: Faithful node previews without scaling compression.
 - **Layout in the workflow**: Layout and state persist in `node.properties.ui_layout`, serializing natively with your workflow.
-- **Independent Super Subgraph node**: select nodes and use **Convert Selection to Super Subgraph** (selection toolbar, canvas or node right-click menu). The nodes move inside a `SuperSubgraph` node with its own engine — no native subgraph involved. Links crossing the selection become its inputs/outputs; the card starts empty (nothing is promoted automatically) and binds straight to the inner widgets you choose — **Recreate Layout from Widgets** builds a default layout on demand. **Unpack Super Subgraph** (node right-click) puts the nodes back.
+- **Independent Super Subgraph node**: select nodes and use **Convert Selection to SuperSubgraph** (selection toolbar — the native subgraph icon with a purple "SS" badge, canvas or node right-click menu). The nodes move inside a `SuperSubgraph` node with its own engine — no native subgraph involved. Links crossing the selection become its inputs/outputs; the card starts empty (nothing is promoted automatically) and binds straight to the inner widgets you choose — **Recreate Layout from Widgets** builds a default layout on demand. **Unpack Super Subgraph** (node right-click) puts the nodes back.
 
 ## How the Super Subgraph engine works
 
