@@ -2327,6 +2327,15 @@ textarea.lego-in{resize:vertical;min-height:75px;font-family:ui-monospace,SFMono
 .lego-ctx-item:hover{background:var(--lego-accent);color:#fff}
 .lego-ctx-item.danger:hover{background:#ef4444;color:#fff}
 .lego-ctx-label{flex:1}
+.lego-color-grid{display:grid;grid-template-columns:repeat(5,24px);gap:6px;padding:4px}
+.lego-color-swatch{width:24px;height:24px;border-radius:6px;border:2px solid rgba(255,255,255,.12);cursor:pointer;padding:0}
+.lego-color-swatch.on{border-color:#fff}
+.lego-color-swatch.none,.lego-color-dot.none{background:repeating-linear-gradient(45deg,rgba(255,255,255,.18) 0 3px,transparent 3px 6px)}
+.lego-color-dot{display:block;width:11px;height:11px;border-radius:50%;border:1px solid rgba(255,255,255,.35)}
+.lego-sec.tinted{border-color:color-mix(in srgb,var(--lego-zone-c) 55%,transparent);background:color-mix(in srgb,var(--lego-zone-c) 7%,var(--lego-panel,transparent))}
+.lego-sec.tinted > .lego-sec-h{color:var(--lego-zone-c)}
+.lego-row.tinted{background-image:linear-gradient(90deg,color-mix(in srgb,var(--lego-c) 16%,transparent),transparent 70%)}
+.lego-row.tinted::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;border-radius:3px;background:var(--lego-c);pointer-events:none}
 .lego-seed-mode{flex:none;min-width:30px;height:24px;margin-left:4px;padding:0 6px;border-radius:6px;border:1px solid var(--lego-line);background:rgba(255,255,255,.05);color:var(--lego-dim);font:700 10.5px/22px system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
 .lego-seed-mode:hover{border-color:var(--lego-accent);color:var(--lego-text)}
 .lego-seed-mode[data-mode="randomize"],.lego-seed-mode[data-mode="increment"],.lego-seed-mode[data-mode="decrement"]{color:#c4b5fd;border-color:rgba(168,85,247,.5)}
@@ -6009,6 +6018,11 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     state.selectedNames.add(ctrl.name);
   }
 
+  if (ctrl.color) {
+    row.classList.add("tinted");
+    row.style.setProperty("--lego-c", ctrl.color);
+  }
+
   row.style.position = "absolute";
   row.style.left = `${ctrl.x}px`;
   row.style.top = `${ctrl.y}px`;
@@ -9359,6 +9373,41 @@ function openLegoContextMenu(e, entries) {
 
 const isGroupKind = (k) => k === "segment" || k === "vsegment" || k === "group";
 
+/* ── Cores por zona e por componente ─────────────────────────────────────── */
+const LEGO_COLORS = [
+  ["Purple", "#a855f7"], ["Blue", "#3b82f6"], ["Cyan", "#06b6d4"], ["Green", "#22c55e"],
+  ["Yellow", "#eab308"], ["Orange", "#f97316"], ["Red", "#ef4444"], ["Pink", "#ec4899"],
+];
+
+/** Paleta solta: `onPick(cor)` com a cor ou `null` (sem cor). */
+function openColorMenu(e, current, onPick) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.querySelector(".lego-ctx-menu")?.remove();
+  const menu = el("div", "lego-ctx-menu lego-color-menu");
+  const close = () => {
+    menu.remove();
+    document.removeEventListener("pointerdown", close);
+  };
+  const grid = el("div", "lego-color-grid");
+  const swatch = (name, color) => {
+    const b = el("button", `lego-color-swatch${(current || null) === color ? " on" : ""}${color ? "" : " none"}`);
+    b.type = "button";
+    b.title = name;
+    if (color) b.style.background = color;
+    b.addEventListener("click", (ev) => { ev.stopPropagation(); close(); onPick(color); });
+    return b;
+  };
+  grid.append(swatch("No color", null), ...LEGO_COLORS.map(([n, c]) => swatch(n, c)));
+  menu.append(grid);
+  menu.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+  document.body.append(menu);
+  menu.style.left = `${Math.max(4, Math.min(window.innerWidth - 190, e.clientX))}px`;
+  menu.style.top = `${Math.max(4, Math.min(window.innerHeight - 90, e.clientY))}px`;
+  setTimeout(() => document.addEventListener("pointerdown", close), 10);
+  return menu;
+}
+
 /** Nomes selecionados (ou só o componente clicado, se ele não está na seleção). */
 function selectionFor(state, ctrl) {
   const names = new Set(state.selectedNames || []);
@@ -9465,6 +9514,11 @@ function openComponentContextMenu(e, host, state, ctrl, list) {
       },
     }) });
   }
+  entries.push({ icon: "blank", label: "Color…", action: () => openColorMenu(e, ctrl.color, (color) => {
+    pushUndo(host);
+    walkControls(host.properties[PROP], (c) => { if (names.has(c.name)) { if (color) c.color = color; else delete c.color; } });
+    state.refresh();
+  }) });
   entries.push(null, { icon: "trash", label: many ? `Remove (${names.size})` : "Remove", hint: "Del", danger: true, action: () => {
     pushUndo(host);
     removeControlsByName(host.properties[PROP], names);
@@ -10860,7 +10914,8 @@ function buildCard(host, state) {
     const sections = cur.sections || (cur.sections = []);
 
     sections.forEach((s, sIdx) => {
-      const sec = el("div", "lego-sec");
+      const sec = el("div", `lego-sec${s.color ? " tinted" : ""}`);
+      if (s.color) sec.style.setProperty("--lego-zone-c", s.color);
       sec.addEventListener("pointerdown", () => { state.activeSection = s; });
 
       // Aplica a largura do Card (100%, 50%, 33%, etc.) no container geral
@@ -11070,6 +11125,23 @@ function buildCard(host, state) {
           if (v != null) { s.header = v.toUpperCase(); state.refresh(); }
         });
         actions.append(renBtn);
+
+        // Cor da zona
+        const colorBtn = el("button", "lego-iconbtn lego-color-dot-btn");
+        colorBtn.type = "button";
+        colorBtn.title = "Zone color";
+        const dot = el("span", `lego-color-dot${s.color ? "" : " none"}`);
+        if (s.color) dot.style.background = s.color;
+        colorBtn.append(dot);
+        colorBtn.addEventListener("pointerdown", eatPointer);
+        colorBtn.addEventListener("click", (e) => {
+          openColorMenu(e, s.color, (color) => {
+            pushUndo(host);
+            if (color) s.color = color; else delete s.color;
+            state.refresh();
+          });
+        });
+        actions.append(colorBtn);
 
         // Mover para cima/lado
         if (sIdx > 0) {
@@ -12744,6 +12816,144 @@ function convertNativeToSuper(node) {
   return sn;
 }
 
+/* ── Exportar, importar e biblioteca ──────────────────────────────────────
+ * Um Super Subgraph vira um pacote JSON (grafo de dentro + cartão + borda)
+ * que pode ir para um arquivo ou para a biblioteca do usuário (userdata do
+ * ComfyUI, em "supersubgraph/"), e voltar como um nó novo em qualquer workflow.
+ */
+const SS_PKG_TYPE = "ComfyUI-SuperSubgraph";
+const SS_LIB_DIR = "supersubgraph";
+let SS_LIBRARY = [];   // nomes (sem .json), atualizados em refreshSuperLibrary()
+
+function superPackage(sn) {
+  const d = sn.serialize();
+  return {
+    type: SS_PKG_TYPE,
+    version: 1,
+    title: sn.title,
+    size: [...(sn.size || [])],
+    color: sn.color, bgcolor: sn.bgcolor,
+    properties: JSON.parse(JSON.stringify({ [SS_PROP]: d.properties?.[SS_PROP], [PROP]: d.properties?.[PROP] })),
+  };
+}
+
+function isSuperPackage(pkg) {
+  return !!pkg && pkg.type === SS_PKG_TYPE && !!pkg.properties?.[SS_PROP]?.graph;
+}
+
+/** Posição do último clique no canvas (ou o centro da vista). */
+function canvasDropPos() {
+  const c = app.canvas;
+  const m = c?.graph_mouse;
+  if (m && Number.isFinite(m[0])) return [m[0], m[1]];
+  const ds = c?.ds;
+  const el0 = c?.canvas;
+  if (!ds || !el0) return [0, 0];
+  return [el0.clientWidth / 2 / ds.scale - ds.offset[0], el0.clientHeight / 2 / ds.scale - ds.offset[1]];
+}
+
+function createSuperFromPackage(pkg, pos = canvasDropPos()) {
+  if (!isSuperPackage(pkg)) { alert("Super Subgraph: this file is not a SuperSubgraph export."); return null; }
+  const graph = app.canvas?.graph || app.graph;
+  const sn = liteGraph()?.createNode(SS_TYPE);
+  if (!sn) { alert("Super Subgraph: the SuperSubgraph node is not registered. Restart ComfyUI after updating the extension."); return null; }
+  sn.pos = [pos[0], pos[1]];
+  sn.properties = sn.properties || {};
+  const props = JSON.parse(JSON.stringify(pkg.properties));
+  sn.properties[SS_PROP] = props[SS_PROP];
+  if (props[PROP]) sn.properties[PROP] = props[PROP];
+  graph.beforeChange?.();
+  graph.add(sn);
+  if (pkg.title) sn.title = pkg.title;
+  if (pkg.color) sn.color = pkg.color;
+  if (pkg.bgcolor) sn.bgcolor = pkg.bgcolor;
+  sn.__ssGraph = null;
+  setupSuperNode(sn);
+  applySuperSlots(sn);
+  if (!sn.properties[PROP]) emptySuperLayout(sn);
+  if (Array.isArray(pkg.size) && pkg.size.length === 2) sn.setSize?.(pkg.size);
+  if (!sn.__legoState) attach(sn); else sn.__legoState.refresh();
+  graph.afterChange?.();
+  app.canvas?.selectItems?.([sn]);
+  graph.setDirtyCanvas?.(true, true);
+  return sn;
+}
+
+const safeFileName = (s) => String(s || "SuperSubgraph").replace(/[\\/:*?"<>|]+/g, "_").trim().slice(0, 80) || "SuperSubgraph";
+
+function exportSuperToFile(sn) {
+  const blob = new Blob([JSON.stringify(superPackage(sn), null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${safeFileName(sn.title)}.supersubgraph.json`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function importSuperFromFile(pos = canvasDropPos()) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json,application/json";
+  input.addEventListener("change", async () => {
+    const f = input.files?.[0];
+    if (!f) return;
+    try {
+      const sn = createSuperFromPackage(JSON.parse(await f.text()), pos);
+      if (sn) showLegoToast(`Imported "${sn.title}"`);
+    } catch (e) {
+      alert(`Super Subgraph: could not read this file (${e.message}).`);
+    }
+  });
+  input.click();
+}
+
+async function refreshSuperLibrary() {
+  try {
+    const list = await api.listUserDataFullInfo?.(SS_LIB_DIR);
+    SS_LIBRARY = (list || []).map((f) => String(f.path || "")).filter((p) => p.endsWith(".json") && !p.includes("/")).map((p) => p.slice(0, -5)).sort((a, b) => a.localeCompare(b));
+  } catch {
+    SS_LIBRARY = [];
+  }
+  return SS_LIBRARY;
+}
+
+async function saveSuperToLibrary(sn) {
+  const name = prompt("Save to the SuperSubgraph library as:", sn.title || "SuperSubgraph");
+  if (name == null || !name.trim()) return false;
+  const file = safeFileName(name);
+  if (SS_LIBRARY.includes(file) && !confirm(`"${file}" is already in the library. Replace it?`)) return false;
+  const pkg = superPackage(sn);
+  pkg.title = name.trim();
+  try {
+    await api.storeUserData(`${SS_LIB_DIR}/${file}.json`, pkg, { overwrite: true, stringify: true, throwOnError: true });
+  } catch (e) {
+    alert(`Super Subgraph: could not save to the library (${e.message}).`);
+    return false;
+  }
+  await refreshSuperLibrary();
+  showLegoToast(`Saved "${file}" to the library`);
+  return true;
+}
+
+async function addSuperFromLibrary(name, pos = canvasDropPos()) {
+  try {
+    const res = await api.getUserData(`${SS_LIB_DIR}/${name}.json`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return createSuperFromPackage(await res.json(), pos);
+  } catch (e) {
+    alert(`Super Subgraph: could not load "${name}" (${e.message}).`);
+    return null;
+  }
+}
+
+async function deleteSuperFromLibrary(name) {
+  if (!confirm(`Delete "${name}" from the SuperSubgraph library?`)) return;
+  try { await api.deleteUserData(`${SS_LIB_DIR}/${name}.json`); } catch (e) { alert(`Could not delete (${e.message}).`); }
+  await refreshSuperLibrary();
+}
+
 /** Desfaz o Super Subgraph: os nós de dentro voltam ao grafo, religados. */
 function unpackSuper(sn) {
   const graph = sn?.graph;
@@ -13381,6 +13591,7 @@ app.registerExtension({
       if (d.display_node != null && String(d.display_node) !== String(d.node)) recordOutput(d.display_node, d.output);
       notifyOutputViews();
     });
+    refreshSuperLibrary();
     for (const type of ["execution_start", "progress_state", "executing", "execution_error", "execution_interrupted", "execution_success"]) {
       api.addEventListener(type, (e) => { try { onRunEvent(type, e?.detail); } catch (err) { console.warn(LOG, "run feedback", err); } });
     }
@@ -13420,11 +13631,25 @@ app.registerExtension({
 
   getCanvasMenuItems() {
     const sel = selectedNodes();
-    if (!sel.length) return [];
-    return [null, {
+    const pos = canvasDropPos();
+    const items = [null];
+    if (sel.length) items.push({
       content: `Convert Selection to SuperSubgraph (${sel.length})`,
       callback: () => convertSelectionToSuper(sel),
-    }];
+    });
+    items.push({ content: "Import SuperSubgraph from File…", callback: () => importSuperFromFile(pos) });
+    refreshSuperLibrary();   // para a próxima abertura do menu
+    if (SS_LIBRARY.length) {
+      items.push({
+        content: "Add SuperSubgraph from Library", has_submenu: true,
+        submenu: { options: SS_LIBRARY.map((name) => ({ content: name, callback: () => addSuperFromLibrary(name, pos) })) },
+      });
+      items.push({
+        content: "Delete from SuperSubgraph Library", has_submenu: true,
+        submenu: { options: SS_LIBRARY.map((name) => ({ content: name, callback: () => deleteSuperFromLibrary(name) })) },
+      });
+    }
+    return items;
   },
 
   getNodeMenuItems(node) {
@@ -13454,6 +13679,14 @@ app.registerExtension({
       items.push({
         content: "Unpack Super Subgraph",
         callback: () => unpackSuper(node),
+      });
+      items.push({
+        content: "Save SuperSubgraph to Library…",
+        callback: () => saveSuperToLibrary(node),
+      });
+      items.push({
+        content: "Export SuperSubgraph to File…",
+        callback: () => exportSuperToFile(node),
       });
     }
 
