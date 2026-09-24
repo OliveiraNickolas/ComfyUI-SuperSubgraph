@@ -2772,6 +2772,25 @@ function showLegoToast(msg) {
 }
 
 /* ── Histórico de Undo / Redo (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y) ── */
+
+/**
+ * O ChangeTracker do ComfyUI também escuta Ctrl+Z (na captura, antes de nós,
+ * e decide só no próximo quadro). Sem isto, um Ctrl+Z no cartão em edição
+ * desfazia o layout E recarregava o workflow inteiro de um estado anterior —
+ * às vezes com a promoção ainda lá. Evento que o cartão tratou fica marcado
+ * e o ChangeTracker o ignora.
+ */
+function patchNativeUndo() {
+  const CT = window.comfyAPI?.changeTracker?.ChangeTracker;
+  const proto = CT?.prototype;
+  if (!proto || typeof proto.undoRedo !== "function" || proto.__legoPatched) return;
+  const orig = proto.undoRedo;
+  proto.undoRedo = async function (e) {
+    if (e?.__legoHandled) return true;
+    return orig.apply(this, arguments);
+  };
+  proto.__legoPatched = true;
+}
 function pushUndoSnapshot(node, snapshot) {
   if (!node || !snapshot) return;
   if (!node.__legoUndoStack) node.__legoUndoStack = [];
@@ -2955,6 +2974,7 @@ function pasteComponents(host, state) {
 function installFormShortcuts() {
   if (window.__legoKeys) return;
   window.__legoKeys = true;
+  patchNativeUndo();
   window.addEventListener("keydown", (e) => {
     const active = document.activeElement;
     const isTyping = active && (
@@ -3010,6 +3030,7 @@ function installFormShortcuts() {
         if (st && st.edit) {
           e.preventDefault();
           e.stopPropagation();
+          e.__legoHandled = true;
           if (e.shiftKey) {
             doRedo(n, st);
           } else {
@@ -3027,6 +3048,7 @@ function installFormShortcuts() {
         if (st && st.edit) {
           e.preventDefault();
           e.stopPropagation();
+          e.__legoHandled = true;
           doRedo(n, st);
           return;
         }

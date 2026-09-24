@@ -70,8 +70,10 @@ await pg.screenshot({ path: path.join(dir, "promote_result.png") });
 // undo desfaz tudo de uma vez
 await E(() => document.activeElement?.blur()); await pg.mouse.click(700, 850); await pg.keyboard.press("Escape");
 const before = await E((sid) => window.app.graph.getNodeById(sid).properties.ui_layout.tabs[0].sections[0].controls.length, ids.sn);
+await E((sid) => { window.__snRef = window.app.graph.getNodeById(sid); }, ids.sn);
 await pg.keyboard.press("Control+z"); await pg.waitForTimeout(300);
 const after = await E((sid) => window.app.graph.getNodeById(sid).properties.ui_layout.tabs[0].sections[0].controls.length, ids.sn);
+t("card undo does not also trigger ComfyUI's workflow undo (graph not reloaded)", await E((sid) => window.app.graph.getNodeById(sid) === window.__snRef, ids.sn));
 t(`one undo removes the whole promotion (${before} -> ${after})`, before === 2 && after === 0);
 t("no extension errors " + JSON.stringify(errs.slice(0, 4)), !errs.length);
 console.log(`\n${ok} passed, ${fail} failed`);

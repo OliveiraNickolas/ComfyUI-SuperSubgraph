@@ -69,3 +69,4 @@ jobs:
         with:
           name: screenshots
           path: ComfyUI-SuperSubgraph/tests/.out
+          include-hidden-files: true
