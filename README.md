@@ -38,6 +38,10 @@ In edit mode, right-click a component for **Properties**, **Duplicate** (Ctrl+D)
 The card shows a progress bar with the inner node that is running, and if something fails, a red strip says which inner node failed and why (✕ dismisses it; the next run clears it).
 Numbers with ComfyUI's *control after generate* (seeds) get a small mode button next to them — **FIX**, **+1**, **−1** or 🎲 random — click to cycle. It works for nodes inside a SuperSubgraph too.
 
+## Mask Editor
+
+Image upload components (Load Image, including one inside a SuperSubgraph) have a **mask** button next to the folder button. It opens ComfyUI's Mask Editor for that image; **Save** writes the masked image back to the inner Load Image and the card's thumbnail updates.
+
 ## Aligning components
 
 In edit mode, select 2 or more components of a zone (Shift/Ctrl + click, or drag a box) and alignment buttons appear at the top of the zone:
