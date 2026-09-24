@@ -36,9 +36,10 @@ export function launch() {
 export function serve(port) {
   return http.createServer((q, r) => {
     const url = q.url.split("?")[0];
-    const p = url === "/mod.mjs" ? path.join(HERE, ".build", "mod.mjs") : path.join(HERE, "browser", url);
+    const built = path.join(HERE, ".build", path.basename(url));
+    const p = url === "/mod.mjs" || (url.endsWith(".js") && fs.existsSync(built)) ? path.join(HERE, ".build", path.basename(url)) : path.join(HERE, "browser", url);
     if (!p.startsWith(HERE) || !fs.existsSync(p)) { r.writeHead(404); return r.end(); }
-    r.writeHead(200, { "content-type": p.endsWith(".mjs") ? "text/javascript" : "text/html" });
+    r.writeHead(200, { "content-type": /\.m?js$/.test(p) ? "text/javascript" : "text/html" });
     fs.createReadStream(p).pipe(r);
   }).listen(port);
 }

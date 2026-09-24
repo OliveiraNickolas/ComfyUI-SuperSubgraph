@@ -1,7 +1,9 @@
 # ComfyUI-SuperSubgraph
 
-ComfyUI extension. UI logic lives in `web/js/super_subgraph.js` (code comments
-are in Portuguese; match that). The `SuperSubgraph` backend node (its own
+ComfyUI extension. UI logic lives in `web/js/super_subgraph.js`, its CSS in
+`web/js/super_subgraph_css.js` (code comments are in Portuguese; match that).
+ComfyUI loads every `.js` under `web/` as an extension, so extra modules there
+must only export (no side effects). The `SuperSubgraph` backend node (its own
 subgraph engine, via ComfyUI node expansion) lives in `super_subgraph_node.py`
 and is exported by `__init__.py` together with `WEB_DIRECTORY`.
 
@@ -10,7 +12,7 @@ and is exported by `__init__.py` together with `WEB_DIRECTORY`.
 - The owner wants every change delivered end to end: commit, push, open a
   pull request against `main`, and merge it yourself — no need to ask for
   approval before merging.
-- Before merging, at least run `node --check web/js/super_subgraph.js` and
+- Before merging, at least run `node --check` on each `web/js/*.js` and
   `python3 -m py_compile super_subgraph_node.py __init__.py`.
 - Tests live in `tests/` (`npm ci`, then `npm test` for jsdom + Chromium;
   `npm run test:e2e` needs a real ComfyUI at `COMFY_URL`, default
