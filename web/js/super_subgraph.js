@@ -3217,8 +3217,23 @@ function describeWidget(w) {
 }
 
 /** Widgets que o cartão nunca deve tocar. */
+/**
+ * Widgets "ajudantes" de interface: não vão para a execução e o componente de
+ * mídia do cartão já faz o papel deles (botão de upload, player de áudio,
+ * preview "$$..."). Nunca são promovidos.
+ */
+function isHelperWidget(w) {
+  const name = String(w?.name || "");
+  const type = String(w?.type || "").toLowerCase();
+  if (name.startsWith("$$")) return true;
+  if (type === "audioui" || type === "imageupload" || type === "image_upload") return true;
+  if (type === "button" && /upload/i.test(name)) return true;
+  return false;
+}
+
 function usable(w) {
   if (!w || w.__lego || w.__ssInternal) return false;
+  if (isHelperWidget(w)) return false;
   const t = String(w.type || "").toLowerCase();
   if (t === "converted-widget" || t === "hidden") return false;
   if (t.startsWith("dom")) return false;
@@ -6859,7 +6874,7 @@ function widgetLabel(w) {
 
 /** Componente solto para um único parâmetro de um nó. */
 function singleCtrlFor(host, node, w) {
-  const kind = detectMediaKind(w, describeWidget(w));
+  const kind = detectMediaKind(w, describeWidget(w), node);
   const media = kind === "media" || kind === "video" || kind === "audio";
   const c = {
     kind,
@@ -6875,9 +6890,16 @@ function singleCtrlFor(host, node, w) {
 /** Itens (label + controle) que representam os widgets do nó (todos, ou só `onlyNames`). */
 function wholeNodeItems(host, node, onlyNames) {
   const items = [];
+  const mp = mediaNodeParts(node);
   for (const w of (node.widgets || []).filter(usable)) {
     if (onlyNames && !onlyNames.has(w.name)) continue;
-    let kind = detectMediaKind(w, describeWidget(w));
+    if (mp && !onlyNames && w !== mp.media && !mp.rest.includes(w)) continue;   // ajudantes do nó de mídia
+    if (mp && w === mp.media) {
+      // A mídia se identifica pelo arquivo: entra sem Label na frente.
+      items.push({ kind: detectMediaKind(w, describeWidget(w), node), bind: node === host ? w.name : `${node.id}/${w.name}`, label: widgetLabel(w), labelPos: "none", h: 120 });
+      continue;
+    }
+    let kind = detectMediaKind(w, describeWidget(w), node);
     // Número vira Stepper: é o controle compacto que cabe numa linha de grupo.
     if (kind === "slider") kind = "number";
     // O nome que o usuário deu ao parâmetro (widget renomeado/promovido)
@@ -6896,8 +6918,33 @@ function wholeNodeItems(host, node, onlyNames) {
  * Grupo pronto com o nó inteiro. `orientation`: "row" (grupo horizontal,
  * rótulo e controle lado a lado) ou "column" (grupo vertical, empilhado).
  */
+/**
+ * Nó de mídia (Load Image/Video/Audio...): o componente de mídia já mostra a
+ * função inteira (miniatura, arquivo, upload). Devolve o widget de mídia e os
+ * parâmetros de verdade que sobram além dele (botões e toggles só de
+ * interface não contam).
+ */
+function mediaNodeParts(node) {
+  const ws = (node.widgets || []).filter(usable);
+  const media = ws.find((w) => {
+    const k = detectMediaKind(w, describeWidget(w), node);
+    return k === "media" || k === "video" || k === "audio";
+  });
+  if (!media) return null;
+  const rest = ws.filter((w) => w !== media && w.type !== "button" && w.options?.serialize !== false);
+  return { media, rest };
+}
+
 function buildWholeNodeCtrl(host, node, orientation, pos) {
   const layout = host.properties[PROP];
+  // Mídia sem outro parâmetro: só o componente de mídia, sem grupo.
+  const mp = mediaNodeParts(node);
+  if (mp && !mp.rest.length) {
+    const c = { ...singleCtrlFor(host, node, mp.media), x: pos?.x ?? 16, y: pos?.y ?? 16 };
+    const avail = Math.max(320, Math.round(Math.max(MIN_W, host.size?.[0] || 0) - 80));
+    c.x = Math.max(16, Math.min(c.x, avail - c.w));
+    return renameClone(layout, c);
+  }
   const items = wholeNodeItems(host, node);
   const vertical = orientation === "column";
   const has2D = items.some((it) => is2DKind(it.kind));
@@ -6946,7 +6993,22 @@ function buildWholeNodeCtrl(host, node, orientation, pos) {
   return renameClone(layout, group);
 }
 
-function detectMediaKind(w, desc) {
+/** Tipo de mídia pela definição do nó (image_upload / video_upload / audio_upload). */
+function uploadMediaKind(node, w) {
+  const nd = node?.constructor?.nodeData;
+  const spec = nd?.input?.required?.[w?.name]?.[1] || nd?.input?.optional?.[w?.name]?.[1];
+  if (!spec || typeof spec !== "object") return null;
+  if (spec.video_upload) return "video";
+  if (spec.audio_upload) return "audio";
+  if (spec.image_upload || spec.animated_image_upload) return "media";
+  return null;
+}
+
+function detectMediaKind(w, desc, node) {
+  // A definição do nó diz com certeza; os nomes dos arquivos são só a pista
+  // (e somem quando a pasta input está vazia).
+  const byDef = uploadMediaKind(node, w);
+  if (byDef) return byDef;
   if (isVideoCombo(w)) return "video";
   if (isAudioCombo(w)) return "audio";
   if (isImageCombo(w)) return "media";
@@ -6972,7 +7034,7 @@ function listBindableTargets(host) {
         bind: key,
         name: w.name,
         label: prettify(w.name),
-        kind: detectMediaKind(w, desc),
+        kind: detectMediaKind(w, desc, host),
         node: host,
         widget: w,
         scope: "Promoted / Host Node",
@@ -6996,7 +7058,7 @@ function listBindableTargets(host) {
           bind: key,
           name: w.name,
           label: `${nTitle} - ${prettify(w.name)}`,
-          kind: detectMediaKind(w, desc),
+          kind: detectMediaKind(w, desc, n),
           node: n,
           widget: w,
           scope: `Subgraph #${n.id} (${n.type})`,
@@ -7025,7 +7087,7 @@ function listBindableTargets(host) {
             bind: key,
             name: w.name,
             label: `${nTitle} - ${prettify(w.name)}`,
-            kind: detectMediaKind(w, desc),
+            kind: detectMediaKind(w, desc, n),
             node: n,
             widget: w,
             scope: `Graph #${n.id} (${n.type})`,
@@ -7454,7 +7516,7 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
     } else {
       for (const w of usableWidgets) {
         const desc = describeWidget(w);
-        const kind = detectMediaKind(w, desc);
+        const kind = detectMediaKind(w, desc, hitNode);
 
         const icon = glyph(GLYPHS[kind] ? kind : "settings", 15);
 
