@@ -1069,7 +1069,9 @@ const CSS = `
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   transition: border-color .15s, box-shadow .15s;
 }
-.lego-sec:hover{
+/* Realces azuis (hover e seleção) são ferramentas de montagem: só existem
+   com o cartão em modo de edição (.lego-card.editing). */
+.lego-card.editing .lego-sec:hover{
   border-color: rgba(59, 130, 246, 0.35);
 }
 
@@ -1320,7 +1322,8 @@ const CSS = `
   width:100%;min-width:0;box-sizing:border-box;user-select:none;
   border:1px solid var(--lego-line-strong);box-shadow:0 2px 8px rgba(0,0,0,0.35);
   transition:background .15s ease,border-color .15s ease}
-.lego-row:hover{background:var(--lego-panel-hover);border-color:rgba(59,130,246,0.45)}
+.lego-card.editing .lego-row:hover{background:var(--lego-panel-hover);border-color:rgba(59,130,246,0.45)}
+.lego-card:not(.editing) .lego-row.selected::before{display:none}
 .lego-row .lego-lbl{flex:1;min-width:60px;color:var(--lego-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   font-size:13px;font-weight:500}
 .lego-row .lego-in, .lego-row .lego-slider{flex:1;min-width:80px}
@@ -4710,7 +4713,7 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
     const hit = (!isCosmeticItem && !isContainerItem && !isOutputItem && item.bind) ? resolveBind(host, item.bind) : null;
     const isBound = !!hit;
     const isUnbound = !isCosmeticItem && !isContainerItem && !isOutputItem && !isBound;
-    const isSelected = (state?.selectedName && state.selectedName === item.name) || (state?.selectedNames && state.selectedNames.has(item.name));
+    const isSelected = !!state?.edit && ((state?.selectedName && state.selectedName === item.name) || (state?.selectedNames && state.selectedNames.has(item.name)));
 
     const itemWrap = el(
       "div",
@@ -5401,7 +5404,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   ensureComponentName(host.properties[PROP], ctrl);
   row.dataset.name = ctrl.name;
   if (!state.selectedNames) state.selectedNames = new Set();
-  if ((state.selectedName && state.selectedName === ctrl.name) || state.selectedNames.has(ctrl.name)) {
+  if (state.edit && ((state.selectedName && state.selectedName === ctrl.name) || state.selectedNames.has(ctrl.name))) {
     row.classList.add("selected");
     state.selectedNames.add(ctrl.name);
   }
@@ -8653,6 +8656,18 @@ function selectComponent(host, state, ctrl, list, openInspectorToo, multi = fals
   renderObjectInspector(host, state, !!openInspectorToo);
 }
 
+/**
+ * Sai do modo de edição sem deixar rastro: ferramenta armada, seleção (a
+ * principal E a múltipla) e o Inspetor. Limpar só `selectedName` deixava o
+ * componente com o contorno azul de selecionado fora da edição.
+ */
+function leaveEditMode(state) {
+  state.armedTool = null;
+  state.selectedName = null;
+  state.selectedNames?.clear();
+  closeObjectInspector();
+}
+
 function closeObjectInspector() {
   INSPECTOR?.remove();
   INSPECTOR = null;
@@ -9312,7 +9327,7 @@ function renderObjectInspector(host, state, force) {
 
 function buildCard(host, state) {
   const layout = host.properties[PROP];
-  const root = el("div", "lego-card");
+  const root = el("div", `lego-card${state.edit ? " editing" : ""}`);
   root.addEventListener("contextmenu", (e) => e.stopPropagation());
   applyNodeColorTheme(host, root);
 
@@ -9367,11 +9382,7 @@ function buildCard(host, state) {
   pencil.addEventListener("click", (e) => {
     e.stopPropagation();
     state.edit = !state.edit;
-    if (!state.edit) {
-      state.armedTool = null;
-      state.selectedName = null;
-      closeObjectInspector();
-    }
+    if (!state.edit) leaveEditMode(state);
     state.refresh();
   });
   head.append(pencil);
@@ -11011,6 +11022,7 @@ app.registerExtension({
         callback: () => {
           const s = node.__legoState || attach(node);
           s.edit = !s.edit;
+          if (!s.edit) leaveEditMode(s);
           s.refresh();
         },
       });
