@@ -3195,6 +3195,44 @@ function writeWidget(node, w, value) {
   requestCanvasDirty(node.graph || app.graph);
   node.onWidgetChanged?.(w.name, value, undefined, w);
   app.canvas?.setDirty?.(true, true);
+  // O callback pode ter mexido em OUTROS widgets sem chamar o callback deles
+  // (Toggle All -> on_1..on_N). Confere agora e de novo no próximo quadro,
+  // para o que for aplicado de forma assíncrona.
+  syncWatchedWidgets();
+  requestAnimationFrame(syncWatchedWidgets);
+}
+
+/**
+ * Repinta os controles cujo widget mudou de valor por qualquer caminho.
+ *
+ * Nem toda mudança passa pelo `callback`: outras extensões gravam `w.value`
+ * direto — e não dá para interceptar `value` com defineProperty, porque isso o
+ * tira do Vue e congela os widgets no Nodes 2.0. Então compara o valor atual
+ * com o último desenhado e só repinta o que mudou.
+ */
+function syncWatchedWidgets() {
+  for (const n of ATTACHED) {
+    const st = n.__legoState;
+    if (!st?.watchers?.size) continue;
+    for (const [w, fns] of st.watchers) {
+      const v = w.value;
+      if (st.seen.has(w) && Object.is(st.seen.get(w), v)) continue;
+      st.seen.set(w, v);
+      for (const f of fns) { try { f(); } catch { /* controle já descartado */ } }
+    }
+  }
+}
+
+/** Checagem periódica, para mudanças feitas fora do cartão (canvas, scripts). */
+const WATCH_POLL_MS = 200;
+let watchPollTimer = null;
+function startWatchPoll() {
+  if (watchPollTimer) return;
+  watchPollTimer = setInterval(() => {
+    if (!ATTACHED.size) { clearInterval(watchPollTimer); watchPollTimer = null; return; }
+    if (document.hidden) return;
+    syncWatchedWidgets();
+  }, WATCH_POLL_MS);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -10793,6 +10831,7 @@ function attach(node) {
     selectedName: null, // nome do componente aberto no Inspetor de Objetos
     selectedNames: new Set(), // conjunto de componentes selecionados (multi-seleção)
     watchers: new Map(),
+    seen: new Map(),   // último valor desenhado de cada widget vigiado
     outputViews: [],   // áreas de output vivas, repintadas a cada `executed`
     ro: null,
     pending: false,
@@ -10824,6 +10863,7 @@ function attach(node) {
         pushUndoSnapshot(node, node.__legoLastSnap);
       }
       state.watchers.clear();
+      state.seen.clear();
       state.outputViews = [];
       host.replaceChildren(buildCard(node, state));
       // Depois do desenho: o `buildControl` normaliza x/y/w/h e nomes.
@@ -10846,15 +10886,22 @@ function attach(node) {
         // cartões vivos, não só o que instalou o wrapper.
         w.callback = function (...args) {
           const r = orig?.apply(this, args);
+          // O callback deste widget avisa os cartões dele — e, de quebra,
+          // pega o que o callback ORIGINAL mudou em outros widgets (o Toggle
+          // All do AllmaBypasser grava `on_*` por atribuição direta).
           for (const n of ATTACHED) {
             const fns = n.__legoState?.watchers?.get(w);
             if (fns) fns.forEach((f) => { try { f(); } catch {} });
+            n.__legoState?.seen?.set(w, w.value);
           }
+          syncWatchedWidgets();
           return r;
         };
       }
       if (!state.watchers.has(w)) state.watchers.set(w, []);
       state.watchers.get(w).push(fn);
+      state.seen.set(w, w.value);
+      startWatchPoll();
     },
   };
 
