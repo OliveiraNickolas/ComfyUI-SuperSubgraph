@@ -3576,6 +3576,33 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
         openInspector({ host, layout: host.properties[PROP], section: { controls: sectionCtrls }, state, segmentCtrl: ctrl });
       });
       floatingActions.append(addBtn);
+
+      // Virar o grupo: horizontal <-> vertical.
+      const flipBtn = glyphBtn("lego-iconbtn btn-flip", ctrl.kind === "vsegment" ? "hgroup" : "vgroup", 10);
+      flipBtn.title = ctrl.kind === "vsegment" ? "Make horizontal" : "Make vertical";
+      flipBtn.addEventListener("pointerdown", eatPointer);
+      flipBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleGroupOrientation(host, state, ctrl);
+      });
+      floatingActions.append(flipBtn);
+
+      // Cor do grupo.
+      const colorBtn = el("button", "lego-iconbtn btn-color lego-color-dot-btn");
+      colorBtn.type = "button";
+      colorBtn.title = "Group color";
+      const dot = el("span", `lego-color-dot${ctrl.color ? "" : " none"}`);
+      if (ctrl.color) dot.style.background = ctrl.color;
+      colorBtn.append(dot);
+      colorBtn.addEventListener("pointerdown", eatPointer);
+      colorBtn.addEventListener("click", (e) => {
+        openColorMenu(e, ctrl.color, (color) => {
+          pushUndo(host);
+          if (color) ctrl.color = color; else delete ctrl.color;
+          state.refresh();
+        });
+      });
+      floatingActions.append(colorBtn);
     }
 
     // Botão de duplicar / copiar em componentes não linkados (ou cosméticos)
@@ -4367,6 +4394,13 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       window.addEventListener("mouseup", onUpCorner, true);
     });
     row.append(cornerResizer);
+  }
+
+  // Grupo que não comporta os itens cresce até caberem (depois de desenhado).
+  if (isSegmentLike) {
+    const fit = () => fitGroupToContent(host, ctrl, row, updateBoundsFn);
+    requestAnimationFrame(() => requestAnimationFrame(fit));
+    setTimeout(fit, 400);   // miniaturas e listas que terminam de carregar depois
   }
 
   return row;
@@ -6813,6 +6847,47 @@ function ungroupComponent(host, state, group, list) {
   return true;
 }
 
+/**
+ * Vira o grupo (horizontal <-> vertical). O grupo recomeça pequeno e o ajuste
+ * automático (fitGroupToContent) o faz crescer até o que os itens pedem —
+ * lado a lado vira empilhado e vice-versa, sem sobra.
+ */
+function toggleGroupOrientation(host, state, ctrl) {
+  if (ctrl.kind !== "segment" && ctrl.kind !== "vsegment") return false;
+  const toVertical = ctrl.kind === "segment";
+  pushUndo(host);
+  ctrl.kind = toVertical ? "vsegment" : "segment";
+  ctrl.w = toVertical ? 240 : 160;
+  ctrl.h = 64;
+  delete ctrl.width;
+  delete ctrl.height;
+  state.refresh();
+  // O crescimento do ajuste entra no mesmo passo de Undo desta virada.
+  return true;
+}
+
+/**
+ * Grupo que ficou pequeno para os itens (o conteúdo vaza da caixa) cresce até
+ * caber. Só cresce; diminuir é com o usuário. Não conta como passo de Undo.
+ */
+function fitGroupToContent(host, ctrl, row, onChange) {
+  const box = row?.querySelector(".lego-segment-box");
+  if (!box || !box.isConnected) return false;
+  const overW = box.scrollWidth - box.clientWidth;
+  const overH = box.scrollHeight - box.clientHeight;
+  if (overW <= 1 && overH <= 1) return false;
+  const w0 = typeof ctrl.w === "number" ? ctrl.w : row.offsetWidth;
+  const h0 = typeof ctrl.h === "number" ? ctrl.h : row.offsetHeight;
+  if (overW > 1) ctrl.w = Math.ceil((w0 + overW + 4) / GRID) * GRID;
+  if (overH > 1) ctrl.h = Math.ceil((h0 + overH + 4) / GRID) * GRID;
+  row.style.width = `${ctrl.w}px`;
+  row.style.height = `${ctrl.h}px`;
+  // O ajuste não é uma edição do usuário: não vira entrada de Undo.
+  host.__legoLastSnap = JSON.stringify(host.properties?.[PROP] || {});
+  onChange?.();
+  return true;
+}
+
 /** Tipos que o mesmo parâmetro aceita (para "Change type"). */
 function compatibleKinds(host, ctrl) {
   const hit = resolveBind(host, ctrl.bind);
@@ -6837,7 +6912,13 @@ function openComponentContextMenu(e, host, state, ctrl, list) {
     { icon: "hgroup", label: "Group", hint: "Ctrl+G", disabled: !looseSel.length, action: () => { state.selectedNames = new Set(names); groupSelectedComponents(host, state, false, list); } },
     { icon: "vgroup", label: "Group vertically", hint: "Ctrl+Shift+G", disabled: !looseSel.length, action: () => { state.selectedNames = new Set(names); groupSelectedComponents(host, state, true, list); } },
   ];
-  if (isGroupKind(ctrl.kind) && !many) entries.push({ icon: "grid", label: "Ungroup", action: () => ungroupComponent(host, state, ctrl, list) });
+  if (isGroupKind(ctrl.kind) && !many) {
+    if (ctrl.kind === "segment" || ctrl.kind === "vsegment") {
+      const toV = ctrl.kind === "segment";
+      entries.push({ icon: toV ? "vgroup" : "hgroup", label: toV ? "Make Vertical" : "Make Horizontal", action: () => toggleGroupOrientation(host, state, ctrl) });
+    }
+    entries.push({ icon: "grid", label: "Ungroup", action: () => ungroupComponent(host, state, ctrl, list) });
+  }
   if (!many && ctrl.bind && !isGroupKind(ctrl.kind)) {
     const kinds = compatibleKinds(host, ctrl).filter((k) => k !== ctrl.kind);
     for (const k of kinds) entries.push({ icon: k === "number" ? "number" : k, label: `Change to ${KIND_LABEL[k] || k}`, action: () => { pushUndo(host); ctrl.kind = k; state.refresh(); } });

@@ -42,6 +42,11 @@ Numbers with ComfyUI's *control after generate* (seeds) get a small mode button 
 
 Image upload components (Load Image, including one inside a SuperSubgraph) have a **mask** button next to the folder button. It opens ComfyUI's Mask Editor for that image; **Save** writes the masked image back to the inner Load Image and the card's thumbnail updates.
 
+## Groups
+
+Horizontal/vertical groups grow by themselves when their items don't fit (they never shrink on their own).
+In edit mode, a group's action bar has a **flip** button (horizontal ↔ vertical; also **Make Vertical / Make Horizontal** in its right-click menu) and a **color** dot.
+
 ## Menus and card layouts
 
 Everything this extension adds to the right-click menus lives under one entry, **SuperSubgraph ▸** (on nodes and on the canvas).

@@ -975,6 +975,9 @@ export const CSS = `
 .lego-head{display:flex;align-items:center;gap:10px}
 /* Cartão fundido ao nó: sem moldura própria, o título fica só na barra do nó. */
 .lego-card.merged,.lego-card.merged.has-node-color{border:0;box-shadow:none;background:transparent;padding:4px 2px 2px}
+/* Num grupo horizontal o rótulo nunca fica menor que o próprio texto: sem
+   espaço, o conteúdo vaza e o grupo cresce (fitGroupToContent). */
+.lego-segment-box.horizontal > .lego-segment-item.is-label{flex-shrink:0;min-width:max-content}
 .lego-head-tools{display:inline-flex;align-items:center;gap:6px;flex:none;margin-left:auto}
 .lego-sec-h > .lego-head-tools{order:2;margin-left:8px}
 .lego-sec-h::after{order:1}
