@@ -2712,6 +2712,8 @@ const CSS_DRAG = `
 .lego-row.entering-group{opacity:.45!important}
 .lego-seg-empty-hint{font-size:11px;color:var(--lego-dim);font-style:italic;pointer-events:none;padding:2px 4px}
 .lego-subtab.dragging{opacity:.4}
+.lego-tab.drop-into,.lego-subtab.drop-into{outline:2px dashed rgba(34,197,94,0.9);outline-offset:-2px;
+  background:rgba(34,197,94,0.18)!important;border-radius:6px}
 .lego-subtab.drop-before{box-shadow:inset 3px 0 0 var(--lego-accent,#3b82f6)}
 .lego-subtab.drop-after{box-shadow:inset -3px 0 0 var(--lego-accent,#3b82f6)}
 .lego-subtabs.drop-into,.lego-sec-h.drop-into{outline:2px dashed var(--lego-accent,#3b82f6);outline-offset:2px;border-radius:6px}
@@ -4837,6 +4839,7 @@ function clearDropFeedback() {
   document.querySelectorAll(".lego-drop-line").forEach((e) => e.remove());
   document.querySelectorAll(".lego-segment-box.drop-into").forEach((e) => e.classList.remove("drop-into"));
   document.querySelectorAll(".lego-sec-controls.drop-out").forEach((e) => e.classList.remove("drop-out"));
+  document.querySelectorAll(".lego-tab.drop-into, .lego-subtab.drop-into").forEach((e) => e.classList.remove("drop-into"));
 }
 
 /**
@@ -4864,13 +4867,41 @@ function groupDropTargetAt(x, y, skipEl) {
   return null;
 }
 
-/** Zona (área de controles) sob o ponto. */
-function zoneDropTargetAt(x, y) {
+/** Zona (área de controles) sob o ponto. `skipEls`: o que está sendo arrastado. */
+function zoneDropTargetAt(x, y, skipEls) {
   for (const hitEl of document.elementsFromPoint(x, y)) {
+    if (skipEls && skipEls.some((s) => s && s.contains(hitEl))) continue;
     const zone = hitEl.closest?.(".lego-sec-controls");
     if (zone && zone.__legoList) return zone;
   }
   return null;
+}
+
+/**
+ * Aba sob o ponto (as do cartão ou as sub-abas de uma zona). Soltar em cima
+ * de uma aba leva o elemento para ela — é como se chega a outra aba no meio
+ * de um arraste, já que a zona dela não está desenhada.
+ */
+function tabDropTargetAt(x, y) {
+  for (const hitEl of document.elementsFromPoint(x, y)) {
+    const tab = hitEl.closest?.(".lego-tab, .lego-subtab");
+    if (tab && tab.__legoTabDrop) return tab;
+  }
+  return null;
+}
+
+/** Posiciona `ctrls` numa lista de zona a partir do canto livre mais próximo, mantendo a disposição entre eles. */
+function placeInList(list, ctrls, baseX = 16, baseY = 16) {
+  const minX = Math.min(...ctrls.map((c) => c.x ?? 0));
+  const minY = Math.min(...ctrls.map((c) => c.y ?? 0));
+  const bw = Math.max(...ctrls.map((c) => (c.x ?? 0) - minX + (c.w || 256)));
+  const bh = Math.max(...ctrls.map((c) => (c.y ?? 0) - minY + (c.h || 46)));
+  const spot = findFreeSpot(list, baseX, baseY, bw, bh);
+  for (const c of ctrls) {
+    c.x = Math.max(0, Math.round((spot.x + (c.x ?? 0) - minX) / GRID) * GRID);
+    c.y = Math.max(0, Math.round((spot.y + (c.y ?? 0) - minY) / GRID) * GRID);
+    list.push(c);
+  }
 }
 
 /** Realça o grupo e desenha a linha onde o item vai entrar. */
@@ -4900,7 +4931,10 @@ function showGroupDrop(t) {
 function itemToZoneCtrl(item, x, y, wPx, hPx) {
   const c = { ...item, x: Math.max(0, Math.round(x / GRID) * GRID), y: Math.max(0, Math.round(y / GRID) * GRID) };
   const { minW, minH } = getComponentMinDimensions(c);
-  c.w = Math.max(minW, typeof item.w === "number" ? item.w : Math.round(wPx / GRID) * GRID || toolByKind(item.kind).w);
+  // Solto na zona o controle ganha o rótulo ao lado (no grupo ele não tinha):
+  // precisa de largura para os dois, senão o controle some espremido.
+  const floorW = (is2DKind(item.kind) || item.kind === "label" || item.kind === "hdivider" || item.kind === "vdivider") ? minW : Math.max(minW, 224);
+  c.w = Math.max(floorW, typeof item.w === "number" ? item.w : Math.round(wPx / GRID) * GRID || toolByKind(item.kind).w);
   c.h = Math.max(minH, typeof item.h === "number" ? item.h : Math.round(hPx / GRID) * GRID || toolByKind(item.kind).h);
   return c;
 }
@@ -4956,6 +4990,13 @@ function startGroupItemDrag(e, { host, state, item, fromList, itemEl }) {
       showGroupDrop(g);
       return;
     }
+    const tabEl = tabDropTargetAt(ev.clientX, ev.clientY);
+    if (tabEl) {
+      clearDropFeedback();
+      tabEl.classList.add("drop-into");
+      target = { type: "tab", tabEl };
+      return;
+    }
     const zone = zoneDropTargetAt(ev.clientX, ev.clientY);
     clearDropFeedback();
     if (zone) {
@@ -4992,6 +5033,11 @@ function startGroupItemDrag(e, { host, state, item, fromList, itemEl }) {
       fromList.splice(from, 1);
       if (dest === fromList && from < at) at--;
       dest.splice(Math.max(0, Math.min(at, dest.length)), 0, item);
+    } else if (target.type === "tab") {
+      fromList.splice(from, 1);
+      const moved = itemToZoneCtrl(item, 0, 0, srcR.width / sc, srcR.height / sc);
+      placeInList(target.tabEl.__legoTabDrop.list(), [moved]);
+      target.tabEl.__legoTabDrop.activate();
     } else {
       const zr = target.zone.getBoundingClientRect();
       const zsc = zr.width / (target.zone.offsetWidth || zr.width || 1);
@@ -5487,6 +5533,12 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
   return box;
 }
 
+/** Tipos de controle que o componente escolhe e que o desenho respeita. */
+const CONTROL_KINDS = new Set(["toggle", "slider", "number", "combo", "text", "textarea", "button", "media", "video", "audio"]);
+function controlKindFor(ctrl, w) {
+  return CONTROL_KINDS.has(ctrl?.kind) ? ctrl.kind : null;
+}
+
 /** Constrói o controle nu de um bind, sem a linha ao redor. Null se sumiu. */
 function buildBare(host, ctrl, state) {
   const hit = resolveBind(host, ctrl.bind);
@@ -5764,7 +5816,8 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
 
   const groupHasMedia = isGroup && (ctrl.items || []).some((i) => isMediaLike(i.kind));
   const hasMediaItem = isMedia || groupHasMedia;
-  const isSlider = ctrl.kind === "slider" || (!isGroup && !isCosmetic && hit && describeWidget(hit.widget).kind === "slider");
+  const isSlider = !isGroup && !isCosmetic && !isOutput && !!hit
+    && (controlKindFor(ctrl, hit.widget) || describeWidget(hit.widget).kind) === "slider";
   const { minW: ctrlMinW, minH: ctrlMinH } = getComponentMinDimensions(ctrl);
 
   // ── 1. POSICIONAMENTO 2D ABSOLUTO COM SNAP TO GRID (CANVAS DA ZONA) ──
@@ -5848,7 +5901,11 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   const isVideo = ctrl.kind === "video" || isVideoCombo(w) || (w.name && /video/i.test(w.name) && typeof w.value === "string" && RE_VIDEO.test(w.value));
   const isAudio = ctrl.kind === "audio" || isAudioCombo(w) || (w.name && /(audio|sound)/i.test(w.name) && typeof w.value === "string" && RE_AUDIO.test(w.value));
   const isMedia = ctrl.kind === "media" || isImageCombo(w) || (w.name && w.name.toLowerCase().includes("image") && typeof w.value === "string" && (w.value.endsWith(".png") || w.value.endsWith(".jpg") || w.value.endsWith(".webp")));
-  const kind = isVideo ? "video" : isAudio ? "audio" : isMedia ? "media" : describeWidget(w).kind;
+  // O tipo escolhido para o componente manda: um Stepper continua Stepper ao
+  // sair de um grupo, mesmo ligado a um número com mínimo e máximo (que a
+  // detecção automática desenharia como Slider). Só componente sem tipo
+  // conhecido cai na detecção pelo widget.
+  const kind = controlKindFor(ctrl, w) || (isVideo ? "video" : isAudio ? "audio" : isMedia ? "media" : describeWidget(w).kind);
 
   let control;
   if (kind === "media" || kind === "video" || kind === "audio") {
@@ -5857,7 +5914,8 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   }
   else if (kind === "toggle") control = mkToggle(node, w, ctrl, state);
   else if (kind === "slider") control = mkSlider(node, w, ctrl, state);
-  else if (kind === "number") control = mkNumber(node, w, ctrl, state);
+  // "number" é o Stepper da paleta (− valor +); a semente mantém o dado.
+  else if (kind === "number") control = ctrl.seed ? mkNumber(node, w, ctrl, state) : mkStepNumber(node, w, ctrl, state);
   else if (kind === "combo") control = mkCombo(node, w, ctrl, state);
   else if (kind === "textarea") {
     control = mkText(node, w, ctrl, state, true);
@@ -6144,6 +6202,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       e.preventDefault(); // ESSENCIAL: impede text-selection e dragstart nativo do HTML5 que disparavam pointercancel e travavam o arraste!
 
       const clickedInteractiveTarget = (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") ? e.target : null;
+      const rowStartRect = row.getBoundingClientRect();
 
       try {
         row.setPointerCapture(e.pointerId);
@@ -6213,6 +6272,9 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       // Um componente sozinho (não-grupo) pode ser solto DENTRO de um grupo.
       const canEnterGroup = movingItems.length === 1 && !isContainerKind(ctrl.kind);
       let groupTarget = null;
+      // Fora da própria zona: outra zona ou uma aba ({ type, zone|tabEl }).
+      let foreign = null;
+      const movingEls = () => movingItems.map((m) => m.el).filter(Boolean);
 
       const onMove = (ev) => {
         ev.stopPropagation();
@@ -6388,21 +6450,31 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
 
         // Sobre um grupo: realça o grupo, mostra onde entra e esmaece o
         // componente, que ali vira item do grupo em vez de mudar de lugar.
-        if (canEnterGroup) {
-          const g = groupDropTargetAt(ev.clientX, ev.clientY, row);
-          if (g) {
-            groupTarget = g;
-            clearGuides();   // guias de alinhamento não valem dentro do grupo
-            showGroupDrop(g);
-            row.classList.add("entering-group");
-          } else if (groupTarget) {
-            groupTarget = null;
-            clearDropFeedback();
-            row.classList.remove("entering-group");
-          }
+        const g = canEnterGroup ? groupDropTargetAt(ev.clientX, ev.clientY, row) : null;
+        const tabEl = g ? null : tabDropTargetAt(ev.clientX, ev.clientY);
+        const zoneEl = (g || tabEl) ? null : zoneDropTargetAt(ev.clientX, ev.clientY, movingEls());
+        const otherZone = zoneEl && zoneEl !== container ? zoneEl : null;
+        clearDropFeedback();
+        groupTarget = g;
+        foreign = tabEl ? { type: "tab", tabEl } : otherZone ? { type: "zone", zone: otherZone } : null;
+        row.classList.toggle("entering-group", !!(g || foreign));
+        if (g) {
+          clearGuides();   // guias de alinhamento não valem dentro do grupo
+          showGroupDrop(g);
+        } else if (tabEl) {
+          clearGuides();
+          tabEl.classList.add("drop-into");
+        } else if (otherZone) {
+          clearGuides();
+          otherZone.classList.add("drop-out");
         }
 
-        if (updateBoundsFn) {
+        // A zona só cresce enquanto o PONTEIRO está nela. Crescendo atrás de
+        // um ponteiro que já saiu, ela empurrava as zonas de baixo para longe
+        // e nunca dava para chegar nelas.
+        const cr = container.getBoundingClientRect();
+        const pointerInside = ev.clientY >= cr.top && ev.clientY <= cr.bottom && ev.clientX >= cr.left && ev.clientX <= cr.right;
+        if (updateBoundsFn && !foreign && !g && pointerInside) {
           const maxMovingBottom = Math.max(...movingItems.map(m => m.curY + (m.ctrl.h || 46) + 16));
           const curMinH = parseFloat(container.style.minHeight) || 70;
           if (maxMovingBottom > curMinH) {
@@ -6453,6 +6525,34 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
         }
 
         ev?.stopPropagation();
+
+        if (foreign) {
+          const moving = movingItems.map((m) => m.ctrl).filter((c) => sectionCtrls.includes(c));
+          for (const m of movingItems) {
+            if (m.el) { m.el.style.zIndex = ""; m.el.classList.remove("dragging"); }
+          }
+          for (const c of moving) sectionCtrls.splice(sectionCtrls.indexOf(c), 1);
+          if (foreign.type === "zone") {
+            // Onde foi solto, mantendo a pegada e a disposição do grupo arrastado.
+            const zr = foreign.zone.getBoundingClientRect();
+            const zsc = zr.width / (foreign.zone.offsetWidth || zr.width || 1);
+            const refX = (ev.clientX - zr.left) / zsc - (startClientX - rowStartRect.left) / curScale;
+            const refY = (ev.clientY - zr.top) / zsc - (startClientY - rowStartRect.top) / curScale;
+            const ref = movingItems.find((m) => m.ctrl === ctrl) || movingItems[0];
+            for (const m of movingItems) {
+              if (!moving.includes(m.ctrl)) continue;
+              m.ctrl.x = Math.max(0, Math.round((refX + m.origX - ref.origX) / GRID) * GRID);
+              m.ctrl.y = Math.max(0, Math.round((refY + m.origY - ref.origY) / GRID) * GRID);
+              foreign.zone.__legoList.push(m.ctrl);
+            }
+          } else {
+            placeInList(foreign.tabEl.__legoTabDrop.list(), moving);
+            foreign.tabEl.__legoTabDrop.activate();
+          }
+          pushUndoSnapshot(host, undoSnapshot);
+          state.refresh();
+          return;
+        }
 
         if (groupTarget) {
           const idx = sectionCtrls.indexOf(ctrl);
@@ -9982,6 +10082,14 @@ function buildCard(host, state) {
       const isSel = i === (layout.activeTab || 0);
       const tab = el("div", `lego-tab${isSel ? " sel" : ""}`);
       tab.append(el("span", "lego-tab-title", t.name));
+      // Alvo de arraste: soltar aqui leva o elemento para a 1ª zona desta aba.
+      tab.__legoTabDrop = {
+        list: () => {
+          if (!Array.isArray(t.sections) || !t.sections.length) t.sections = [{ header: String(t.name || "ZONE").toUpperCase(), controls: [] }];
+          return visibleControlsOf(t.sections[0]);
+        },
+        activate: () => { layout.activeTab = i; },
+      };
 
       // Em modo de edição, adiciona botões de ação na própria aba
       if (state.edit) {
@@ -10490,6 +10598,10 @@ function buildCard(host, state) {
           const isSel = stIdx === s.activeTab;
           const subTab = el("div", `lego-subtab${isSel ? " sel" : ""}`);
           subTab.append(el("span", "lego-subtab-title", st.name));
+          subTab.__legoTabDrop = {
+            list: () => st.controls || (st.controls = []),
+            activate: () => { s.activeTab = stIdx; },
+          };
 
           // Sub-aba arrastável: reordena na zona ou muda de zona.
           if (state.edit) {
