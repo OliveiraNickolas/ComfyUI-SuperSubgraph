@@ -2632,6 +2632,10 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
     );
     itemWrap.dataset.itemName = item.name;
     itemWrap.dataset.name = item.name;
+    if (item.color) {
+      itemWrap.classList.add("tinted");
+      itemWrap.style.setProperty("--lego-c", item.color);
+    }
 
     // Mesma regra dos componentes soltos: dentro do grupo o item também nasce
     // na menor largura, e só cresce se alguém pedir.
@@ -2646,7 +2650,8 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       (item.kind === "textarea") ? 80 :
       (isMediaItem ? 120 :
       (item.kind === "hdivider" ? 16 :
-      (item.kind === "vdivider" ? 24 : null)));
+      (item.kind === "vdivider" ? 24 :
+      (isContainerItem ? 48 : null))));
     const effH = typeof item.h === "number" ? item.h : defaultH;
     if (typeof effH === "number") {
       itemWrap.style.height = `${Math.max(itemMinH, effH)}px`;
@@ -2858,6 +2863,9 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       itemWrap.append(textSpan);
     } else if (isContainerItem) {
       if (!Array.isArray(item.items)) item.items = [];
+      itemWrap.style.display = "flex";
+      itemWrap.style.flexDirection = "column";
+      itemWrap.style.alignItems = "stretch";
       const innerSeg = buildSegment(host, item, state, sectionCtrls);
       innerSeg.style.flex = "1";
       innerSeg.style.minHeight = "32px";
