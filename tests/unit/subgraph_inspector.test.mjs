@@ -231,12 +231,31 @@ if (groupRow) {
   const secEls = node.__legoHost.querySelectorAll(".lego-sec");
   t("renders two zone elements", secEls.length === 2);
 
-  const secA = secEls[0];
-  const secB = secEls[1];
-  t("zone A has width calc with gap offset", secA.style.width.includes("calc(50%"));
-  t("zone A flex basis matches calc", secA.style.flex.includes("calc(50%"));
-  t("zone A has maxWidth matching calc", secA.style.maxWidth.includes("calc(50%"));
-  t("zone B has width calc with gap offset", secB.style.width.includes("calc(50%"));
+  const colEls = node.__legoHost.querySelectorAll(".lego-col");
+  t("renders two column elements in lego-cols-row", colEls.length === 2);
+  const colA = colEls[0];
+  const colB = colEls[1];
+  t("col A has width calc with gap offset", colA.style.width.includes("calc(50%"));
+  t("col A flex basis matches calc", colA.style.flex.includes("calc(50%"));
+  t("col B has width calc with gap offset", colB.style.width.includes("calc(50%"));
+  t("zones inside columns have 100% width", secEls[0].style.width === "100%" && secEls[1].style.width === "100%");
+
+  // Stacking: 2 zones in left column, 1 zone in right column
+  node.properties.ui_layout.tabs[0].sections = [
+    { header: "LEFT TOP", width: "50%", col: 0, controls: [] },
+    { header: "LEFT BOTTOM", width: "50%", col: 0, controls: [] },
+    { header: "RIGHT STRETCH", width: "50%", col: 1, controls: [] }
+  ];
+  st.refresh();
+
+  const stackedSecEls = node.__legoHost.querySelectorAll(".lego-sec");
+  t("renders three zones with stacked layout", stackedSecEls.length === 3);
+  const stackedCols = node.__legoHost.querySelectorAll(".lego-col");
+  t("renders two columns for 3 zones", stackedCols.length === 2);
+  t("col 0 contains 2 zones", stackedCols[0].querySelectorAll(".lego-sec").length === 2);
+  t("col 1 contains 1 zone", stackedCols[1].querySelectorAll(".lego-sec").length === 1);
+  const rightStretchSec = stackedCols[1].querySelector(".lego-sec");
+  t("single zone in column has stretch class", rightStretchSec.classList.contains("lego-sec-stretch"));
 
   // Check card width action button (removed per user directive: fluid modular drag & snap instead of rigid percentages)
   const widthBtns = node.__legoHost.querySelectorAll(".lego-sec-actions button[title*='Card width']");
@@ -409,13 +428,15 @@ const secWithSubTabs = {
 // Subtab T2 has 30 + 400 = 430 + 32 = 462px
 t("sectionRequiredWidth checks sub-tabs controls", M.sectionRequiredWidth(secWithSubTabs) === 462);
 
-// Check DOM minWidth enforcement on buildCard
-node.properties.ui_layout.tabs[0].sections = [secWithControls];
+// Check top pivot and adaptive containment
+node.properties.ui_layout.tabs[0].sections = [
+  { header: "PIVOT", width: "100%", controls: secWithControls.controls },
+  { header: "SUB", width: "50%", controls: [{ name: "S1", x: 10, w: 50 }] }
+];
 st.refresh();
-const renderedSec = node.__legoHost.querySelector(".lego-sec");
-t("rendered zone has minWidth matching sectionRequiredWidth", renderedSec.style.minWidth === "402px");
-const renderedCtrlsBox = renderedSec.querySelector(".lego-sec-controls");
-t("rendered zone controls box has minWidth protecting contents", renderedCtrlsBox.style.minWidth === `${402 - 24}px`);
+t("top pivot sets requiredNodeWidth baseline", M.requiredNodeWidth(node, node) >= 402);
+const renderedCtrlsBox = node.__legoHost.querySelector(".lego-sec-controls");
+t("controls box has safe containment without rigid minWidth", renderedCtrlsBox.style.minWidth === "0px" || renderedCtrlsBox.style.minWidth === "0");
 
 // ── 11. TEST REQUIRED NODE WIDTH & SIDE-BY-SIDE CONTAINMENT ──
 const sideBySideTab = {
@@ -462,6 +483,54 @@ const scaledReqW = M.requiredNodeWidth(testNode, testNode.__legoHost);
 t("requiredNodeWidth scales proportionally with layout.scale", scaledReqW === Math.ceil(704 * 1.3));
 const scaleBtnEl = testNode.__legoHost.querySelector(".lego-scale-btn");
 t("header contains UI Scale button showing 130%", scaleBtnEl && scaleBtnEl.textContent === "130%");
+
+// ── 13. TEST TOP PIVOT, COLUMN GROUPING & STACKING ──
+const complexSections = [
+  { header: "MEDIA PIVOT", width: "100%", controls: [{ name: "P", x: 20, w: 500 }] },
+  { header: "COL 1 TOP", width: "50%", col: 0, controls: [] },
+  { header: "COL 1 BOTTOM", width: "50%", col: 0, controls: [] },
+  { header: "COL 2 STRETCH", width: "50%", col: 1, controls: [] }
+];
+const groups = M.groupSectionsLayout(complexSections);
+t("groupSectionsLayout creates full and column groups", groups.length === 2);
+t("group 0 is full width pivot", groups[0].type === "full" && groups[0].sec.header === "MEDIA PIVOT");
+t("group 1 is columns row", groups[1].type === "columns" && groups[1].columns.length === 2);
+t("column 0 has 2 stacked entries", groups[1].columns[0].entries.length === 2);
+t("column 1 has 1 entry", groups[1].columns[1].entries.length === 1);
+
+// Test addZoneBelow on a column zone
+const origPrompt = globalThis.prompt;
+globalThis.prompt = () => "NEW STACKED ZONE";
+const curTabObj = { sections: [...complexSections] };
+const addedBelow = M.addZoneBelow({ host: testNode, curTab: curTabObj, section: curTabObj.sections[3] });
+t("addZoneBelow stacks in same column", addedBelow.col === 1 && addedBelow.width === "50%");
+t("addZoneBelow inserts directly after target", curTabObj.sections[4].header === "NEW STACKED ZONE");
+
+// Test addZoneBeside on a column zone
+globalThis.prompt = () => "NEW COLUMN ZONE";
+const addedBeside = M.addZoneBeside({ host: testNode, curTab: curTabObj, section: curTabObj.sections[1] });
+t("addZoneBeside creates adjacent column", addedBeside.col === 1);
+t("addZoneBeside rebalances column widths to 33.3%", addedBeside.width === "33.3%");
+globalThis.prompt = origPrompt;
+
+// Test requiredNodeWidth pivots on first row only
+const pivotOnlyNode = {
+  properties: {
+    ui_layout: {
+      schema: 2,
+      scale: 1,
+      tabs: [{
+        sections: [
+          { header: "TOP PIVOT", width: "100%", controls: [{ name: "P", x: 20, w: 650 }] }, // 650 + 20 + 32 = 702 (> MIN_W 600)
+          { header: "HUGE SUB 1", width: "50%", col: 0, controls: [{ name: "S1", x: 20, w: 800 }] },
+          { header: "HUGE SUB 2", width: "50%", col: 1, controls: [{ name: "S2", x: 20, w: 800 }] }
+        ]
+      }]
+    }
+  }
+};
+const pReqW = M.requiredNodeWidth(pivotOnlyNode, null);
+t("requiredNodeWidth pivots strictly on first row without sub-row inflation", pReqW === 702 + 36);
 
 console.log(`\n${ok} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

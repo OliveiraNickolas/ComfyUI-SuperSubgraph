@@ -1039,11 +1039,45 @@ export const CSS = `
 /* ── Layout Geral de Cards no Subgrafo ── */
 .lego-body{
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: stretch;
   gap: 12px;
   width: 100%;
   box-sizing: border-box;
+}
+
+.lego-cols-row{
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.lego-col{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.lego-col > .lego-sec{
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box;
+}
+
+.lego-col > .lego-sec.lego-sec-stretch,
+.lego-col > .lego-sec:only-child{
+  flex: 1 1 auto;
+  min-height: 100%;
+}
+
+.lego-col > .lego-sec.lego-sec-stretch > .lego-sec-controls,
+.lego-col > .lego-sec:only-child > .lego-sec-controls{
+  flex: 1 1 auto;
 }
 
 .lego-sec{
@@ -1069,17 +1103,24 @@ export const CSS = `
 /* ── Controls area inside Zone ── */
 .lego-sec-controls{
   position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 8px;
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
   background: transparent;
   border-radius: 8px;
   min-height: 70px;
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: thin;
+  scrollbar-color: var(--lego-line) transparent;
   transition: min-height .15s ease, height .15s ease;
+}
+.lego-sec-controls::-webkit-scrollbar{
+  height: 5px;
+}
+.lego-sec-controls::-webkit-scrollbar-thumb{
+  background: var(--lego-line);
+  border-radius: 3px;
 }
 
 /* In edit mode, subtle dashed border marks the canvas area */

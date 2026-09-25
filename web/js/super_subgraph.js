@@ -911,6 +911,12 @@ const GLYPHS = {
   // Setas de ordem.
   up: '<path d="M6.5 14.2L12 8.6l5.5 5.6" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>',
   down: '<path d="M6.5 9.8L12 15.4l5.5-5.6" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>',
+  left: '<path d="M14.2 6.5L8.6 12l5.6 5.5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>',
+  right: '<path d="M9.8 6.5L15.4 12l-5.6 5.5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>',
+
+  // Ações de criação de zona na coluna ou linha
+  addBelow: '<path d="M12 4v8M8.5 8.5L12 12l3.5-3.5M5 16.5h14" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>',
+  addBeside: '<path d="M4 12h8M8.5 8.5L12 12l-3.5 3.5M16.5 5v14" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>',
 
   // Elo — o vínculo do componente com o parâmetro do workflow.
   link:
@@ -4875,8 +4881,64 @@ function sectionRequiredHeight(s) {
 }
 
 /**
- * Largura mínima exigida para o nó conter confortavelmente todas as zonas lado a lado
- * da aba ativa, respeitando também a escala de UI configurada.
+ * Agrupa seções em linhas completas (100%) e linhas de colunas (largura < 100%).
+ * Permite múltiplas zonas empilhadas verticalmente dentro de uma mesma coluna
+ * ao lado de uma coluna com zona única que estica para cobrir a mesma altura total.
+ */
+function groupSectionsLayout(sections) {
+  if (!Array.isArray(sections)) return [];
+  const groups = [];
+  let i = 0;
+  while (i < sections.length) {
+    const s = sections[i];
+    if (!s.width || s.width === "100%") {
+      groups.push({ type: "full", sec: s, index: i });
+      i++;
+    } else {
+      const start = i;
+      while (i < sections.length && sections[i].width && sections[i].width !== "100%") {
+        i++;
+      }
+      const colSecs = sections.slice(start, i);
+
+      // Agrupa por `col`. Se ninguém tiver `col`, atribui 0, 1, 2... sequencial
+      const hasAnyCol = colSecs.some((x) => typeof x.col === "number");
+      if (!hasAnyCol) {
+        colSecs.forEach((x, idx) => { x.col = idx; });
+      }
+
+      const colMap = new Map();
+      colSecs.forEach((x, localIdx) => {
+        const cIdx = typeof x.col === "number" ? x.col : localIdx;
+        if (!colMap.has(cIdx)) colMap.set(cIdx, []);
+        colMap.get(cIdx).push({ sec: x, globalIndex: start + localIdx });
+      });
+
+      const sortedKeys = Array.from(colMap.keys()).sort((a, b) => a - b);
+      sortedKeys.forEach((key, newColIdx) => {
+        colMap.get(key).forEach(({ sec }) => { sec.col = newColIdx; });
+      });
+
+      const defaultW = widthForCount(sortedKeys.length);
+      const columns = sortedKeys.map((key, newColIdx) => {
+        const entries = colMap.get(key);
+        const w = entries[0].sec.width || defaultW;
+        return {
+          colIdx: newColIdx,
+          width: w,
+          entries
+        };
+      });
+
+      groups.push({ type: "columns", columns, startIndex: start, endIndex: i - 1 });
+    }
+  }
+  return groups;
+}
+
+/**
+ * A primeira zona (topo / pivot) define a largura necessária do SuperSubgraph.
+ * Zonas abaixo do pivot adaptam-se e cabem na largura pivot.
  */
 function requiredNodeWidth(node, host) {
   const layout = host?.properties?.[PROP] || node?.properties?.[PROP];
@@ -4885,15 +4947,9 @@ function requiredNodeWidth(node, host) {
     const curTab = typeof activeTabOf === "function" ? activeTabOf(layout) : (layout?.tabs?.[layout?.activeTab || 0] || layout?.tabs?.[0] || null);
     const sections = curTab?.sections || [];
     if (sections.length) {
-      let maxRowW = MIN_W;
-      let i = 0;
-      while (i < sections.length) {
-        const row = getContiguousRow(sections, i);
-        const rowWidth = row.reduce((acc, s) => acc + sectionRequiredWidth(s), 0) + Math.max(0, row.length - 1) * 12 + 36;
-        maxRowW = Math.max(maxRowW, rowWidth);
-        i += row.length;
-      }
-      layoutW = maxRowW;
+      const firstRow = getContiguousRow(sections, 0);
+      const rowWidth = firstRow.reduce((acc, s) => acc + sectionRequiredWidth(s), 0) + Math.max(0, firstRow.length - 1) * 12 + 36;
+      layoutW = Math.max(MIN_W, rowWidth);
     }
   }
   const scale = host?.firstElementChild?.style?.zoom ? parseFloat(host.firstElementChild.style.zoom) : (layout?.scale || 1);
@@ -7207,6 +7263,107 @@ function createNewZone({ host, curTab, state }) {
 }
 const openAddZoneModal = createNewZone;
 
+/** Adiciona uma nova Zona empilhada abaixo da zona indicada (na mesma coluna ou linha). */
+function addZoneBelow({ host, curTab, section, state }) {
+  if (!curTab || !section) return null;
+  const sections = curTab.sections || (curTab.sections = []);
+  const idx = sections.indexOf(section);
+  if (idx < 0) return null;
+  const count = sections.length + 1;
+  const name = prompt("New Zone Name:", `ZONE ${count}`);
+  if (name == null) return null;
+  const zoneName = (name.trim() || `ZONE ${count}`).toUpperCase();
+  pushUndo(host);
+
+  const isCol = section.width && section.width !== "100%";
+  const newSec = {
+    header: zoneName,
+    width: isCol ? section.width : "100%",
+    activeTab: 0,
+    tabs: [
+      { name: "Tab 1", controls: [] },
+      { name: "Tab 2", controls: [] }
+    ]
+  };
+  if (isCol) {
+    newSec.col = typeof section.col === "number" ? section.col : 0;
+  }
+  sections.splice(idx + 1, 0, newSec);
+  if (state) {
+    state.activeSection = newSec;
+    state.refresh();
+  }
+  return newSec;
+}
+
+/** Adiciona uma nova Zona ao lado da zona indicada (criando uma nova coluna adjacente). */
+function addZoneBeside({ host, curTab, section, state }) {
+  if (!curTab || !section) return null;
+  const sections = curTab.sections || (curTab.sections = []);
+  const idx = sections.indexOf(section);
+  if (idx < 0) return null;
+  const count = sections.length + 1;
+  const name = prompt("New Zone Name:", `ZONE ${count}`);
+  if (name == null) return null;
+  const zoneName = (name.trim() || `ZONE ${count}`).toUpperCase();
+  pushUndo(host);
+
+  const newSec = {
+    header: zoneName,
+    activeTab: 0,
+    tabs: [
+      { name: "Tab 1", controls: [] },
+      { name: "Tab 2", controls: [] }
+    ]
+  };
+
+  const isCol = section.width && section.width !== "100%";
+  if (!isCol) {
+    section.col = 0;
+    section.width = "50%";
+    newSec.col = 1;
+    newSec.width = "50%";
+    sections.splice(idx + 1, 0, newSec);
+  } else {
+    const targetCol = typeof section.col === "number" ? section.col : 0;
+    let start = idx;
+    while (start > 0 && sections[start - 1].width && sections[start - 1].width !== "100%") {
+      start--;
+    }
+    let end = idx;
+    while (end < sections.length - 1 && sections[end + 1].width && sections[end + 1].width !== "100%") {
+      end++;
+    }
+    const groupSecs = sections.slice(start, end + 1);
+
+    groupSecs.forEach((s) => {
+      if (typeof s.col === "number" && s.col > targetCol) {
+        s.col++;
+      }
+    });
+    newSec.col = targetCol + 1;
+
+    let insertIdx = idx;
+    for (let i = start; i <= end; i++) {
+      if (sections[i].col === targetCol) insertIdx = i;
+    }
+    sections.splice(insertIdx + 1, 0, newSec);
+
+    const colsSet = new Set();
+    groupSecs.forEach((s) => colsSet.add(s.col));
+    colsSet.add(newSec.col);
+    const newW = widthForCount(colsSet.size);
+    groupSecs.forEach((s) => { s.width = newW; });
+    newSec.width = newW;
+  }
+
+  if (state) {
+    state.activeSection = newSec;
+    state.refresh();
+  }
+  return newSec;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    FORM MODE (Delphi 7 style)
 
@@ -8842,20 +8999,34 @@ function buildCard(host, state) {
 
     const sections = cur.sections || (cur.sections = []);
 
-    sections.forEach((s, sIdx) => {
-      const sec = el("div", `lego-sec${s.color ? " tinted" : ""}`);
+    function buildSectionElement(s, sIdx, isFullWidth, isStretch = false) {
+      const sec = el("div", `lego-sec${s.color ? " tinted" : ""}${isStretch ? " lego-sec-stretch" : ""}`);
       if (s.color) sec.style.setProperty("--lego-zone-c", s.color);
       sec.addEventListener("pointerdown", () => { state.activeSection = s; });
 
-      // Aplica a largura do Card (100%, 50%, 33%, etc.) no container geral
       const reqW = sectionRequiredWidth(s);
-      const secW = s.width || (s.w ? `${s.w}px` : "100%");
-      const cssW = widthToCss(secW);
-      sec.style.width = cssW;
-      sec.style.flex = `0 0 ${cssW}`;
-      sec.style.minWidth = `${reqW}px`;
-      sec.style.maxWidth = cssW;
-      sec.style.boxSizing = "border-box";
+
+      // Aplica a largura do Card (100% ou container flex da coluna)
+      if (isFullWidth) {
+        const secW = s.width || (s.w ? `${s.w}px` : "100%");
+        const cssW = widthToCss(secW);
+        sec.style.width = cssW;
+        sec.style.flex = `0 0 ${cssW}`;
+        sec.style.minWidth = "0";
+        sec.style.maxWidth = cssW;
+        sec.style.boxSizing = "border-box";
+      } else {
+        sec.style.width = "100%";
+        sec.style.maxWidth = "100%";
+        sec.style.minWidth = "0";
+        sec.style.boxSizing = "border-box";
+        if (isStretch) {
+          sec.style.flex = "1 1 auto";
+          sec.style.minHeight = "100%";
+        } else {
+          sec.style.flex = "0 0 auto";
+        }
+      }
 
       if (s.height) {
         sec.style.minHeight = s.height;
@@ -8913,35 +9084,84 @@ function buildCard(host, state) {
           state.draggingSection = null;
           if (!moved || moved === s) return;
 
-          // 1. Identifica os vizinhos de linha da posição original e reequilibra
-          const oldRow = getContiguousRow(sections, fromIdx);
+          // 1. Remove da posição original
           sections.splice(fromIdx, 1);
-          const oldRem = oldRow.filter((x) => x !== moved);
-          if (oldRem.length) {
-            const oldW = widthForCount(oldRem.length);
-            oldRem.forEach((x) => { x.width = oldW; });
-          }
 
           // 2. Insere na nova posição conforme a direção de encaixe (4-Way)
           const targetIdx = sections.indexOf(s);
-          if (dir === "left" || dir === "right") {
-            // LADO A LADO: junta à linha do card alvo
-            const targetRow = getContiguousRow(sections, targetIdx);
-            const isTargetAlone = !s.width || s.width === "100%";
-            const insertIdx = (dir === "right") ? targetIdx + 1 : targetIdx;
-            sections.splice(insertIdx, 0, moved);
+          const isTargetCol = s.width && s.width !== "100%";
 
-            const newRow = isTargetAlone ? [s, moved] : [...targetRow, moved];
-            const newW = widthForCount(newRow.length);
-            newRow.forEach((x) => { x.width = newW; });
-          } else if (dir === "top") {
-            // EM CIMA: vira uma linha própria (100% de largura)
-            moved.width = "100%";
-            sections.splice(targetIdx, 0, moved);
+          if (dir === "top" || dir === "bottom") {
+            if (isTargetCol) {
+              // Empilha na MESMA COLUNA da zona alvo
+              moved.col = typeof s.col === "number" ? s.col : 0;
+              moved.width = s.width;
+              const insertIdx = (dir === "bottom") ? targetIdx + 1 : targetIdx;
+              sections.splice(insertIdx, 0, moved);
+            } else {
+              // Alvo é 100% full-width: vira uma linha própria de 100%
+              moved.width = "100%";
+              delete moved.col;
+              const insertIdx = (dir === "bottom") ? targetIdx + 1 : targetIdx;
+              sections.splice(insertIdx, 0, moved);
+            }
           } else {
-            // EM BAIXO: vira uma linha própria (100% de largura)
-            moved.width = "100%";
-            sections.splice(targetIdx + 1, 0, moved);
+            // LADO A LADO ("left" ou "right"): cria ou junta em uma nova coluna
+            if (isTargetCol) {
+              const targetCol = typeof s.col === "number" ? s.col : 0;
+              let start = targetIdx;
+              while (start > 0 && sections[start - 1].width && sections[start - 1].width !== "100%") {
+                start--;
+              }
+              let end = targetIdx;
+              while (end < sections.length - 1 && sections[end + 1].width && sections[end + 1].width !== "100%") {
+                end++;
+              }
+              const colSecs = sections.slice(start, end + 1);
+
+              if (dir === "left") {
+                colSecs.forEach((x) => {
+                  if (typeof x.col === "number" && x.col >= targetCol) x.col++;
+                });
+                moved.col = targetCol;
+                sections.splice(targetIdx, 0, moved);
+              } else {
+                colSecs.forEach((x) => {
+                  if (typeof x.col === "number" && x.col > targetCol) x.col++;
+                });
+                moved.col = targetCol + 1;
+                let lastInCol = targetIdx;
+                for (let i = start; i <= end; i++) {
+                  if (sections[i].col === targetCol) lastInCol = i;
+                }
+                sections.splice(lastInCol + 1, 0, moved);
+              }
+
+              // Rebalanceia as larguras das colunas desse grupo
+              let groupStart = start;
+              let groupEnd = end + 1;
+              const colsSet = new Set();
+              for (let i = groupStart; i <= groupEnd; i++) {
+                if (sections[i] && typeof sections[i].col === "number") colsSet.add(sections[i].col);
+              }
+              const newW = widthForCount(colsSet.size);
+              for (let i = groupStart; i <= groupEnd; i++) {
+                if (sections[i]) sections[i].width = newW;
+              }
+            } else {
+              // Alvo é 100%: divide em duas colunas de 50%!
+              s.width = "50%";
+              moved.width = "50%";
+              if (dir === "left") {
+                s.col = 1;
+                moved.col = 0;
+                sections.splice(targetIdx, 0, moved);
+              } else {
+                s.col = 0;
+                moved.col = 1;
+                sections.splice(targetIdx + 1, 0, moved);
+              }
+            }
           }
 
           state.refresh();
@@ -9090,6 +9310,26 @@ function buildCard(host, state) {
         });
         actions.append(colorBtn);
 
+        // Adicionar Zona abaixo (empilhada na coluna)
+        const addBelowBtn = glyphBtn("lego-iconbtn", "addBelow", 12);
+        addBelowBtn.title = "Add zone below (stack in column)";
+        addBelowBtn.addEventListener("pointerdown", eatPointer);
+        addBelowBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          addZoneBelow({ host, curTab: cur, section: s, state });
+        });
+        actions.append(addBelowBtn);
+
+        // Adicionar Zona ao lado (nova coluna)
+        const addBesideBtn = glyphBtn("lego-iconbtn", "addBeside", 12);
+        addBesideBtn.title = "Add zone beside (new column)";
+        addBesideBtn.addEventListener("pointerdown", eatPointer);
+        addBesideBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          addZoneBeside({ host, curTab: cur, section: s, state });
+        });
+        actions.append(addBesideBtn);
+
         // Mover para cima/lado
         if (sIdx > 0) {
           const upBtn = glyphBtn("lego-iconbtn", "up", 12);
@@ -9144,7 +9384,8 @@ function buildCard(host, state) {
           sections.splice(sIdx, 1);
           const rem = sRow.filter((x) => x !== s);
           if (rem.length) {
-            const w = widthForCount(rem.length);
+            const colsSet = new Set(rem.map((x) => (typeof x.col === "number" ? x.col : 0)));
+            const w = widthForCount(colsSet.size);
             rem.forEach((x) => { x.width = w; });
           }
           state.refresh();
@@ -9449,7 +9690,7 @@ function buildCard(host, state) {
       const CTRL_GRID = 16;
       const ctrlsBox = el("div", `lego-sec-controls${state.edit ? " in-edit" : ""}`);
       ctrlsBox.__legoList = list;   // alvo de arraste (ver zoneDropTargetAt)
-      ctrlsBox.style.minWidth = `${Math.max(160, reqW - 24)}px`;
+      ctrlsBox.style.minWidth = "0";
 
       function updateControlsBounds() {
         let maxY = 70;
@@ -9759,7 +10000,35 @@ function buildCard(host, state) {
       }
 
       sec.append(ctrlsBox);
-      body.append(sec);
+      return sec;
+    }
+
+    const layoutGroups = groupSectionsLayout(sections);
+    layoutGroups.forEach((g) => {
+      if (g.type === "full") {
+        body.append(buildSectionElement(g.sec, g.index, true, false));
+      } else if (g.type === "columns") {
+        const colsRow = el("div", "lego-cols-row");
+        const numCols = g.columns.length;
+        g.columns.forEach((col) => {
+          const colEl = el("div", "lego-col");
+          const defaultW = widthForCount(numCols);
+          const colW = col.width || defaultW;
+          const cssW = widthToCss(colW);
+          colEl.style.width = cssW;
+          colEl.style.flex = `1 1 ${cssW}`;
+          colEl.style.minWidth = "0";
+          colEl.style.boxSizing = "border-box";
+
+          col.entries.forEach(({ sec, globalIndex }) => {
+            const isStretch = (col.entries.length === 1);
+            const secEl = buildSectionElement(sec, globalIndex, false, isStretch);
+            colEl.append(secEl);
+          });
+          colsRow.append(colEl);
+        });
+        body.append(colsRow);
+      }
     });
     // Suporte a soltar componentes diretamente no fundo do Canvas com Snap to Grid de 20px
     if (state.edit) {
