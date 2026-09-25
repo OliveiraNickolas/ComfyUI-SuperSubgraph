@@ -2447,7 +2447,7 @@ function zoneCtrlToItem(ctrl) {
   // Dentro do grupo o item acompanha a largura do grupo; só o que tem corpo
   // (texto longo, mídia, output) guarda a altura que tinha.
   delete it.w;
-  if (!is2DKind(it.kind)) delete it.h;
+  if (!is2DKind(it.kind) && !isGroupKind(it.kind)) delete it.h;
   return it;
 }
 
@@ -2855,6 +2855,12 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
         });
       }
       itemWrap.append(textSpan);
+    } else if (isContainerItem) {
+      if (!Array.isArray(item.items)) item.items = [];
+      const innerSeg = buildSegment(host, item, state, sectionCtrls);
+      innerSeg.style.flex = "1";
+      innerSeg.style.minHeight = "32px";
+      itemWrap.append(innerSeg);
     } else if (isOutputItem) {
       const labelPos = item.labelPos || "left";
       if (labelPos !== "none" && item.label && item.label !== item.name) {
@@ -3844,7 +3850,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       };
 
       // Um componente sozinho (não-grupo) pode ser solto DENTRO de um grupo.
-      const canEnterGroup = movingItems.length === 1 && !isContainerKind(ctrl.kind);
+      const canEnterGroup = movingItems.length === 1;
       let groupTarget = null;
       // Fora da própria zona: outra zona ou uma aba ({ type, zone|tabEl }).
       let foreign = null;
@@ -6821,8 +6827,8 @@ function groupSelectedComponents(host, state, vertical = false, list = null) {
   list = list || visibleControlsOf(activeSectionOf(layout, state));
   if (!list) return false;
   const names = selectionFor(state, null);
-  const picked = list.filter((c) => names.has(c.name) && !isGroupKind(c.kind));
-  if (!picked.length) { showLegoToast("Select components (not groups) to group"); return false; }
+  const picked = list.filter((c) => names.has(c.name));
+  if (!picked.length) { showLegoToast("Select components to group"); return false; }
   pushUndo(host);
   picked.sort((a, b) => (a.y - b.y) || (a.x - b.x));
   const x0 = Math.min(...picked.map((c) => c.x || 0));
@@ -6830,7 +6836,7 @@ function groupSelectedComponents(host, state, vertical = false, list = null) {
   const right = Math.max(...picked.map((c) => (c.x || 0) + (c.w || 160)));
   const at = Math.min(...picked.map((c) => list.indexOf(c)));
   const items = picked.map(zoneCtrlToItem);
-  const bodyH = (it) => (is2DKind(it.kind) ? (it.h || 144) : 48);
+  const bodyH = (it) => (is2DKind(it.kind) || isGroupKind(it.kind)) ? (it.h || 144) : 48;
   const group = vertical
     ? { kind: "vsegment", x: x0, y: y0, w: Math.max(240, ...picked.map((c) => c.w || 0)), h: items.reduce((a, it) => a + bodyH(it) + 8, 16) }
     : { kind: "segment", x: x0, y: y0, w: Math.max(right - x0, 160 * items.length), h: Math.max(64, ...items.map((it) => bodyH(it) + 16)) };
@@ -6925,7 +6931,7 @@ function openComponentContextMenu(e, host, state, ctrl, list) {
   const names = selectionFor(state, ctrl);
   if (!names.has(ctrl.name) || !state.selectedNames?.has(ctrl.name)) selectComponent(host, state, ctrl, list, false, false);
   const many = names.size > 1;
-  const looseSel = list.filter((c) => names.has(c.name) && !isGroupKind(c.kind));
+  const looseSel = list.filter((c) => names.has(c.name));
   const entries = [
     { icon: "settings", label: "Properties", action: () => selectComponent(host, state, ctrl, list, true, false) },
     { icon: "copy", label: many ? `Duplicate (${names.size})` : "Duplicate", hint: "Ctrl+D", action: () => { state.selectedNames = new Set(names); if (copySelectedComponents(host, state)) pasteComponents(host, state); } },
@@ -7160,20 +7166,22 @@ const toolByKind = (kind) => TOOLBOX.find((t) => t.kind === kind) || TOOLBOX[0];
 
 /** Percorre todo o layout chamando fn(ctrl, listaQueOContém, zona, grupoPai). */
 function walkControls(layout, fn) {
+  const walkItems = (items, sec, parent) => {
+    for (const item of items) {
+      fn(item, items, sec, parent);
+      if (Array.isArray(item.items)) walkItems(item.items, sec, item);
+    }
+  };
   for (const tab of layout?.tabs || []) {
     for (const sec of tab.sections || []) {
       for (const c of sec.controls || []) {
         fn(c, sec.controls, sec);
-        if (Array.isArray(c.items)) {
-          for (const item of c.items) fn(item, c.items, sec, c);
-        }
+        if (Array.isArray(c.items)) walkItems(c.items, sec, c);
       }
       for (const sub of sec.tabs || []) {
         for (const c of sub.controls || []) {
           fn(c, sub.controls, sec);
-          if (Array.isArray(c.items)) {
-            for (const item of c.items) fn(item, c.items, sec, c);
-          }
+          if (Array.isArray(c.items)) walkItems(c.items, sec, c);
         }
       }
     }

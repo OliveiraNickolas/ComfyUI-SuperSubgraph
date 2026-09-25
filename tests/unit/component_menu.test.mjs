@@ -61,5 +61,28 @@ t("Remove deletes it", !ctrls().some((x) => x.name === "Switch1") && ctrls().fil
 M.doUndo(host, st);
 t("undo brings it back", ctrls().some((x) => x.name === "Switch1"));
 
+// Agrupar grupo dentro de grupo (aninhamento)
+// Primeiro cria um grupo com dois itens
+st.selectedNames = new Set(["Slider1", "Stepper1"]); st.selectedName = "Slider1";
+key("g", { ctrlKey: true });
+c = ctrls();
+const outerBefore = c.find((x) => x.kind === "segment");
+t("created inner group first", !!outerBefore && outerBefore.items.length === 2);
+
+// Agora seleciona o grupo + o Switch e agrupa de novo
+st.selectedNames = new Set([outerBefore.name, "Switch1"]); st.selectedName = outerBefore.name;
+key("g", { ctrlKey: true });
+c = ctrls();
+const wrapper = c.find((x) => x.kind === "segment");
+t("nested group: outer has 2 items", !!wrapper && wrapper.items.length === 2);
+const inner = wrapper.items.find((it) => it.kind === "segment");
+t("nested group: inner is a segment with 2 binds", !!inner && inner.items.length === 2 && inner.items.map((i) => i.bind).join() === "steps,cfg");
+
+// Ungroup do wrapper devolve grupo interno + Switch soltos
+fire(row(wrapper.name), "contextmenu");
+clickMenu("Ungroup");
+c = ctrls();
+t("ungroup nested: inner group survives", c.some((x) => x.kind === "segment" && x.items.length === 2));
+
 console.log(`\n${ok} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
