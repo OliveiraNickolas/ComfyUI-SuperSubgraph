@@ -9430,19 +9430,12 @@ function buildCard(host, state) {
   root.append(body);
 
   // Uma borda só: o título já aparece na barra nativa do nó, então o cartão
-  // não repete o título nem desenha uma moldura dentro da moldura do nó. Os
-  // botões do cabeçalho (entrar, editar) vão para a ponta direita da primeira
-  // linha — a barra de abas ou o título da primeira zona.
-  // `layout.showTitle: true` volta ao cabeçalho antigo.
+  // não repete o título. Os botões ficam no cabeçalho compacto (sem título).
+  // `layout.showTitle: true` volta ao cabeçalho antigo (título + botões).
   if (!layout.showTitle) {
-    const firstRow = root.querySelector(":scope > .lego-tabs") || body.querySelector(".lego-sec-h");
-    if (firstRow) {
-      const tools = el("span", "lego-head-tools");
-      tools.append(...[...head.children].filter((c) => c !== txt));
-      firstRow.append(tools);
-      head.remove();
-      root.classList.add("merged");
-    }
+    txt.remove();
+    head.classList.add("compact");
+    root.classList.add("merged");
   }
 
   // O inspetor é uma janela fora do nó — acompanha a seleção, não o layout.

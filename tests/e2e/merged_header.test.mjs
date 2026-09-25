@@ -29,16 +29,16 @@ const st = () => E((sid) => {
   const card = window.app.graph.getNodeById(sid).__legoHost.querySelector(".lego-card");
   const cs = getComputedStyle(card);
   return { merged: card.classList.contains("merged"), title: !!card.querySelector(".lego-title"), border: cs.borderTopWidth,
-    toolsIn: card.querySelector(".lego-head-tools")?.parentElement?.className || "", enter: !!card.querySelector(".lego-head-tools .lego-ss-enter"), pencil: card.querySelectorAll(".lego-head-tools .lego-iconbtn").length };
+    toolsIn: card.querySelector(".lego-head")?.parentElement?.className || "", enter: !!card.querySelector(".lego-head .lego-ss-enter"), pencil: card.querySelectorAll(".lego-head .lego-iconbtn").length };
 }, sid);
 let r = await st();
-t("view mode: no repeated title, no inner frame, buttons on the zone header: " + JSON.stringify(r), r.merged && !r.title && r.border === "0px" && /lego-sec-h/.test(r.toolsIn) && r.enter && r.pencil === 3);
+t("view mode: no repeated title, no inner frame, buttons in compact head: " + JSON.stringify(r), r.merged && !r.title && r.border === "0px" && /lego-card/.test(r.toolsIn) && r.enter && r.pencil === 3);
 await pg.screenshot({ path: path.join(dir, "merged_view.png"), clip: { x: 100, y: 80, width: 900, height: 300 } });
-await pg.locator(".lego-head-tools .lego-iconbtn:not(.lego-ss-enter):not(.lego-more-btn)").click(); await pg.waitForTimeout(400);
+await pg.locator(".lego-head .lego-iconbtn:not(.lego-ss-enter):not(.lego-more-btn)").click(); await pg.waitForTimeout(400);
 r = await st();
-t("edit button still works; in edit mode the buttons sit on the tab bar: " + JSON.stringify(r), await E((sid) => window.app.graph.getNodeById(sid).__legoState.edit, sid) && /lego-tabs/.test(r.toolsIn));
+t("edit button still works; buttons stay in compact head: " + JSON.stringify(r), await E((sid) => window.app.graph.getNodeById(sid).__legoState.edit, sid) && /lego-card/.test(r.toolsIn));
 await pg.screenshot({ path: path.join(dir, "merged_edit.png"), clip: { x: 100, y: 80, width: 900, height: 420 } });
-await pg.locator(".lego-head-tools .lego-ss-enter").click(); await pg.waitForTimeout(500);
+await pg.locator(".lego-head .lego-ss-enter").click(); await pg.waitForTimeout(500);
 t("enter button still opens the SuperSubgraph", await E(() => window.app.canvas.graph !== window.app.rootGraph));
 await pg.keyboard.press("Escape"); await pg.waitForTimeout(300);
 t("no extension errors " + JSON.stringify(errs.slice(0, 3)), !errs.length);
