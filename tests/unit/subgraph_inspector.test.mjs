@@ -651,5 +651,9 @@ t("section renders width edge resizer in edit mode", !!secResizerW);
 const secResizerH = colNode.domElement.querySelector(".lego-sec-resizer-bottom");
 t("section renders height edge resizer in edit mode", !!secResizerH);
 
+const colEls = colNode.domElement.querySelectorAll(".lego-col");
+t("colEl has __colEntries attached", !!colEls[0]?.__colEntries && colEls[0].__colEntries.length === 1);
+t("colEl has correct section in __colEntries", colEls[0]?.__colEntries?.[0]?.sec?.header === "ZONE A");
+
 console.log(`\n${ok} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

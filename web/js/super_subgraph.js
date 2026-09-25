@@ -9644,7 +9644,9 @@ function buildCard(host, state) {
           const colIdx = colEl ? siblingCols.indexOf(colEl) : -1;
           const nextColEl = (colIdx >= 0 && colIdx < siblingCols.length - 1) ? siblingCols[colIdx + 1] : null;
 
-          const origW = (colEl || sec).getBoundingClientRect().width;
+          const colTarget = colEl || sec;
+          const colRect = colTarget.getBoundingClientRect();
+          const origW = colRect.width;
           const nextColOrigW = nextColEl ? nextColEl.getBoundingClientRect().width : 0;
           const totalPairW = origW + nextColOrigW;
 
@@ -9653,45 +9655,62 @@ function buildCard(host, state) {
 
           const onMoveW = (ev) => {
             ev.stopPropagation();
-            const minWAllowed = sectionRequiredWidth(s);
-            const dx = (ev.clientX - startClientX) / curScale;
+            const dx = ev.clientX - startClientX;
+            const minWAllowed = (colEl?.__colEntries?.length
+              ? Math.max(...colEl.__colEntries.map((ent) => sectionRequiredWidth(ent.sec)))
+              : sectionRequiredWidth(s)) * curScale;
 
             let isSnapped = false;
             let snapLabel = "";
             let localX = (ev.clientX - bodyRect.left) / curScale;
 
             if (nextColEl) {
-              const minNextW = 120;
+              const nextColEntries = nextColEl.__colEntries || [];
+              const minNextW = (nextColEntries.length
+                ? Math.max(...nextColEntries.map((ent) => sectionRequiredWidth(ent.sec)))
+                : 80) * curScale;
+
               const rawW = Math.max(minWAllowed, Math.min(totalPairW - minNextW, origW + dx));
               const rawNextW = totalPairW - rawW;
+              const totalPairRatio = totalPairW / bodyW;
               const ratio = rawW / bodyW;
-              const ratioNext = rawNextW / bodyW;
 
               finalW = snapWidth(ratio, ev.shiftKey);
-              finalNextW = snapWidth(ratioNext, ev.shiftKey);
+              const pctA = parseFloat(finalW) || (ratio * 100);
+              const pairTotalPct = totalPairRatio * 100;
+              const remPct = Math.max(5, Math.round((pairTotalPct - pctA) * 10) / 10);
+              finalNextW = `${remPct}%`;
 
               const cssW = widthToCss(finalW);
               const cssNextW = widthToCss(finalNextW);
               colEl.style.width = cssW;
               colEl.style.flex = `0 0 ${cssW}`;
+              colEl.style.maxWidth = cssW;
               nextColEl.style.width = cssNextW;
               nextColEl.style.flex = `0 0 ${cssNextW}`;
+              nextColEl.style.maxWidth = cssNextW;
 
               isSnapped = !ev.shiftKey && (finalW === "25%" || finalW === "33.3%" || finalW === "50%" || finalW === "66.7%" || finalW === "75%");
-              snapLabel = isSnapped ? `⚡ ${finalW} / ${finalNextW} (Alinhado)` : `↔ ${finalW} (${Math.round(rawW)}px) · ${finalNextW} (${Math.round(rawNextW)}px)`;
+              const snapLocalX = ((colRect.left - bodyRect.left) + (pctA / 100 * bodyW)) / curScale;
+              if (isSnapped) localX = snapLocalX;
+              snapLabel = isSnapped
+                ? `⚡ ${finalW} / ${finalNextW} (Alinhado)`
+                : `↔ ${finalW} (${Math.round(rawW / curScale)}px) · ${finalNextW} (${Math.round(rawNextW / curScale)}px)`;
             } else {
               const rawW = Math.max(minWAllowed, Math.min(bodyW, origW + dx));
               const ratio = Math.max(0.15, Math.min(1.0, rawW / bodyW));
               finalW = snapWidth(ratio, ev.shiftKey);
 
-              const targetContainer = colEl || sec;
               const cssW = widthToCss(finalW);
-              targetContainer.style.width = cssW;
-              targetContainer.style.flex = `0 0 ${cssW}`;
-              targetContainer.style.maxWidth = cssW;
+              colTarget.style.width = cssW;
+              colTarget.style.flex = `0 0 ${cssW}`;
+              colTarget.style.maxWidth = cssW;
 
               isSnapped = !ev.shiftKey && (finalW === "25%" || finalW === "33.3%" || finalW === "50%" || finalW === "66.7%" || finalW === "75%" || finalW === "100%");
-              snapLabel = isSnapped ? `⚡ ${finalW} (Alinhado)` : `↔ ${finalW} (${Math.round(rawW)}px)`;
+              const pctA = parseFloat(finalW) || (ratio * 100);
+              const snapLocalX = ((colRect.left - bodyRect.left) + (pctA / 100 * bodyW)) / curScale;
+              if (isSnapped) localX = snapLocalX;
+              snapLabel = isSnapped ? `⚡ ${finalW} (Alinhado)` : `↔ ${finalW} (${Math.round(rawW / curScale)}px)`;
             }
 
             // Alinhamento com arestas verticais de outras zonas (Linhas de nível verticais)
@@ -9739,14 +9758,11 @@ function buildCard(host, state) {
             window.removeEventListener("mouseup", onUpW, true);
 
             pushUndo(host);
-            if (colEl && nextColEl) {
-              const colSecs = sections.filter((x) => x.col === colIdx || (!x.col && colIdx === 0));
-              const nextSecs = sections.filter((x) => x.col === colIdx + 1);
-              colSecs.forEach((x) => { x.width = finalW; });
-              if (finalNextW) nextSecs.forEach((x) => { x.width = finalNextW; });
-            } else if (colEl) {
-              const colSecs = sections.filter((x) => x.col === colIdx || (!x.col && colIdx === 0));
-              colSecs.forEach((x) => { x.width = finalW; });
+            if (colEl?.__colEntries) {
+              colEl.__colEntries.forEach((ent) => { ent.sec.width = finalW; });
+              if (nextColEl?.__colEntries && finalNextW) {
+                nextColEl.__colEntries.forEach((ent) => { ent.sec.width = finalNextW; });
+              }
             } else {
               s.width = finalW;
               if (finalW !== "100%") s.col = 0;
@@ -9798,12 +9814,13 @@ function buildCard(host, state) {
             });
           });
 
-          let finalH = origH;
+          let finalH = Math.round(origH / curScale);
 
           const onMoveH = (ev) => {
             ev.stopPropagation();
             const minHAllowed = sectionRequiredHeight(s);
-            let rawH = Math.max(minHAllowed, Math.round(origH + (ev.clientY - startClientY) / curScale));
+            const dy = ev.clientY - startClientY;
+            let rawH = Math.max(minHAllowed, Math.round((origH + dy) / curScale));
             let currentBottomY = secTopY + rawH;
 
             let hSnap = false;
@@ -10382,6 +10399,8 @@ function buildCard(host, state) {
 
         g.columns.forEach((col) => {
           const colEl = el("div", "lego-col");
+          colEl.__colEntries = col.entries;
+          colEl.__col = col;
           const defaultW = widthForCount(numCols);
           const colW = col.width || defaultW;
           const cssW = widthToCss(colW);
@@ -10425,40 +10444,48 @@ function buildCard(host, state) {
 
               const colARect = colAEl.getBoundingClientRect();
               const colBRect = colBEl.getBoundingClientRect();
-              const totalPairW = colARect.width + colBRect.width;
+              const origWA = colARect.width;
+              const origWB = colBRect.width;
+              const totalPairW = origWA + origWB;
+              const totalPairRatio = totalPairW / bodyW;
 
-              const minWA = Math.max(...colA.entries.map(ent => sectionRequiredWidth(ent.sec)), 100);
-              const minWB = Math.max(...colB.entries.map(ent => sectionRequiredWidth(ent.sec)), 100);
+              const minWA = Math.max(...colA.entries.map((ent) => sectionRequiredWidth(ent.sec)), 80) * curScale;
+              const minWB = Math.max(...colB.entries.map((ent) => sectionRequiredWidth(ent.sec)), 80) * curScale;
 
               let finalWA = colA.width || widthForCount(numCols);
               let finalWB = colB.width || widthForCount(numCols);
 
               const onMoveCol = (ev) => {
                 ev.stopPropagation();
-                const dx = (ev.clientX - startClientX) / curScale;
-                const newWA_px = Math.max(minWA, Math.min(totalPairW - minWB, colARect.width + dx));
-                const newWB_px = totalPairW - newWA_px;
+                const dx = ev.clientX - startClientX;
+                const rawWA = Math.max(minWA, Math.min(totalPairW - minWB, origWA + dx));
+                const rawWB = totalPairW - rawWA;
 
-                const ratioA = newWA_px / bodyW;
-                const ratioB = newWB_px / bodyW;
-
+                const ratioA = rawWA / bodyW;
                 finalWA = snapWidth(ratioA, ev.shiftKey);
-                finalWB = snapWidth(ratioB, ev.shiftKey);
+                const pctA = parseFloat(finalWA) || (ratioA * 100);
+                const pairTotalPct = totalPairRatio * 100;
+                const remPct = Math.max(5, Math.round((pairTotalPct - pctA) * 10) / 10);
+                finalWB = `${remPct}%`;
 
                 const cssWA = widthToCss(finalWA);
                 const cssWB = widthToCss(finalWB);
                 colAEl.style.width = cssWA;
                 colAEl.style.flex = `0 0 ${cssWA}`;
+                colAEl.style.maxWidth = cssWA;
                 colBEl.style.width = cssWB;
                 colBEl.style.flex = `0 0 ${cssWB}`;
+                colBEl.style.maxWidth = cssWB;
 
-                const localX = (ev.clientX - bodyRect.left) / curScale;
                 const isSnapped = !ev.shiftKey && (
                   finalWA === "25%" || finalWA === "33.3%" || finalWA === "50%" || finalWA === "66.7%" || finalWA === "75%"
                 );
+                const snapLocalX = ((colARect.left - bodyRect.left) + (pctA / 100 * bodyW)) / curScale;
+                const localX = isSnapped ? snapLocalX : (ev.clientX - bodyRect.left) / curScale;
+
                 const badgeText = isSnapped
                   ? `⚡ ${finalWA} / ${finalWB} (Alinhado)`
-                  : `↔ ${finalWA} (${Math.round(newWA_px)}px) · ${finalWB} (${Math.round(newWB_px)}px)`;
+                  : `↔ ${finalWA} (${Math.round(rawWA / curScale)}px) · ${finalWB} (${Math.round(rawWB / curScale)}px)`;
 
                 renderZoneGuides(body, {
                   vLine: {
@@ -10482,8 +10509,8 @@ function buildCard(host, state) {
                 window.removeEventListener("mouseup", onUpCol, true);
 
                 pushUndo(host);
-                colA.entries.forEach(ent => { ent.sec.width = finalWA; });
-                colB.entries.forEach(ent => { ent.sec.width = finalWB; });
+                colA.entries.forEach((ent) => { ent.sec.width = finalWA; });
+                colB.entries.forEach((ent) => { ent.sec.width = finalWB; });
                 state.refresh();
               };
 
