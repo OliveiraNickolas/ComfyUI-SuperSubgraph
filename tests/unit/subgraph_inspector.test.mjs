@@ -82,32 +82,17 @@ const sn = {
 
 M.attach(sn);
 
-let openedEventFired = false;
-fakeCanvas.canvas.addEventListener("subgraph-opened", (e) => {
-  openedEventFired = true;
-});
-
-let closedEventFired = false;
-fakeCanvas.canvas.addEventListener("subgraph-closed", (e) => {
-  closedEventFired = true;
-});
-
 M.enterSuper(sn);
 
 const inner = M.ssInnerGraph(sn);
-t("enterSuper sets inner.isRootGraph = false", inner && inner.isRootGraph === false);
-t("enterSuper sets canvas.subgraph = inner", fakeCanvas.subgraph === inner);
 t("enterSuper sets canvas.graph = inner", fakeCanvas.graph === inner);
-t("enterSuper fires subgraph-opened event", openedEventFired);
-t("enterSuper calls updateActiveGraph", activeGraphUpdated);
+t("enterSuper does not attach sn.subgraph (prevents ComfyUI link loss)", sn.subgraph === undefined);
+t("enterSuper does not set canvas.subgraph (prevents native subgraph link rewrite)", fakeCanvas.subgraph === undefined);
 
-activeGraphUpdated = false;
 M.exitSuper(1);
 
 t("exitSuper restores root graph", fakeCanvas.graph === globalThis.__app.graph);
-t("exitSuper clears canvas.subgraph", fakeCanvas.subgraph === undefined);
-t("exitSuper fires subgraph-closed event", closedEventFired);
-t("exitSuper calls updateActiveGraph", activeGraphUpdated);
+t("exitSuper ensures sn.subgraph is clean", sn.subgraph === undefined);
 
 // ── 2. TEST OBJECT INSPECTOR ALIGNMENT ──
 const node = {

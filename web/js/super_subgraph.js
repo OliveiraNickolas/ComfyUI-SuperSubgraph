@@ -10233,9 +10233,7 @@ const liteGraph = () => window.LiteGraph || globalThis.LiteGraph;
 function newInnerGraph(data) {
   const Cls = liteGraph()?.LGraph || app.rootGraph?.constructor || app.graph?.constructor;
   const g = new Cls();
-  g.isRootGraph = false;
-  g.rootGraph = app.rootGraph || app.graph;
-  if (data && typeof g.configure === "function") g.configure(data);
+  if (data) g.configure(data);
   return g;
 }
 
@@ -10243,19 +10241,14 @@ function newInnerGraph(data) {
 function ssInnerGraph(node) {
   if (!isSuperNode(node)) return null;
   if (node.__ssGraph) {
-    node.__ssGraph.isRootGraph = false;
-    node.__ssGraph.rootGraph = app.rootGraph || app.graph;
-    node.subgraph = node.__ssGraph;
+    if (node.subgraph === node.__ssGraph) delete node.subgraph;
     return node.__ssGraph;
   }
   const data = node.properties?.[SS_PROP]?.graph;
   if (!data) return null;
   try {
-    const g = newInnerGraph(JSON.parse(JSON.stringify(data)));
-    g.isRootGraph = false;
-    g.rootGraph = app.rootGraph || app.graph;
-    node.__ssGraph = g;
-    node.subgraph = g;
+    node.__ssGraph = newInnerGraph(JSON.parse(JSON.stringify(data)));
+    if (node.subgraph === node.__ssGraph) delete node.subgraph;
   } catch (e) {
     console.error(LOG, "could not load the inner graph of", node.id, e);
     return null;
@@ -11189,20 +11182,11 @@ function enterSuper(sn) {
   if (!c || !inner || typeof c.setGraph !== "function") return;
   if (c.graph === inner) return;
   closeObjectInspector();
-  const fromGraph = c.graph;
-  SS_NAV.push({ host: sn, from: fromGraph, inner, view: { offset: [...(c.ds?.offset || [0, 0])], scale: c.ds?.scale || 1 } });
+  SS_NAV.push({ host: sn, from: c.graph, inner, view: { offset: [...(c.ds?.offset || [0, 0])], scale: c.ds?.scale || 1 } });
   c.deselectAll?.();
-  inner.isRootGraph = false;
-  inner.rootGraph = app.rootGraph || app.graph;
-  inner._subgraph_node = sn;
-  inner.node = sn;
-  sn.subgraph = inner;
-  c.subgraph = inner;
+  if (sn.subgraph === inner) delete sn.subgraph;
+  if (c.subgraph === inner) delete c.subgraph;
   c.setGraph(inner);
-  c.dispatch?.("litegraph:set-graph", { newGraph: inner, oldGraph: fromGraph });
-  c.canvas?.dispatchEvent(new CustomEvent("litegraph:set-graph", { bubbles: true, detail: { newGraph: inner, oldGraph: fromGraph } }));
-  c.canvas?.dispatchEvent(new CustomEvent("subgraph-opened", { bubbles: true, detail: { subgraph: inner, closingGraph: fromGraph, fromNode: sn } }));
-  app.extensionManager?.workflow?.updateActiveGraph?.();
   fitCanvasTo(inner);
   c.setDirty?.(true, true);
   renderSuperNavBar();
@@ -11214,8 +11198,6 @@ function enterSuper(sn) {
       if (!SS_NAV.length) { clearInterval(ssNavWatch); ssNavWatch = null; return; }
       if (app.canvas?.graph !== SS_NAV[SS_NAV.length - 1].inner) {
         SS_NAV.length = 0;
-        if (c) c.subgraph = undefined;
-        app.extensionManager?.workflow?.updateActiveGraph?.();
         renderSuperNavBar();
         return;
       }
@@ -11231,17 +11213,10 @@ function exitSuper(levels = 1) {
   for (let i = 0; i < levels && SS_NAV.length; i++) frame = SS_NAV.pop();
   if (!frame || !c) { renderSuperNavBar(); return; }
   c.deselectAll?.();
-  const targetGraph = SS_NAV.length ? SS_NAV[SS_NAV.length - 1].inner : frame.from;
-  const targetSubgraph = SS_NAV.length ? SS_NAV[SS_NAV.length - 1].inner : (targetGraph && targetGraph !== (app.rootGraph || app.graph) && targetGraph.isRootGraph === false ? targetGraph : undefined);
-  c.subgraph = targetSubgraph;
-  c.setGraph(targetGraph);
+  if (frame.host?.subgraph) delete frame.host.subgraph;
+  if (c.subgraph) delete c.subgraph;
+  c.setGraph(frame.from);
   if (c.ds) { c.ds.offset = frame.view.offset; c.ds.scale = frame.view.scale; }
-  c.dispatch?.("litegraph:set-graph", { newGraph: targetGraph, oldGraph: frame.inner });
-  c.canvas?.dispatchEvent(new CustomEvent("litegraph:set-graph", { bubbles: true, detail: { newGraph: targetGraph, oldGraph: frame.inner } }));
-  if (!targetSubgraph) {
-    c.canvas?.dispatchEvent(new CustomEvent("subgraph-closed", { bubbles: true, detail: { closingGraph: frame.inner, targetGraph } }));
-  }
-  app.extensionManager?.workflow?.updateActiveGraph?.();
   c.setDirty?.(true, true);
   renderSuperNavBar();
   // O de dentro pode ter mudado (nós novos, removidos): a borda e os cartões se refazem.
