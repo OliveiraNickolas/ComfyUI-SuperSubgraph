@@ -952,7 +952,7 @@ export const CSS = `
   display:flex; flex-direction:column; gap:10px;
   padding:12px 14px; border-radius:10px;
   background:var(--lego-bg); color:var(--lego-text);
-  font:13px/1.5 Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font:13.5px/1.5 Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   border:1px solid var(--lego-line);
   box-shadow:0 4px 18px rgba(0,0,0,0.32);
   transition: background 0.15s ease, border-color 0.15s ease;
@@ -1003,6 +1003,26 @@ export const CSS = `
   border:1px solid var(--lego-line);font-size:14.7px;line-height:1;padding:0;transition:all .15s ease}
 .lego-iconbtn:hover{color:var(--lego-text);background:rgba(255,255,255,0.08);border-color:var(--lego-accent)}
 .lego-iconbtn.on{color:#fff;background:var(--lego-accent);border-color:var(--lego-accent)}
+.lego-scale-btn{
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  padding: 2px 7px !important;
+  width: auto !important;
+  min-width: 38px !important;
+  height: 24px !important;
+  border-radius: 6px !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid var(--lego-line) !important;
+  color: var(--lego-text) !important;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  user-select: none;
+}
+.lego-scale-btn:hover{
+  background: var(--lego-accent) !important;
+  color: #fff !important;
+  border-color: var(--lego-accent) !important;
+}
 
 .lego-tabs{display:flex;gap:4px;border-bottom:2px solid var(--lego-line);overflow-x:auto;
   scrollbar-width:none;margin:2px 0 4px 0}
@@ -1278,7 +1298,7 @@ export const CSS = `
 /* Tooltip flutuante de Resize */
 .lego-resize-tooltip{position:fixed;background:var(--lego-accent);color:#fff;font-size:12.6px;font-weight:700;
   padding:4px 9px;border-radius:5px;box-shadow:0 4px 15px rgba(0,0,0,0.6);pointer-events:none;z-index:99999999}
-.lego-sec-h{display:flex;align-items:center;gap:8px;font-size:11.6px;font-weight:700;letter-spacing:.08em;
+.lego-sec-h{display:flex;align-items:center;gap:8px;font-size:12.8px;font-weight:700;letter-spacing:.06em;
   text-transform:uppercase;color:var(--lego-dim)}
 .lego-sec-h::after{content:"";flex:1;height:1px;background:var(--lego-line)}
 .lego-sec-h .lego-iconbtn{width:22px;height:22px;font-size:12.6px;border-radius:5px}
@@ -1289,14 +1309,14 @@ export const CSS = `
 /* Componente do formulário — a ÚNICA regra base. A posição vem inline do JS
    (absoluta, com snap à grade); o resto mora aqui. */
 .lego-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;
-  padding:6px 12px;border-radius:8px;background:var(--lego-panel);min-height:42px;
+  padding:6px 12px;border-radius:8px;background:var(--lego-panel);min-height:44px;
   width:100%;min-width:0;box-sizing:border-box;user-select:none;
   border:1px solid var(--lego-line-strong);box-shadow:0 2px 8px rgba(0,0,0,0.35);
   transition:background .15s ease,border-color .15s ease}
 .lego-card.editing .lego-row:hover{background:var(--lego-panel-hover);border-color:rgba(59,130,246,0.45)}
 .lego-card:not(.editing) .lego-row.selected::before{display:none}
 .lego-row .lego-lbl{flex:1;min-width:60px;color:var(--lego-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  font-size:13.7px;font-weight:500}
+  font-size:14px;font-weight:500}
 .lego-row .lego-in, .lego-row .lego-slider{flex:1;min-width:80px}
 .lego-row .lego-sw{flex:none}
 .lego-row.wide{flex-direction:column;align-items:stretch}
@@ -1941,7 +1961,7 @@ textarea.lego-in{resize:vertical;min-height:75px;font-family:ui-monospace,SFMono
 .lego-seg-header{
   flex: none;
   padding: 0 4px;
-  font-size: 11.6px;
+  font-size: 12.8px;
   font-weight: 700;
   letter-spacing: .04em;
   color: var(--lego-dim);

@@ -4828,6 +4828,78 @@ function widthForCount(count) {
   return `${(100 / count).toFixed(1)}%`;
 }
 
+/** Largura mínima necessária para uma seção conter todos os seus controles internos. */
+function sectionRequiredWidth(s) {
+  if (!s) return 200;
+  let maxX = 0;
+  const checkItem = (c) => {
+    if (!c) return;
+    const x = typeof c.x === "number" ? c.x : 16;
+    let w = typeof c.w === "number" ? c.w : 0;
+    if (!w) {
+      if (c.kind === "vdivider") w = 16;
+      else if (c.kind === "label") w = 160;
+      else if (c.kind === "media" || c.kind === "video" || c.kind === "audio") w = 288;
+      else if (typeof isOutputKind === "function" && isOutputKind(c.kind)) w = 320;
+      else w = 256;
+    }
+    maxX = Math.max(maxX, x + w);
+  };
+  if (Array.isArray(s.controls)) s.controls.forEach(checkItem);
+  if (Array.isArray(s.tabs)) {
+    s.tabs.forEach((t) => {
+      if (Array.isArray(t.controls)) t.controls.forEach(checkItem);
+    });
+  }
+  return maxX > 0 ? Math.max(200, maxX + 32) : 200;
+}
+
+/** Altura mínima necessária para uma seção conter todos os seus controles internos. */
+function sectionRequiredHeight(s) {
+  if (!s) return 120;
+  let maxY = 0;
+  const checkItem = (c) => {
+    if (!c) return;
+    const y = typeof c.y === "number" ? c.y : 16;
+    const isM = (c.kind === "media" || c.kind === "video" || c.kind === "audio");
+    let h = typeof c.h === "number" ? c.h : (isM ? 144 : (c.kind === "textarea" ? 96 : 46));
+    maxY = Math.max(maxY, y + h);
+  };
+  if (Array.isArray(s.controls)) s.controls.forEach(checkItem);
+  if (Array.isArray(s.tabs)) {
+    s.tabs.forEach((t) => {
+      if (Array.isArray(t.controls)) t.controls.forEach(checkItem);
+    });
+  }
+  return maxY > 0 ? Math.max(120, maxY + 32) : 120;
+}
+
+/**
+ * Largura mínima exigida para o nó conter confortavelmente todas as zonas lado a lado
+ * da aba ativa, respeitando também a escala de UI configurada.
+ */
+function requiredNodeWidth(node, host) {
+  const layout = host?.properties?.[PROP] || node?.properties?.[PROP];
+  let layoutW = MIN_W;
+  if (layout) {
+    const curTab = typeof activeTabOf === "function" ? activeTabOf(layout) : (layout?.tabs?.[layout?.activeTab || 0] || layout?.tabs?.[0] || null);
+    const sections = curTab?.sections || [];
+    if (sections.length) {
+      let maxRowW = MIN_W;
+      let i = 0;
+      while (i < sections.length) {
+        const row = getContiguousRow(sections, i);
+        const rowWidth = row.reduce((acc, s) => acc + sectionRequiredWidth(s), 0) + Math.max(0, row.length - 1) * 12 + 36;
+        maxRowW = Math.max(maxRowW, rowWidth);
+        i += row.length;
+      }
+      layoutW = maxRowW;
+    }
+  }
+  const scale = host?.firstElementChild?.style?.zoom ? parseFloat(host.firstElementChild.style.zoom) : (layout?.scale || 1);
+  return Math.ceil(Math.max(MIN_W, layoutW) * (scale || 1));
+}
+
 /** Determina a direção de drop 4-Way (top, bottom, left, right) com base na posição do cursor. */
 function getDropDirection(e, rect) {
   const x = e.clientX - rect.left;
@@ -6864,6 +6936,48 @@ function openLegoContextMenu(e, entries) {
   return menu;
 }
 
+/** Menu de escala da interface do cartão (90% - 200% ou valor livre). */
+function openScaleMenu(e, layout, state) {
+  const curScale = layout.scale || 1;
+  const scales = [
+    { label: "90% (Compact)", val: 0.9 },
+    { label: "100% (Default)", val: 1.0 },
+    { label: "115% (Comfortable)", val: 1.15 },
+    { label: "130% (Large)", val: 1.3 },
+    { label: "150% (Extra Large)", val: 1.5 },
+    { label: "175% (Huge)", val: 1.75 },
+    { label: "200% (Maximum)", val: 2.0 },
+  ];
+  const entries = scales.map((s) => {
+    const isSel = Math.abs(curScale - s.val) < 0.04;
+    return {
+      icon: isSel ? "check" : "blank",
+      label: s.label,
+      action: () => {
+        layout.scale = s.val;
+        state.refresh();
+      },
+    };
+  });
+  entries.push(null);
+  entries.push({
+    icon: "pencil",
+    label: "Custom Scale…",
+    hint: `${Math.round(curScale * 100)}%`,
+    action: () => {
+      const v = prompt("UI Scale percentage (50% - 300%):", `${Math.round(curScale * 100)}%`);
+      if (v != null) {
+        const parsed = parseFloat(v.replace("%", "").trim());
+        if (!isNaN(parsed) && parsed >= 50 && parsed <= 300) {
+          layout.scale = Math.round(parsed) / 100;
+          state.refresh();
+        }
+      }
+    },
+  });
+  return openLegoContextMenu(e, entries);
+}
+
 const isGroupKind = (k) => k === "segment" || k === "vsegment" || k === "group";
 
 /* ── Cores por zona e por componente ─────────────────────────────────────── */
@@ -8458,6 +8572,12 @@ function renderObjectInspector(host, state, force) {
 function buildCard(host, state) {
   const layout = host.properties[PROP];
   const root = el("div", `lego-card${state.edit ? " editing" : ""}`);
+  // Aplica escala visual da UI do cartão se configurada
+  const cardScale = layout.scale || 1;
+  if (cardScale !== 1) {
+    root.style.zoom = cardScale;
+    root.style.setProperty("--lego-ui-scale", cardScale);
+  }
   // Botão direito no cartão (fora de um componente, que tem menu próprio, e
   // fora de campos de texto, que ficam com o menu do navegador): menu do nó.
   root.addEventListener("contextmenu", (e) => {
@@ -8534,6 +8654,28 @@ function buildCard(host, state) {
     state.refresh();
   });
   head.append(pencil);
+
+  // Botão de Escala da UI (100%, 115%, 130%, 150%, 90% etc.)
+  const SCALE_STEPS = [1, 1.15, 1.3, 1.5, 0.9];
+  const scalePct = Math.round((layout.scale || 1) * 100);
+  const scaleBtn = el("button", "lego-iconbtn lego-scale-btn", `${scalePct}%`);
+  scaleBtn.type = "button";
+  scaleBtn.title = `UI Scale: ${scalePct}% (click to cycle, right-click for menu)`;
+  scaleBtn.addEventListener("pointerdown", eatPointer);
+  scaleBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const curIdx = SCALE_STEPS.findIndex((s) => Math.abs(s - (layout.scale || 1)) < 0.05);
+    const nextIdx = (curIdx + 1) % SCALE_STEPS.length;
+    layout.scale = SCALE_STEPS[nextIdx];
+    state.refresh();
+  });
+  scaleBtn.addEventListener("contextmenu", (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    openScaleMenu(e, layout, state);
+  });
+  head.append(scaleBtn);
+
   root.append(head);
 
   /* — abas — */
@@ -8706,10 +8848,12 @@ function buildCard(host, state) {
       sec.addEventListener("pointerdown", () => { state.activeSection = s; });
 
       // Aplica a largura do Card (100%, 50%, 33%, etc.) no container geral
+      const reqW = sectionRequiredWidth(s);
       const secW = s.width || (s.w ? `${s.w}px` : "100%");
       const cssW = widthToCss(secW);
       sec.style.width = cssW;
       sec.style.flex = `0 0 ${cssW}`;
+      sec.style.minWidth = `${reqW}px`;
       sec.style.maxWidth = cssW;
       sec.style.boxSizing = "border-box";
 
@@ -9033,13 +9177,15 @@ function buildCard(host, state) {
 
           const onMoveW = (ev) => {
             ev.stopPropagation();
-            const rawW = Math.max(120, Math.min(bodyW, origW + (ev.clientX - startClientX) / curScale));
+            const minWAllowed = sectionRequiredWidth(s);
+            const rawW = Math.max(minWAllowed, Math.min(bodyW, origW + (ev.clientX - startClientX) / curScale));
             const ratio = Math.max(0.15, Math.min(1.0, rawW / bodyW));
             finalW = snapWidth(ratio, ev.shiftKey);
 
             const cssW = widthToCss(finalW);
             sec.style.width = cssW;
             sec.style.flex = `0 0 ${cssW}`;
+            sec.style.minWidth = `${minWAllowed}px`;
             sec.style.maxWidth = cssW;
           };
 
@@ -9090,7 +9236,8 @@ function buildCard(host, state) {
 
           const onMoveH = (ev) => {
             ev.stopPropagation();
-            finalH = Math.max(120, Math.round(origH + (ev.clientY - startClientY) / curScale));
+            const minHAllowed = sectionRequiredHeight(s);
+            finalH = Math.max(minHAllowed, Math.round(origH + (ev.clientY - startClientY) / curScale));
             sec.style.minHeight = `${finalH}px`;
           };
 
@@ -9302,6 +9449,7 @@ function buildCard(host, state) {
       const CTRL_GRID = 16;
       const ctrlsBox = el("div", `lego-sec-controls${state.edit ? " in-edit" : ""}`);
       ctrlsBox.__legoList = list;   // alvo de arraste (ver zoneDropTargetAt)
+      ctrlsBox.style.minWidth = `${Math.max(160, reqW - 24)}px`;
 
       function updateControlsBounds() {
         let maxY = 70;
@@ -9359,16 +9507,18 @@ function buildCard(host, state) {
         // Inicializa coordenadas 2D automáticas nos controles que ainda não têm (X, Y).
         // Zona com `grid: N` distribui em N colunas — é o que faz as 9 referências
         // virarem uma grade 3x3 em vez de uma pilha de 9 linhas.
-        const autoCols = Math.max(1, Math.round(activeTarget.grid || 1));
-        // A coluna sai da largura do NÓ, não de um valor fixo: 3 colunas de 288
-        // pedem 928px e transbordam um nó de 680.
-        const autoAvail = Math.max(256, Math.round(host.size?.[0] || MIN_W) - 56);
-        const autoColW = autoCols > 1
-          ? Math.max(96, Math.floor((autoAvail - 16 * (autoCols + 1)) / autoCols / CTRL_GRID) * CTRL_GRID)
-          : 256;
         /** Um grupo que carrega mídia precisa de altura de miniatura, não de linha. */
         const hasMedia = (c) =>
           (c.kind === "media" || c.kind === "video" || c.kind === "audio") || (c.items || []).some((i) => i.kind === "media" || i.kind === "video" || i.kind === "audio");
+        const autoCols = Math.max(1, Math.round(activeTarget.grid || 1));
+        // A coluna sai da largura disponível NA ZONA, não do nó inteiro, evitando estourar em zonas 50%
+        const secWStr = s.width || "100%";
+        const secPct = secWStr.endsWith("%") ? (parseFloat(secWStr) / 100) : 1;
+        const hostW = host.size?.[0] || MIN_W;
+        const autoAvail = Math.max(200, Math.round((hostW - 56) * secPct) - 24);
+        const autoColW = autoCols > 1
+          ? Math.max(96, Math.floor((autoAvail - 16 * (autoCols + 1)) / autoCols / CTRL_GRID) * CTRL_GRID)
+          : (list[0] && hasMedia(list[0]) ? 288 : 256);
         let autoCol = 0;
         let curColY = 16;
         let rowH = 0;
@@ -10226,12 +10376,25 @@ function attach(node) {
   widget.serialize = false;
   widget.__lego = true;
   widget.computeSize = () => {
-    return [Math.max(MIN_W, node.size?.[0] || MIN_W), cardHeight(host) + PAD];
+    const minW = requiredNodeWidth(node, host);
+    return [Math.max(minW, node.size?.[0] || minW), cardHeight(host) + PAD];
   };
   widget.computeLayoutSize = () => {
     hideNative(node);
+    const minW = requiredNodeWidth(node, host);
     // Não agendar redimensionamento aqui para evitar loop infinito com LiteGraph
-    return { minWidth: MIN_W, minHeight: Math.max(160, cardHeight(host)) };
+    return { minWidth: minW, minHeight: Math.max(160, cardHeight(host)) };
+  };
+
+  const origOnResize = node.onResize;
+  node.onResize = function (size) {
+    if (origOnResize) origOnResize.apply(this, arguments);
+    const minW = requiredNodeWidth(node, host);
+    const minH = Math.max(160, cardHeight(host) + PAD);
+    if (size && Array.isArray(size)) {
+      if (size[0] < minW) size[0] = minW;
+      if (size[1] < minH) size[1] = minH;
+    }
   };
   widget.onRemove = () => {
     ATTACHED.delete(node);
@@ -11200,6 +11363,16 @@ function superMenuOptions(node) {
         st.refresh();
       },
     });
+    const curSc = Math.round((node.properties[PROP]?.scale || 1) * 100);
+    const scaleOpts = [90, 100, 115, 130, 150, 175, 200].map((pct) => ({
+      content: `${pct}%${curSc === pct ? " ✓" : ""}`,
+      callback: () => {
+        pushUndo(node);
+        node.properties[PROP].scale = pct / 100;
+        node.__legoState?.refresh();
+      }
+    }));
+    sub.push({ content: "UI Scale", has_submenu: true, submenu: { options: scaleOpts } });
     sep();
     sub.push({ content: "Save Card Layout…", callback: () => saveLayoutToLibrary(node) });
     if (SS_LAYOUTS.length) {
@@ -12200,32 +12373,11 @@ function cardHeight(host) {
   if (!host) return 260;
   const card = host.firstElementChild;
   if (!card) return 260;
-  // `offsetHeight` é a caixa renderizada, que o nó já limita; `scrollHeight` é
-  // o conteúdo. Medir a caixa primeiro realimenta o próprio tamanho: o cartão
-  // nunca cresce e o excedente vaza para onOutside do nó.
-  return Math.ceil(Math.max(card.scrollHeight || 0, card.offsetHeight || 0) || 260);
-}
-
-/**
- * Largura que o nó precisa para nenhum componente sair pela direita da zona
- * (0 = a atual basta). Cada zona diz quanto falta; numa zona de 50% cada px a
- * mais no nó rende meio px na zona, por isso a proporção. Zona de largura fixa
- * em px não cresce com o nó e fica de fora (senão o nó cresceria sem parar).
- */
-function requiredNodeWidth(node, host) {
-  const hw = host?.clientWidth || 0;
-  if (!hw) return 0;
-  let extra = 0;
-  for (const box of host.querySelectorAll(".lego-sec-controls")) {
-    const list = box.__legoList;
-    const bw = box.clientWidth;
-    if (!list?.length || !bw) continue;
-    if (/px$/.test(box.closest(".lego-sec")?.style.width || "")) continue;
-    const right = Math.max(...list.map((c) => (typeof c.x === "number" ? c.x : 0) + (typeof c.w === "number" ? c.w : 0)));
-    const over = right + GRID - bw;
-    if (over > 0) extra = Math.max(extra, Math.ceil((over * hw) / bw));
-  }
-  return extra ? Math.ceil((node.size?.[0] || MIN_W) + extra) : 0;
+  const scale = card.style?.zoom ? parseFloat(card.style.zoom) : (host.properties?.[PROP]?.scale || 1);
+  const rawH = Math.max(card.scrollHeight || 0, card.offsetHeight || 0) || 260;
+  const rectH = card.getBoundingClientRect ? card.getBoundingClientRect().height : 0;
+  const h = Math.max(rawH * (scale || 1), rectH || 0);
+  return Math.ceil(h || 260);
 }
 
 /**
@@ -12237,10 +12389,10 @@ function resize(node, host) {
   const h = cardHeight(host);
   if (!h || h < 40) return;
   const top = node.__legoWidget?.y ?? 46;
-  const minW = MIN_W;
+  const minW = requiredNodeWidth(node, host);
   const curW = Math.ceil(node.size?.[0] || minW);
   const curH = Math.ceil(node.size?.[1] || 0);
-  const targetW = Math.max(minW, curW, requiredNodeWidth(node, host));
+  const targetW = Math.max(minW, curW);
   const targetH = Math.ceil(top + h + PAD);
 
   if (Math.abs(curH - targetH) >= 8 || curW < targetW) {

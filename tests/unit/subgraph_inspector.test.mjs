@@ -385,5 +385,83 @@ t("viewURL supports explicit cache busting on upload/save", urlBust !== url1 && 
 const urlBustRepeat = M.viewURL("my_image.png");
 t("viewURL maintains new version without regenerating random noise", urlBustRepeat === urlBust);
 
+// ── 10. TEST SECTION REQUIRED WIDTH & ZONE MIN-WIDTH CONTAINMENT ──
+const emptySec = { header: "EMPTY", controls: [] };
+t("empty section requires base minimum 200px", M.sectionRequiredWidth(emptySec) === 200);
+
+const secWithControls = {
+  header: "DENSE",
+  controls: [
+    { name: "C1", x: 20, w: 300, y: 10, h: 40 },
+    { name: "C2", x: 50, w: 320, y: 60, h: 40 }
+  ]
+};
+// Max extent is 50 + 320 = 370 + 32 = 402px
+t("sectionRequiredWidth calculates based on child control maxX + 32", M.sectionRequiredWidth(secWithControls) === 402);
+
+const secWithSubTabs = {
+  header: "SUBTABS",
+  tabs: [
+    { name: "T1", controls: [{ name: "S1", x: 10, w: 250 }] },
+    { name: "T2", controls: [{ name: "S2", x: 30, w: 400 }] }
+  ]
+};
+// Subtab T2 has 30 + 400 = 430 + 32 = 462px
+t("sectionRequiredWidth checks sub-tabs controls", M.sectionRequiredWidth(secWithSubTabs) === 462);
+
+// Check DOM minWidth enforcement on buildCard
+node.properties.ui_layout.tabs[0].sections = [secWithControls];
+st.refresh();
+const renderedSec = node.__legoHost.querySelector(".lego-sec");
+t("rendered zone has minWidth matching sectionRequiredWidth", renderedSec.style.minWidth === "402px");
+const renderedCtrlsBox = renderedSec.querySelector(".lego-sec-controls");
+t("rendered zone controls box has minWidth protecting contents", renderedCtrlsBox.style.minWidth === `${402 - 24}px`);
+
+// ── 11. TEST REQUIRED NODE WIDTH & SIDE-BY-SIDE CONTAINMENT ──
+const sideBySideTab = {
+  sections: [
+    { header: "Z1", width: "50%", controls: [{ name: "A", x: 16, w: 256 }] }, // reqW = 16+256+32 = 304
+    { header: "Z2", width: "50%", controls: [{ name: "B", x: 16, w: 304 }] }  // reqW = 16+304+32 = 352
+  ]
+};
+const testNode = {
+  properties: {
+    ui_layout: {
+      schema: 2,
+      scale: 1,
+      tabs: [sideBySideTab]
+    }
+  }
+};
+// 304 + 352 + 12 (gap) + 36 (card pad) = 704
+const reqW = M.requiredNodeWidth(testNode, null);
+t("requiredNodeWidth sums side-by-side zones in row plus gaps and card padding", reqW === 704);
+
+// Test LiteGraph onResize clamping
+testNode.widgets = [];
+testNode.flags = {};
+testNode.size = [800, 400];
+testNode.setSize = function(s) { this.size = s; };
+testNode.addDOMWidget = (name, type, el, opts) => {
+  const w = { name, type, element: el, ...opts };
+  testNode.widgets.push(w);
+  return w;
+};
+const testSt = M.attach(testNode);
+// Attempt to crush node below requiredNodeWidth
+testNode.onResize([400, 300]);
+t("onResize clamps node width to requiredNodeWidth (prevents crushing zones)", testNode.size[0] >= 704);
+
+// ── 12. TEST CARD UI SCALE (layout.scale) ──
+testNode.properties.ui_layout.scale = 1.3;
+testSt.refresh();
+const cardEl = testNode.__legoHost.querySelector(".lego-card");
+t("card applies layout.scale via CSS zoom", String(cardEl.style.zoom) === "1.3" || parseFloat(cardEl.style.zoom) === 1.3);
+t("card applies layout.scale via CSS variable --lego-ui-scale", cardEl.style.getPropertyValue("--lego-ui-scale") === "1.3");
+const scaledReqW = M.requiredNodeWidth(testNode, testNode.__legoHost);
+t("requiredNodeWidth scales proportionally with layout.scale", scaledReqW === Math.ceil(704 * 1.3));
+const scaleBtnEl = testNode.__legoHost.querySelector(".lego-scale-btn");
+t("header contains UI Scale button showing 130%", scaleBtnEl && scaleBtnEl.textContent === "130%");
+
 console.log(`\n${ok} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
