@@ -2307,10 +2307,9 @@ textarea.lego-in{resize:vertical;min-height:75px;font-family:ui-monospace,SFMono
 .lego-color-swatch.on{border-color:#fff}
 .lego-color-swatch.none,.lego-color-dot.none{background:repeating-linear-gradient(45deg,rgba(255,255,255,.18) 0 3px,transparent 3px 6px)}
 .lego-color-dot{display:block;width:11px;height:11px;border-radius:50%;border:1px solid rgba(255,255,255,.35)}
-.lego-sec.tinted{border-color:color-mix(in srgb,var(--lego-zone-c) 55%,transparent);background:color-mix(in srgb,var(--lego-zone-c) 7%,var(--lego-panel,transparent))}
+.lego-sec.tinted{border-color:color-mix(in srgb,var(--lego-zone-c) 55%,transparent);background:color-mix(in srgb,var(--lego-zone-c) 14%,var(--lego-panel,transparent))}
 .lego-sec.tinted > .lego-sec-h{color:var(--lego-zone-c)}
-.lego-row.tinted{background-image:linear-gradient(90deg,color-mix(in srgb,var(--lego-c) 16%,transparent),transparent 70%)}
-.lego-row.tinted::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;border-radius:3px;background:var(--lego-c);pointer-events:none}
+.lego-row.tinted{background-image:linear-gradient(90deg,color-mix(in srgb,var(--lego-c) 38%,transparent),transparent 85%)}
 .lego-seed-mode{flex:none;min-width:30px;height:24px;margin-left:4px;padding:0 6px;border-radius:6px;border:1px solid var(--lego-line);background:rgba(255,255,255,.05);color:var(--lego-dim);font:700 10.5px/22px system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
 .lego-seed-mode:hover{border-color:var(--lego-accent);color:var(--lego-text)}
 .lego-seed-mode[data-mode="randomize"],.lego-seed-mode[data-mode="increment"],.lego-seed-mode[data-mode="decrement"]{color:#c4b5fd;border-color:rgba(168,85,247,.5)}
