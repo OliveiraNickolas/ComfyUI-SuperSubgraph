@@ -3595,8 +3595,8 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     editBtn.addEventListener("pointerdown", eatPointer);
     editBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      // O seletor de parâmetros liga a widgets; output se configura no Inspetor.
-      if (isOutput) selectComponent(host, state, ctrl, sectionCtrls, true);
+      // O seletor de parâmetros liga a widgets; grupos, divisores, labels e outputs se configuram no Inspetor.
+      if (isOutput || isGroup || isSegmentLike || isDivider || isLabel) selectComponent(host, state, ctrl, sectionCtrls, true);
       else openInspector({ host, layout: host.properties[PROP], section: { controls: sectionCtrls }, ctrl, state });
     });
     floatingActions.append(editBtn);
@@ -7691,6 +7691,7 @@ function leaveEditMode(state) {
 function closeObjectInspector() {
   INSPECTOR?.remove();
   INSPECTOR = null;
+  INSPECTOR_POS = null;
 }
 
 /** Linha do grid de propriedades: rótulo à esquerda, editor à direita. */
@@ -7781,6 +7782,72 @@ function adaptInspectorWithDialog() {
   }
 }
 
+const cssEscape = (s) => (typeof CSS !== "undefined" && typeof CSS.escape === "function") ? CSS.escape(s) : String(s).replace(/["\\]/g, "\\$&");
+
+/**
+ * Alinha a janela Object Properties diretamente ao lado do nó ou componente
+ * que a chamou (à direita, com o topo alinhado, ou à esquerda com recuo se faltar espaço).
+ */
+function alignInspectorToTarget(host, state) {
+  if (!INSPECTOR) return;
+  const oiWidth = 324;
+  const oiHeight = INSPECTOR.offsetHeight || 420;
+  const gap = 14;
+  const pad = 12;
+
+  let targetEl = null;
+  const cardHost = host?.__legoHost;
+  if (cardHost) {
+    if (state?.selectedName) {
+      try {
+        targetEl = cardHost.querySelector(`[data-name="${cssEscape(state.selectedName)}"]`);
+      } catch {}
+    }
+    if (!targetEl && state?.selectedNames && state.selectedNames.size > 0) {
+      for (const name of state.selectedNames) {
+        try {
+          targetEl = cardHost.querySelector(`[data-name="${cssEscape(name)}"]`);
+          if (targetEl) break;
+        } catch {}
+      }
+    }
+    if (!targetEl) {
+      targetEl = cardHost.querySelector(".lego-row.selected, .lego-segment-item.selected, .selected");
+    }
+    if (!targetEl) {
+      targetEl = cardHost.querySelector(".lego-card") || cardHost;
+    }
+  }
+
+  const rect = targetEl?.getBoundingClientRect?.();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  if (rect && rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < vh && rect.right > 0 && rect.left < vw) {
+    // Posiciona imediatamente à direita do elemento alvo, alinhando ao seu topo
+    let x = rect.right + gap;
+    // Se estourar a viewport à direita, tenta colocar à esquerda do elemento
+    if (x + oiWidth + pad > vw) {
+      if (rect.left - gap - oiWidth >= pad) {
+        x = rect.left - gap - oiWidth;
+      } else {
+        x = Math.max(pad, vw - oiWidth - pad);
+      }
+    }
+    // Alinha o topo com o topo do elemento alvo, contendo na altura da tela
+    let y = rect.top;
+    if (y + oiHeight + pad > vh) {
+      y = Math.max(pad, vh - oiHeight - pad);
+    } else {
+      y = Math.max(pad, y);
+    }
+
+    INSPECTOR_POS = { x: Math.round(x), y: Math.round(y) };
+  } else if (!INSPECTOR_POS) {
+    INSPECTOR_POS = { x: Math.max(pad, vw - oiWidth - pad), y: 96 };
+  }
+}
+
 /** A janela flutuante. Some quando não há nada selecionado ou fora da edição. */
 function renderObjectInspector(host, state, force) {
   renderAlignBars(host, state);
@@ -7789,18 +7856,25 @@ function renderObjectInspector(host, state, force) {
   // Sem `force`, só repinta o que já está aberto: ele nunca aparece sozinho.
   if (!INSPECTOR && !force) return;
 
+  const isNew = !INSPECTOR;
   if (!INSPECTOR) {
     INSPECTOR = el("div", "lego-oi");
     INSPECTOR.addEventListener("pointerdown", (e) => e.stopPropagation());
     INSPECTOR.addEventListener("wheel", (e) => e.stopPropagation());
     document.body.append(INSPECTOR);
-    if (!INSPECTOR_POS) {
-      INSPECTOR_POS = { x: Math.max(12, window.innerWidth - 336), y: 96 };
-    }
   }
+
+  // Se force for verdadeiro ou se for recém-aberto ou se o usuário não tiver arrastado manualmente,
+  // alinha a janela imediatamente ao lado do componente ou nó que a chamou.
+  if (force || isNew || !INSPECTOR.__userDragged) {
+    if (force) delete INSPECTOR.__userDragged;
+    alignInspectorToTarget(host, state);
+  }
+
   if (document.querySelector(".lego-comfy-dialog")) {
     adaptInspectorWithDialog();
   } else {
+    INSPECTOR.style.position = "fixed";
     INSPECTOR.style.left = `${INSPECTOR_POS.x}px`;
     INSPECTOR.style.top = `${INSPECTOR_POS.y}px`;
     INSPECTOR.style.maxHeight = "76vh";
@@ -7817,6 +7891,7 @@ function renderObjectInspector(host, state, force) {
   bar.addEventListener("pointerdown", (e) => {
     if (e.target.closest("button")) return;
     e.preventDefault();
+    INSPECTOR.__userDragged = true;
     INSPECTOR.classList.remove("docked-with-dialog");
     const dx = e.clientX - INSPECTOR_POS.x;
     const dy = e.clientY - INSPECTOR_POS.y;
@@ -8361,6 +8436,15 @@ function renderObjectInspector(host, state, force) {
   });
   foot.append(del);
   INSPECTOR.append(foot);
+
+  if (!INSPECTOR.__userDragged && !document.querySelector(".lego-comfy-dialog")) {
+    const vh = window.innerHeight;
+    const realH = INSPECTOR.offsetHeight;
+    if (realH && INSPECTOR_POS && INSPECTOR_POS.y + realH + 12 > vh) {
+      INSPECTOR_POS.y = Math.max(12, vh - realH - 12);
+      INSPECTOR.style.top = `${INSPECTOR_POS.y}px`;
+    }
+  }
 }
 
 function buildCard(host, state) {
@@ -10149,18 +10233,29 @@ const liteGraph = () => window.LiteGraph || globalThis.LiteGraph;
 function newInnerGraph(data) {
   const Cls = liteGraph()?.LGraph || app.rootGraph?.constructor || app.graph?.constructor;
   const g = new Cls();
-  if (data) g.configure(data);
+  g.isRootGraph = false;
+  g.rootGraph = app.rootGraph || app.graph;
+  if (data && typeof g.configure === "function") g.configure(data);
   return g;
 }
 
 /** O LGraph de dentro de um Super Subgraph (criado sob demanda a partir das propriedades). */
 function ssInnerGraph(node) {
   if (!isSuperNode(node)) return null;
-  if (node.__ssGraph) return node.__ssGraph;
+  if (node.__ssGraph) {
+    node.__ssGraph.isRootGraph = false;
+    node.__ssGraph.rootGraph = app.rootGraph || app.graph;
+    node.subgraph = node.__ssGraph;
+    return node.__ssGraph;
+  }
   const data = node.properties?.[SS_PROP]?.graph;
   if (!data) return null;
   try {
-    node.__ssGraph = newInnerGraph(JSON.parse(JSON.stringify(data)));
+    const g = newInnerGraph(JSON.parse(JSON.stringify(data)));
+    g.isRootGraph = false;
+    g.rootGraph = app.rootGraph || app.graph;
+    node.__ssGraph = g;
+    node.subgraph = g;
   } catch (e) {
     console.error(LOG, "could not load the inner graph of", node.id, e);
     return null;
@@ -11094,9 +11189,20 @@ function enterSuper(sn) {
   if (!c || !inner || typeof c.setGraph !== "function") return;
   if (c.graph === inner) return;
   closeObjectInspector();
-  SS_NAV.push({ host: sn, from: c.graph, inner, view: { offset: [...(c.ds?.offset || [0, 0])], scale: c.ds?.scale || 1 } });
+  const fromGraph = c.graph;
+  SS_NAV.push({ host: sn, from: fromGraph, inner, view: { offset: [...(c.ds?.offset || [0, 0])], scale: c.ds?.scale || 1 } });
   c.deselectAll?.();
+  inner.isRootGraph = false;
+  inner.rootGraph = app.rootGraph || app.graph;
+  inner._subgraph_node = sn;
+  inner.node = sn;
+  sn.subgraph = inner;
+  c.subgraph = inner;
   c.setGraph(inner);
+  c.dispatch?.("litegraph:set-graph", { newGraph: inner, oldGraph: fromGraph });
+  c.canvas?.dispatchEvent(new CustomEvent("litegraph:set-graph", { bubbles: true, detail: { newGraph: inner, oldGraph: fromGraph } }));
+  c.canvas?.dispatchEvent(new CustomEvent("subgraph-opened", { bubbles: true, detail: { subgraph: inner, closingGraph: fromGraph, fromNode: sn } }));
+  app.extensionManager?.workflow?.updateActiveGraph?.();
   fitCanvasTo(inner);
   c.setDirty?.(true, true);
   renderSuperNavBar();
@@ -11108,6 +11214,8 @@ function enterSuper(sn) {
       if (!SS_NAV.length) { clearInterval(ssNavWatch); ssNavWatch = null; return; }
       if (app.canvas?.graph !== SS_NAV[SS_NAV.length - 1].inner) {
         SS_NAV.length = 0;
+        if (c) c.subgraph = undefined;
+        app.extensionManager?.workflow?.updateActiveGraph?.();
         renderSuperNavBar();
         return;
       }
@@ -11123,8 +11231,17 @@ function exitSuper(levels = 1) {
   for (let i = 0; i < levels && SS_NAV.length; i++) frame = SS_NAV.pop();
   if (!frame || !c) { renderSuperNavBar(); return; }
   c.deselectAll?.();
-  c.setGraph(frame.from);
+  const targetGraph = SS_NAV.length ? SS_NAV[SS_NAV.length - 1].inner : frame.from;
+  const targetSubgraph = SS_NAV.length ? SS_NAV[SS_NAV.length - 1].inner : (targetGraph && targetGraph !== (app.rootGraph || app.graph) && targetGraph.isRootGraph === false ? targetGraph : undefined);
+  c.subgraph = targetSubgraph;
+  c.setGraph(targetGraph);
   if (c.ds) { c.ds.offset = frame.view.offset; c.ds.scale = frame.view.scale; }
+  c.dispatch?.("litegraph:set-graph", { newGraph: targetGraph, oldGraph: frame.inner });
+  c.canvas?.dispatchEvent(new CustomEvent("litegraph:set-graph", { bubbles: true, detail: { newGraph: targetGraph, oldGraph: frame.inner } }));
+  if (!targetSubgraph) {
+    c.canvas?.dispatchEvent(new CustomEvent("subgraph-closed", { bubbles: true, detail: { closingGraph: frame.inner, targetGraph } }));
+  }
+  app.extensionManager?.workflow?.updateActiveGraph?.();
   c.setDirty?.(true, true);
   renderSuperNavBar();
   // O de dentro pode ter mudado (nós novos, removidos): a borda e os cartões se refazem.
