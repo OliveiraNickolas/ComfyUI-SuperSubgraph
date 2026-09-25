@@ -2650,8 +2650,7 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       (item.kind === "textarea") ? 80 :
       (isMediaItem ? 120 :
       (item.kind === "hdivider" ? 16 :
-      (item.kind === "vdivider" ? 24 :
-      (isContainerItem ? 48 : null))));
+      (item.kind === "vdivider" ? 24 : null)));
     const effH = typeof item.h === "number" ? item.h : defaultH;
     if (typeof effH === "number") {
       itemWrap.style.height = `${Math.max(itemMinH, effH)}px`;
@@ -2866,9 +2865,12 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       itemWrap.style.display = "flex";
       itemWrap.style.flexDirection = "column";
       itemWrap.style.alignItems = "stretch";
+      itemWrap.style.overflow = "visible";
+      itemWrap.style.height = "auto";
       const innerSeg = buildSegment(host, item, state, sectionCtrls);
       innerSeg.style.flex = "1";
       innerSeg.style.minHeight = "32px";
+      innerSeg.style.overflow = "visible";
       itemWrap.append(innerSeg);
     } else if (isOutputItem) {
       const labelPos = item.labelPos || "left";

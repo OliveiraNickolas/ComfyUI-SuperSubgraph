@@ -1979,6 +1979,18 @@ textarea.lego-in{resize:vertical;min-height:75px;font-family:ui-monospace,SFMono
   align-items: center;
   gap: 8px;
 }
+.lego-segment-item.kind-segment,
+.lego-segment-item.kind-vsegment,
+.lego-segment-item.kind-group{
+  height: auto !important;
+  overflow: visible;
+  align-items: stretch;
+}
+.lego-segment-item.kind-segment > .lego-segment-box,
+.lego-segment-item.kind-vsegment > .lego-segment-box,
+.lego-segment-item.kind-group > .lego-segment-box{
+  overflow: visible;
+}
 .lego-segment-item.has-custom-w{
   flex: none !important;
 }
