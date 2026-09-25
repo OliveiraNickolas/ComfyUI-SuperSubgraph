@@ -2525,6 +2525,9 @@ export const CSS_FORM = `
 }
 .lego-oi-pick:hover { border-color: #3b82f6; }
 .lego-oi-pick span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lego-oi-style-btn{padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.34);color:var(--lego-dim);font-size:12px;font-weight:600;cursor:pointer;transition:all .12s;font-family:inherit;line-height:1}
+.lego-oi-style-btn:hover{border-color:#3b82f6;color:var(--lego-text)}
+.lego-oi-style-btn.on{background:var(--lego-accent);color:#fff;border-color:var(--lego-accent)}
 .lego-oi-sec {
   flex: none; padding: 7px 12px 5px; font-size: 10.5px; font-weight: 700;
   letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,0.46);

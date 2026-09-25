@@ -2840,7 +2840,8 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       itemWrap.append(divLine);
     } else if (isLabelItem) {
       const textSpan = el("span", "lego-item-label-text", item.text || item.label || "Label");
-      textSpan.style.cssText = "font-size:12px; font-weight:600; color:var(--lego-fg, #e2e8f0); user-select:none;";
+      textSpan.style.cssText = "font-size:12px; font-weight:600; color:var(--lego-fg, #e2e8f0); user-select:none; display:flex; width:100%;";
+      applyLabelStyle(textSpan, item);
       if (state?.edit) {
         textSpan.title = "Click to edit text";
         itemWrap.addEventListener("click", (e) => {
@@ -3107,6 +3108,12 @@ function buildGroup(host, ctrl, state, sectionCtrls) {
  * Aparência do componente ainda sem função — inerte, mas com a cara do tipo.
  * No Delphi um TButton acabado de soltar já parece um botão; aqui é igual.
  */
+function applyLabelStyle(span, ctrl) {
+  if (ctrl.bold) span.style.fontWeight = "700";
+  if (ctrl.italic) span.style.fontStyle = "italic";
+  if (ctrl.fontSize) span.style.fontSize = `${ctrl.fontSize}px`;
+  if (ctrl.align) span.style.justifyContent = ctrl.align === "center" ? "center" : ctrl.align === "right" ? "flex-end" : "flex-start";
+}
 function ghostControl(kind, ctrl) {
   const box = el("div", "lego-ghost");
   if (kind === "hdivider") {
@@ -3114,7 +3121,9 @@ function ghostControl(kind, ctrl) {
   } else if (kind === "vdivider") {
     box.append(el("div", "lego-divider v"));
   } else if (kind === "label") {
-    box.append(el("div", "lego-canvas-label", ctrl?.text || ctrl?.label || "Label"));
+    const gLbl = el("div", "lego-canvas-label", ctrl?.text || ctrl?.label || "Label");
+    if (ctrl) applyLabelStyle(gLbl, ctrl);
+    box.append(gLbl);
   } else if (kind === "toggle") {
     box.append(el("div", "lego-ghost-sw"));
     box.classList.add("shrink");
@@ -3263,6 +3272,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   } else if (isLabel) {
     row = el("div", "lego-row is-label");
     const lblSpan = el("div", "lego-canvas-label", ctrl.text || ctrl.label || "Label");
+    applyLabelStyle(lblSpan, ctrl);
     if (state.edit) {
       lblSpan.title = "Double-click to edit text";
       row.addEventListener("dblclick", (e) => {
@@ -7997,6 +8007,42 @@ function renderObjectInspector(host, state, force) {
       ctrl.label = v;
       state.refresh();
     })));
+
+    // Formatação do label
+    const styleRow = el("div", "lego-oi-style-row");
+    styleRow.style.cssText = "display:flex;align-items:center;gap:4px;flex-wrap:wrap";
+    const mkToggle = (label, title, key) => {
+      const btn = el("button", `lego-oi-style-btn${ctrl[key] ? " on" : ""}`);
+      btn.textContent = label;
+      btn.title = title;
+      btn.addEventListener("click", (e) => { e.stopPropagation(); ctrl[key] = !ctrl[key]; state.refresh(); });
+      return btn;
+    };
+    styleRow.append(mkToggle("B", "Bold", "bold"), mkToggle("I", "Italic", "italic"));
+
+    const ALIGNS = [
+      { id: "left", icon: "≡ʟ" },
+      { id: "center", icon: "≡ᴄ" },
+      { id: "right", icon: "≡ʀ" },
+    ];
+    for (const a of ALIGNS) {
+      const btn = el("button", `lego-oi-style-btn${(ctrl.align || "left") === a.id ? " on" : ""}`);
+      btn.textContent = a.icon;
+      btn.title = `Align ${a.id}`;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (a.id === "left") delete ctrl.align; else ctrl.align = a.id;
+        state.refresh();
+      });
+      styleRow.append(btn);
+    }
+
+    const sizeIn = propNumber(ctrl.fontSize || 14, (v) => { ctrl.fontSize = Math.max(8, Math.min(72, v)); state.refresh(); }, 1);
+    sizeIn.style.width = "48px";
+    sizeIn.title = "Font size (px)";
+    styleRow.append(sizeIn);
+
+    props.append(propRow("Style", styleRow));
   } else if (!isDivider) {
     // Caption vazio cai no nome do widget vinculado — mostra o efetivo, não o vazio.
     const hitNow = ctrl.bind ? resolveBind(host, ctrl.bind) : null;
