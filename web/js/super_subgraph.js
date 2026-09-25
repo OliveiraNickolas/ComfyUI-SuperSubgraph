@@ -11942,7 +11942,7 @@ function quickOutNodes(nodesToEject) {
   }
   outerGraph.setDirtyCanvas?.(true, true);
 
-  showLegoToast(`Ejected ${ejectedList.length} node(s) to main canvas`);
+  showLegoToast(`Ejected ${ejectedList.length} node(s) to the main graph`);
 }
 
 function quickOutNode(node) {
@@ -11961,13 +11961,13 @@ function boundaryMenuItems(node) {
   const items = [];
 
   items.push({
-    content: "Quick Out (Eject to Main Graph)",
+    content: "Eject to the main graph",
     callback: () => quickOutNode(node)
   });
   const sel = selectedNodes().filter((n) => superHostOf(n) === host);
   if (sel.length > 1 && sel.includes(node)) {
     items.push({
-      content: `Quick Out Selected (${sel.length}) to Main Graph`,
+      content: `Eject selected (${sel.length}) to the main graph`,
       callback: () => quickOutNodes(sel)
     });
   }
@@ -12363,7 +12363,7 @@ app.registerExtension({
       const innerSel = sel.filter((n) => n.graph === top.inner);
       if (innerSel.length) {
         sub.push({
-          content: `Quick Out Selected (${innerSel.length}) to Main Graph`,
+          content: `Eject selected (${innerSel.length}) to the main graph`,
           callback: () => quickOutNodes(innerSel)
         }, null);
       }
