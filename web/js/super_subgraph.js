@@ -10293,6 +10293,51 @@ function ssInnerGraph(node) {
   return node.__ssGraph;
 }
 
+let bypassSsAddHook = false;
+
+/**
+ * Intercepta adições de nós no grafo raiz enquanto o usuário está dentro
+ * do Super Subgraph, redirecionando o nó recém-criado para o grafo de dentro.
+ */
+function hookGraphAdd() {
+  const LG = liteGraph();
+  const Cls = LG?.LGraph || app.rootGraph?.constructor || app.graph?.constructor;
+  if (Cls && !Cls.prototype.__ssAddHooked) {
+    Cls.prototype.__ssAddHooked = true;
+    const origAdd = Cls.prototype.add;
+    Cls.prototype.add = function (node, ...args) {
+      if (!bypassSsAddHook && SS_NAV.length > 0) {
+        const top = SS_NAV[SS_NAV.length - 1];
+        const target = top?.inner;
+        if (target && (this === app.graph || this === app.rootGraph) && target !== this) {
+          const res = target.add(node, ...args);
+          target.setDirtyCanvas?.(true, true);
+          app.canvas?.setDirty?.(true, true);
+          return res;
+        }
+      }
+      return origAdd.apply(this, [node, ...args]);
+    };
+  }
+  if (app.graph && !app.graph.__ssAddHooked) {
+    app.graph.__ssAddHooked = true;
+    const origAppAdd = app.graph.add;
+    app.graph.add = function (node, ...args) {
+      if (!bypassSsAddHook && SS_NAV.length > 0) {
+        const top = SS_NAV[SS_NAV.length - 1];
+        const target = top?.inner;
+        if (target && target !== this) {
+          const res = target.add(node, ...args);
+          target.setDirtyCanvas?.(true, true);
+          app.canvas?.setDirty?.(true, true);
+          return res;
+        }
+      }
+      return origAppAdd.apply(this, [node, ...args]);
+    };
+  }
+}
+
 /** Nós de dentro do host: do Super Subgraph ou do subgrafo nativo. */
 function innerNodesOf(host) {
   const g = ssInnerGraph(host);
@@ -10360,7 +10405,11 @@ function applySuperSlots(node) {
     if (m && Number(m[1]) > nIn && node.inputs[i].link == null) node.removeInput(i);
   }
   meta.inputs.forEach((inp, k) => {
-    const slot = (node.inputs || []).find((s) => s.name === `in_${k + 1}`);
+    let slot = (node.inputs || []).find((s) => s.name === `in_${k + 1}`);
+    if (!slot) {
+      node.addInput?.(`in_${k + 1}`, inp.type || "*");
+      slot = (node.inputs || []).find((s) => s.name === `in_${k + 1}`);
+    }
     if (slot) { slot.label = inp.name; slot.localized_name = inp.name; if (inp.type) slot.type = inp.type; }
   });
   while ((node.outputs || []).length > nOut) {
@@ -10369,7 +10418,11 @@ function applySuperSlots(node) {
     node.removeOutput(last);
   }
   meta.outputs.forEach((out, j) => {
-    const slot = node.outputs?.[j];
+    let slot = node.outputs?.[j];
+    if (!slot) {
+      node.addOutput?.(`out_${j + 1}`, out.type || "*");
+      slot = node.outputs?.[j];
+    }
     if (slot) { slot.label = out.name; slot.localized_name = out.name; if (out.type) slot.type = out.type; }
   });
 }
@@ -10982,7 +11035,143 @@ function superMenuOptions(node) {
   const border = boundaryMenuItems(node);
   if (border.length) { sep(); sub.push(...border); }
 
-  if (isSS) { sep(); sub.push({ content: "Open Inside", callback: () => enterSuper(node) }); }
+  if (isSS) {
+    sep();
+    sub.push({ content: "Open Inside", callback: () => enterSuper(node) });
+    const inner = ssInnerGraph(node);
+    if (inner) {
+      const meta = node.properties?.[SS_PROP] || {};
+      const innerNodes = innerNodesOf(node);
+
+      const unexposedInputs = [];
+      const exposedInKeys = new Set();
+      (meta.inputs || []).forEach((io) => {
+        (io.targets || []).forEach(([tid, name]) => exposedInKeys.add(`${tid}:${name}`));
+      });
+      for (const inNode of innerNodes) {
+        for (const inp of inNode.inputs || []) {
+          if (inp.link == null && !exposedInKeys.has(`${inNode.id}:${inp.name}`)) {
+            unexposedInputs.push({
+              node: inNode,
+              inp,
+              label: `${inNode.title || inNode.type || `#${inNode.id}`} ▸ ${inp.label || inp.localized_name || inp.name}`
+            });
+          }
+        }
+      }
+      if (unexposedInputs.length) {
+        sub.push({
+          content: "Expose Inner Input…",
+          has_submenu: true,
+          submenu: {
+            options: unexposedInputs.map((item) => ({
+              content: item.label,
+              callback: () => exposeSuperInput(node, item.node, item.inp.name)
+            }))
+          }
+        });
+      }
+
+      const unexposedOutputs = [];
+      const exposedOutKeys = new Set();
+      (meta.outputs || []).forEach((io) => {
+        if (io.source) exposedOutKeys.add(`${io.source[0]}:${io.source[1]}`);
+      });
+      for (const inNode of innerNodes) {
+        (inNode.outputs || []).forEach((out, slot) => {
+          if (!exposedOutKeys.has(`${inNode.id}:${slot}`)) {
+            unexposedOutputs.push({
+              node: inNode,
+              slot,
+              label: `${inNode.title || inNode.type || `#${inNode.id}`} ▸ ${out.label || out.localized_name || out.name || `out_${slot}`}`
+            });
+          }
+        });
+      }
+      if (unexposedOutputs.length) {
+        sub.push({
+          content: "Expose Inner Output…",
+          has_submenu: true,
+          submenu: {
+            options: unexposedOutputs.map((item) => ({
+              content: item.label,
+              callback: () => exposeSuperOutput(node, item.node, item.slot)
+            }))
+          }
+        });
+      }
+
+      const boundarySlots = [];
+      (meta.inputs || []).forEach((io, k) => {
+        boundarySlots.push({
+          content: `in_${k + 1}: ${io.name}`,
+          has_submenu: true,
+          submenu: {
+            options: [
+              {
+                content: `Rename "${io.name}"…`,
+                callback: () => {
+                  const val = prompt(`New label for in_${k + 1}:`, io.name);
+                  if (val != null) renameBoundaryIO(node, true, k, val);
+                }
+              },
+              {
+                content: `Remove in_${k + 1}`,
+                callback: () => {
+                  const target = io.targets?.[0];
+                  if (target) {
+                    const targetNode = inner.getNodeById?.(target[0]) ?? inner.getNodeById?.(Number(target[0]));
+                    if (targetNode) unexposeSuperInput(node, targetNode, target[1]);
+                    else {
+                      meta.inputs.splice(k, 1);
+                      afterBoundaryChange(node);
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        });
+      });
+      (meta.outputs || []).forEach((io, j) => {
+        boundarySlots.push({
+          content: `out_${j + 1}: ${io.name}`,
+          has_submenu: true,
+          submenu: {
+            options: [
+              {
+                content: `Rename "${io.name}"…`,
+                callback: () => {
+                  const val = prompt(`New label for out_${j + 1}:`, io.name);
+                  if (val != null) renameBoundaryIO(node, false, j, val);
+                }
+              },
+              {
+                content: `Remove out_${j + 1}`,
+                callback: () => {
+                  if (io.source) {
+                    const srcNode = inner.getNodeById?.(io.source[0]) ?? inner.getNodeById?.(Number(io.source[0]));
+                    if (srcNode) unexposeSuperOutput(node, srcNode, io.source[1]);
+                    else {
+                      meta.outputs.splice(j, 1);
+                      afterBoundaryChange(node);
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        });
+      });
+      if (boundarySlots.length) {
+        sub.push({
+          content: "Boundary Slots (I/O)",
+          has_submenu: true,
+          submenu: { options: boundarySlots }
+        });
+      }
+    }
+  }
   if (has) {
     sub.push({
       content: node.__legoState?.edit ? "Finish Editing Card" : "Edit Card",
@@ -11223,6 +11412,7 @@ function enterSuper(sn) {
   c.deselectAll?.();
   if (sn.subgraph === inner) delete sn.subgraph;
   if (c.subgraph === inner) delete c.subgraph;
+  hookGraphAdd();
   c.setGraph(inner);
   fitCanvasTo(inner);
   c.setDirty?.(true, true);
@@ -11257,7 +11447,17 @@ function exitSuper(levels = 1) {
   c.setDirty?.(true, true);
   renderSuperNavBar();
   // O de dentro pode ter mudado (nós novos, removidos): a borda e os cartões se refazem.
-  for (const f of [frame, ...SS_NAV]) { pruneSuperBoundary(f.host); f.host.__legoState?.refresh(); }
+  for (const f of [frame, ...SS_NAV]) {
+    if (f.host && f.inner && f.host.properties?.[SS_PROP]) {
+      try {
+        f.host.properties[SS_PROP].graph = f.inner.serialize ? f.inner.serialize() : f.host.properties[SS_PROP].graph;
+      } catch (err) {
+        console.warn(LOG, "serialize inner on exitSuper", err);
+      }
+    }
+    pruneSuperBoundary(f.host);
+    f.host.__legoState?.refresh();
+  }
 }
 
 /* ── Borda do Super Subgraph (entradas e saídas vistas de dentro) ─────────
@@ -11325,6 +11525,20 @@ function exposeSuperInput(host, node, inputName) {
   showLegoToast(`Input "${meta.inputs[k].name}" exposed`);
 }
 
+/** Garante que a entrada inputName do nó de dentro esteja exposta no host; retorna o índice em meta.inputs. */
+function ensureSuperInput(host, node, inputName) {
+  const meta = host.properties?.[SS_PROP];
+  if (!meta) return -1;
+  meta.inputs = meta.inputs || [];
+  const id = String(node.id);
+  const existingIdx = meta.inputs.findIndex(
+    (io) => (io.targets || []).some(([t, n]) => String(t) === id && n === inputName)
+  );
+  if (existingIdx >= 0) return existingIdx;
+  exposeSuperInput(host, node, inputName);
+  return meta.inputs.length - 1;
+}
+
 /** Tira a entrada `inputName` do nó de dentro da borda; in_N vazia sai e as seguintes renumeram. */
 function unexposeSuperInput(host, node, inputName) {
   const meta = host.properties[SS_PROP];
@@ -11377,6 +11591,34 @@ function unexposeSuperOutput(host, node, slot) {
   showLegoToast(`Output "${io.name}" is no longer exposed`);
 }
 
+/** Garante que a saída slot do nó de dentro esteja exposta no host; retorna o índice em meta.outputs. */
+function ensureSuperOutput(host, node, slot) {
+  const meta = host.properties?.[SS_PROP];
+  if (!meta) return -1;
+  meta.outputs = meta.outputs || [];
+  const existingIdx = meta.outputs.findIndex(
+    (io) => io.source && String(io.source[0]) === String(node.id) && Number(io.source[1]) === Number(slot)
+  );
+  if (existingIdx >= 0) return existingIdx;
+  exposeSuperOutput(host, node, slot);
+  return meta.outputs.length - 1;
+}
+
+/** Renomeia uma entrada ou saída de borda do host. */
+function renameBoundaryIO(host, isIn, idx, newName) {
+  const meta = host.properties?.[SS_PROP];
+  if (!meta || !newName) return;
+  const trimmed = newName.trim();
+  if (!trimmed) return;
+  if (isIn) {
+    if (meta.inputs?.[idx]) meta.inputs[idx].name = trimmed;
+  } else {
+    if (meta.outputs?.[idx]) meta.outputs[idx].name = trimmed;
+  }
+  afterBoundaryChange(host);
+  showLegoToast(`Renamed ${isIn ? `in_${idx + 1}` : `out_${idx + 1}`} to "${trimmed}"`);
+}
+
 /**
  * Nó de dentro apagado (ou entrada/saída que sumiu): a borda que apontava
  * para ele sai também, com a mesma renumeração do "Unexpose".
@@ -11413,6 +11655,300 @@ function pruneSuperBoundary(host) {
   afterBoundaryChange(host);
 }
 
+/**
+ * Quick Out: ejeta um ou mais nós de dentro do Super Subgraph para o grafo raiz
+ * preservando todas as ligações de fios (noodles/espaguetes):
+ * - Ligações entre nós que estão sendo ejetados juntos continuam diretas entre eles.
+ * - Fios que vinham de nós que ficam dentro viram saídas do Super Subgraph conectadas aos nós ejetados.
+ * - Fios externos que alimentavam esses nós passam a ligar direto nos nós ejetados.
+ * - Fios que saíam desses nós para nós de dentro viram entradas do Super Subgraph alimentadas pelos nós ejetados.
+ * - Fios externos alimentados por esses nós passam a sair direto dos nós ejetados.
+ */
+function quickOutNodes(nodesToEject) {
+  if (!nodesToEject || !nodesToEject.length) return;
+  const top = currentSuperFrame() || SS_NAV[SS_NAV.length - 1];
+  const host = top?.host || superHostOf(nodesToEject[0]);
+  if (!host || !host.properties?.[SS_PROP]) {
+    showLegoToast("Cannot eject: SuperSubgraph host not found");
+    return;
+  }
+  const inner = ssInnerGraph(host);
+  const outerGraph = host.graph || top?.from || app.graph || app.rootGraph;
+  if (!inner || !outerGraph) {
+    showLegoToast("Cannot eject: graphs not accessible");
+    return;
+  }
+
+  const meta = host.properties[SS_PROP];
+  meta.inputs = meta.inputs || [];
+  meta.outputs = meta.outputs || [];
+
+  const ejectedList = Array.from(new Set(nodesToEject));
+  const ejectedIds = new Set(ejectedList.map((n) => String(n.id)));
+
+  const getLink = (g, id) => g?.links?.get?.(id) ?? g?.links?.[id];
+  const getNode = (g, id) => g?.getNodeById?.(id) ?? g?.getNodeById?.(Number(id));
+
+  // 1. Mapeia conexões antes de desconectar
+  const internalEjectedLinks = [];
+  const fromInnerInputs = [];
+  const fromExternalInputs = [];
+  const toInnerOutputs = [];
+  const toExternalOutputs = [];
+
+  for (const n of ejectedList) {
+    const nId = String(n.id);
+    (n.inputs || []).forEach((inp, inSlot) => {
+      if (inp.link != null) {
+        const link = getLink(inner, inp.link);
+        if (link) {
+          const originId = String(link.origin_id);
+          if (ejectedIds.has(originId)) {
+            internalEjectedLinks.push({
+              fromId: originId,
+              fromSlot: link.origin_slot,
+              toNode: n,
+              toSlot: inSlot
+            });
+          } else {
+            const innerOrigin = getNode(inner, originId);
+            if (innerOrigin) {
+              fromInnerInputs.push({
+                innerNode: innerOrigin,
+                innerSlot: link.origin_slot,
+                toNode: n,
+                toSlot: inSlot,
+                inpName: inp.name
+              });
+            }
+          }
+        }
+      }
+
+      meta.inputs.forEach((io, k) => {
+        const targetMatch = (io.targets || []).find(([tid, name]) => String(tid) === nId && name === inp.name);
+        if (targetMatch) {
+          const hInIdx = hostInputIndex(host, k);
+          const hSlot = host.inputs?.[hInIdx];
+          if (hSlot && hSlot.link != null) {
+            const extLink = getLink(outerGraph, hSlot.link);
+            if (extLink) {
+              const extOrigin = getNode(outerGraph, extLink.origin_id);
+              if (extOrigin) {
+                fromExternalInputs.push({
+                  extNode: extOrigin,
+                  extSlot: extLink.origin_slot,
+                  toNode: n,
+                  toSlot: inSlot,
+                  ioIndex: k,
+                  inpName: inp.name
+                });
+              }
+            }
+          }
+        }
+      });
+    });
+
+    (n.outputs || []).forEach((out, outSlot) => {
+      const linkIds = out.links || [];
+      for (const linkId of linkIds) {
+        const link = getLink(inner, linkId);
+        if (link) {
+          const targetId = String(link.target_id);
+          if (!ejectedIds.has(targetId)) {
+            const innerTarget = getNode(inner, targetId);
+            if (innerTarget) {
+              const targetInp = innerTarget.inputs?.[link.target_slot];
+              toInnerOutputs.push({
+                fromNode: n,
+                fromSlot: outSlot,
+                innerTarget,
+                innerInpName: targetInp?.name,
+                innerSlot: link.target_slot,
+                outType: out.type || "*"
+              });
+            }
+          }
+        }
+      }
+
+      meta.outputs.forEach((io, j) => {
+        if (io.source && String(io.source[0]) === nId && Number(io.source[1]) === outSlot) {
+          const hOut = host.outputs?.[j];
+          const extLinkIds = hOut?.links || [];
+          for (const extId of extLinkIds) {
+            const extLink = getLink(outerGraph, extId);
+            if (extLink) {
+              const extTarget = getNode(outerGraph, extLink.target_id);
+              if (extTarget) {
+                toExternalOutputs.push({
+                  fromNode: n,
+                  fromSlot: outSlot,
+                  extTarget,
+                  extSlot: extLink.target_slot,
+                  ioIndex: j
+                });
+              }
+            }
+          }
+        }
+      });
+    });
+  }
+
+  // 2. Calcula posição externa (à direita do host)
+  const hostPos = host.pos || [0, 0];
+  const hostSize = host.size || [300, 200];
+  const minX = Math.min(...ejectedList.map((n) => n.pos?.[0] || 0));
+  const minY = Math.min(...ejectedList.map((n) => n.pos?.[1] || 0));
+
+  // 3. Remove os nós do grafo de dentro
+  for (const n of ejectedList) {
+    inner.remove(n);
+  }
+
+  // 4. Adiciona no grafo raiz evitando colisão de IDs e desativando o interceptor
+  const oldToNewNode = new Map();
+  bypassSsAddHook = true;
+  try {
+    for (const n of ejectedList) {
+      const oldId = String(n.id);
+      const relX = (n.pos?.[0] || 0) - minX;
+      const relY = (n.pos?.[1] || 0) - minY;
+      n.pos = [hostPos[0] + hostSize[0] + 80 + relX, hostPos[1] + relY];
+
+      if (outerGraph._nodes_by_id && outerGraph._nodes_by_id[n.id]) {
+        outerGraph.last_node_id = (outerGraph.last_node_id || 0) + 1;
+        n.id = outerGraph.last_node_id;
+      }
+      oldToNewNode.set(oldId, n);
+      outerGraph.add(n);
+    }
+  } finally {
+    bypassSsAddHook = false;
+  }
+
+  // 5. Limpa referências aos nós ejetados na borda do host
+  for (const item of fromExternalInputs) {
+    const nId = String(item.toNode.id);
+    const io = meta.inputs[item.ioIndex];
+    if (io) {
+      io.targets = (io.targets || []).filter(([tid, name]) => !(String(tid) === nId && name === item.inpName));
+    }
+  }
+  const outputsToRemove = new Set(toExternalOutputs.map((item) => item.ioIndex));
+  const sortedOutIndices = Array.from(outputsToRemove).sort((a, b) => b - a);
+  for (const j of sortedOutIndices) {
+    meta.outputs.splice(j, 1);
+    if (host.outputs?.[j]) host.removeOutput(j);
+  }
+  (host.outputs || []).forEach((o, i) => { if (/^out_\d+$/.test(o.name)) o.name = `out_${i + 1}`; });
+
+  // 6. Restaura as conexões de espaguete no grafo raiz
+  for (const l of internalEjectedLinks) {
+    const sourceNode = oldToNewNode.get(String(l.fromId));
+    if (sourceNode && l.toNode) {
+      sourceNode.connect(l.fromSlot, l.toNode, l.toSlot);
+    }
+  }
+
+  for (const item of fromInnerInputs) {
+    const outIdx = ensureSuperOutput(host, item.innerNode, item.innerSlot);
+    if (outIdx >= 0) {
+      host.connect(outIdx, item.toNode, item.toSlot);
+    }
+  }
+
+  for (const item of fromExternalInputs) {
+    item.extNode.connect(item.extSlot, item.toNode, item.toSlot);
+  }
+
+  const toInnerGroups = new Map();
+  for (const item of toInnerOutputs) {
+    const key = `${item.fromNode.id}:${item.fromSlot}`;
+    let g = toInnerGroups.get(key);
+    if (!g) toInnerGroups.set(key, (g = []));
+    g.push(item);
+  }
+
+  for (const [_, group] of toInnerGroups) {
+    const first = group[0];
+    const outSlotObj = first.fromNode.outputs?.[first.fromSlot];
+    const baseName = outSlotObj?.label || outSlotObj?.name || `in_${meta.inputs.length + 1}`;
+    meta.inputs.push({
+      name: baseName,
+      type: first.outType || "*",
+      targets: group.map((it) => [String(it.innerTarget.id), it.innerInpName])
+    });
+    const k = meta.inputs.length - 1;
+    applySuperSlots(host);
+    const hInIdx = hostInputIndex(host, k);
+    if (hInIdx >= 0) {
+      first.fromNode.connect(first.fromSlot, host, hInIdx);
+    }
+  }
+
+  for (const item of toExternalOutputs) {
+    item.fromNode.connect(item.fromSlot, item.extTarget, item.extSlot);
+  }
+
+  // 7. Remove controles promovidos dos nós ejetados no cartão do host
+  const hostLayout = host.properties?.[PROP];
+  if (hostLayout) {
+    const namesToRemove = new Set();
+    walkControls(hostLayout, (c) => {
+      if (c.bind) {
+        for (const n of ejectedList) {
+          if (c.bind.startsWith(`${n.id}/`) || c.bind.startsWith(`${oldToNewNode.get(String(n.id))?.id}/`)) {
+            namesToRemove.add(c.name);
+          }
+        }
+      }
+    });
+    if (namesToRemove.size > 0) {
+      removeControlsByName(hostLayout, namesToRemove);
+    }
+  }
+
+  // 8. Sincroniza e serializa
+  pruneSuperBoundary(host);
+  applySuperSlots(host);
+  try {
+    meta.graph = inner.serialize ? inner.serialize() : meta.graph;
+  } catch (e) {
+    console.warn(LOG, "serialize after quick out", e);
+  }
+
+  if (host.__legoState) {
+    host.__legoState.refresh();
+  }
+
+  // 9. Se estava dentro, sai de volta para o grafo raiz
+  if (SS_NAV.length > 0 && SS_NAV[SS_NAV.length - 1]?.inner === inner) {
+    exitSuper(1);
+  }
+
+  // 10. Seleciona os nós ejetados no canvas raiz
+  if (app.canvas) {
+    app.canvas.deselectAll?.();
+    for (const n of ejectedList) {
+      app.canvas.select?.(n, true);
+    }
+    app.canvas.setDirty?.(true, true);
+    if (ejectedList[0]) {
+      app.canvas.centerOnNode?.(ejectedList[0]);
+    }
+  }
+  outerGraph.setDirtyCanvas?.(true, true);
+
+  showLegoToast(`Ejected ${ejectedList.length} node(s) to main canvas`);
+}
+
+function quickOutNode(node) {
+  return quickOutNodes([node]);
+}
+
 /** Itens do menu de um nó de dentro: expor/tirar entradas e saídas. */
 function boundaryMenuItems(node) {
   const host = superHostOf(node);
@@ -11423,6 +11959,20 @@ function boundaryMenuItems(node) {
   const label = (s) => s.label || s.localized_name || s.name;
   const sub = (list) => ({ options: list, title: undefined });
   const items = [];
+
+  items.push({
+    content: "Quick Out (Eject to Main Graph)",
+    callback: () => quickOutNode(node)
+  });
+  const sel = selectedNodes().filter((n) => superHostOf(n) === host);
+  if (sel.length > 1 && sel.includes(node)) {
+    items.push({
+      content: `Quick Out Selected (${sel.length}) to Main Graph`,
+      callback: () => quickOutNodes(sel)
+    });
+  }
+  items.push(null);
+
   // Só entradas sem fio de dentro: um fio de fora e um de dentro na mesma entrada seria ambíguo.
   const canIn = (node.inputs || []).filter((s) => s.link == null && !exposedIn.has(s.name));
   if (canIn.length) items.push({
@@ -11469,17 +12019,53 @@ function drawSuperBoundary() {
       if (node.flags?.collapsed) p = [node.pos[0] + (isIn ? 0 : (node._collapsed_width || 80)), node.pos[1] - 15];
       return [cr.left + (p[0] + ds.offset[0]) * ds.scale, cr.top + (p[1] + ds.offset[1]) * ds.scale];
     };
-    for (const x of b.ins) tags.push({ cls: "in", xy: pos(true, x.slot), text: `in_${x.k + 1} →`, title: `Fed from outside: ${x.name}` });
-    for (const x of b.outs) tags.push({ cls: "out", xy: pos(false, x.slot), text: `→ out_${x.j + 1}`, title: `Goes outside: ${x.name}` });
+    for (const x of b.ins) tags.push({ cls: "in", idx: x.k, name: x.name, node, slotOrName: (node.inputs || [])[x.slot]?.name, xy: pos(true, x.slot), text: `in_${x.k + 1} →`, title: `Fed from outside: ${x.name}` });
+    for (const x of b.outs) tags.push({ cls: "out", idx: x.j, name: x.name, node, slotOrName: x.slot, xy: pos(false, x.slot), text: `→ out_${x.j + 1}`, title: `Goes outside: ${x.name}` });
   }
   const key = tags.map((t) => `${t.cls}${t.text}${Math.round(t.xy[0])},${Math.round(t.xy[1])}`).join("|");
   if (layer.__key === key) return;
   layer.__key = key;
   layer.replaceChildren(...tags.map((t) => {
     const e = el("div", `lego-ss-io ${t.cls}`, t.text);
-    e.title = t.title;
+    e.title = `${t.title} (Click to Rename or Remove)`;
     e.style.left = `${Math.round(t.xy[0])}px`;
     e.style.top = `${Math.round(t.xy[1])}px`;
+    e.style.cursor = "pointer";
+    e.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+    e.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+      const LG = liteGraph();
+      if (LG?.ContextMenu) {
+        new LG.ContextMenu([
+          {
+            content: `Rename ${t.cls === "in" ? `in_${t.idx + 1}` : `out_${t.idx + 1}`} ("${t.name}")…`,
+            callback: () => {
+              const val = prompt(`Rename ${t.cls === "in" ? "input" : "output"}:`, t.name);
+              if (val != null) renameBoundaryIO(f.host, t.cls === "in", t.idx, val);
+            }
+          },
+          {
+            content: `Unexpose ${t.cls === "in" ? `in_${t.idx + 1}` : `out_${t.idx + 1}`}`,
+            callback: () => {
+              if (t.cls === "in") {
+                unexposeSuperInput(f.host, t.node, t.slotOrName);
+              } else {
+                unexposeSuperOutput(f.host, t.node, t.slotOrName);
+              }
+            }
+          }
+        ], { event: ev });
+      } else {
+        const val = prompt(`Rename or leave empty to unexpose:`, t.name);
+        if (val === "") {
+          if (t.cls === "in") unexposeSuperInput(f.host, t.node, t.slotOrName);
+          else unexposeSuperOutput(f.host, t.node, t.slotOrName);
+        } else if (val != null) {
+          renameBoundaryIO(f.host, t.cls === "in", t.idx, val);
+        }
+      }
+    });
     return e;
   }));
 }
@@ -11717,6 +12303,7 @@ app.registerExtension({
 
   async setup() {
     injectCSS();
+    hookGraphAdd();
 
     // Outputs gerados: guarda o último de cada id de execução e repinta as
     // áreas de Image/Video/Audio Output dos cartões.
@@ -11771,7 +12358,21 @@ app.registerExtension({
     const sel = selectedNodes();
     const pos = canvasDropPos();
     const sub = [];
-    if (sel.length) sub.push({ content: `Convert Selection to SuperSubgraph (${sel.length})`, callback: () => convertSelectionToSuper(sel) }, null);
+    if (SS_NAV.length > 0) {
+      const top = SS_NAV[SS_NAV.length - 1];
+      const innerSel = sel.filter((n) => n.graph === top.inner);
+      if (innerSel.length) {
+        sub.push({
+          content: `Quick Out Selected (${innerSel.length}) to Main Graph`,
+          callback: () => quickOutNodes(innerSel)
+        }, null);
+      }
+      sub.push({
+        content: "Exit to Main Graph",
+        callback: () => exitSuper(1)
+      }, null);
+    }
+    if (sel.length && SS_NAV.length === 0) sub.push({ content: `Convert Selection to SuperSubgraph (${sel.length})`, callback: () => convertSelectionToSuper(sel) }, null);
     refreshSuperLibrary();   // para a próxima abertura do menu
     if (SS_LIBRARY.length) {
       sub.push({ content: "Add from Library", has_submenu: true, submenu: { options: SS_LIBRARY.map((name) => ({ content: name, callback: () => addSuperFromLibrary(name, pos) })) } });

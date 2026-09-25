@@ -11,7 +11,8 @@ const EXPORTS = [
   "copySelectedComponents", "doUndo", "openTabContextMenu", "renderObjectInspector", "ATTACHED",
   "writeWidget", "autoLayout", "dropArmedTool", "addItemToSegment", "OUTPUTS", "openInspector",
   "alignInspectorToTarget", "enterSuper", "exitSuper", "ssInnerGraph", "getContiguousRow",
-  "widthForCount", "createNewZone",
+  "widthForCount", "createNewZone", "hookGraphAdd", "ensureSuperOutput", "ensureSuperInput",
+  "renameBoundaryIO", "quickOutNode", "quickOutNodes", "applySuperSlots",
 ];
 
 let src = fs.readFileSync(SRC, "utf8");
