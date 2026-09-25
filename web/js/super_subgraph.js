@@ -6801,6 +6801,7 @@ const isGroupKind = (k) => k === "segment" || k === "vsegment" || k === "group";
 
 /* ── Cores por zona e por componente ─────────────────────────────────────── */
 const LEGO_COLORS = [
+  ["Black", "#000000"],
   ["Purple", "#a855f7"], ["Blue", "#3b82f6"], ["Cyan", "#06b6d4"], ["Green", "#22c55e"],
   ["Yellow", "#eab308"], ["Orange", "#f97316"], ["Red", "#ef4444"], ["Pink", "#ec4899"],
 ];
