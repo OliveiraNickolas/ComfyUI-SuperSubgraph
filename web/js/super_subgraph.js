@@ -11634,13 +11634,6 @@ const SS_MAX_IO = 32;
 const isSuperNode = (n) => !!n && (n.type === SS_TYPE || n.comfyClass === SS_TYPE);
 const liteGraph = () => window.LiteGraph || globalThis.LiteGraph;
 
-function newInnerGraph(data) {
-  const Cls = liteGraph()?.LGraph || app.rootGraph?.constructor || app.graph?.constructor;
-  const g = new Cls();
-  if (data) g.configure(data);
-  return g;
-}
-
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function ensureUuid(id) {
   if (typeof id === "string" && UUID_REGEX.test(id)) return id;
@@ -11651,11 +11644,50 @@ function ensureUuid(id) {
   });
 }
 
+function markAsSubgraph(g, root, uuid) {
+  if (!g) return;
+  if (uuid) g.id = uuid;
+  try {
+    Object.defineProperty(g, "isRootGraph", { value: false, writable: true, configurable: true });
+  } catch {
+    g.isRootGraph = false;
+  }
+  const r = root || app.rootGraph || app.graph?.rootGraph || app.graph;
+  if (r) {
+    try {
+      Object.defineProperty(g, "rootGraph", { value: r, writable: true, configurable: true });
+    } catch {
+      g.rootGraph = r;
+    }
+    const gid = g.id;
+    if (gid) {
+      if (r.subgraphs && typeof r.subgraphs.set === "function") r.subgraphs.set(gid, g);
+      if (r._subgraphs && typeof r._subgraphs.set === "function") r._subgraphs.set(gid, g);
+    }
+  }
+}
+
+function newInnerGraph(data) {
+  const Cls = liteGraph()?.LGraph || app.rootGraph?.constructor || app.graph?.constructor;
+  const g = new Cls();
+  const uuid = ensureUuid(data?.id || g.id);
+  markAsSubgraph(g, null, uuid);
+  if (data) g.configure(data);
+  return g;
+}
+
 /** O LGraph de dentro de um Super Subgraph (criado sob demanda a partir das propriedades). */
 function ssInnerGraph(node) {
   if (!isSuperNode(node)) return null;
+  const root = app.rootGraph || app.graph?.rootGraph || app.graph;
   if (node.__ssGraph) {
     if (node.subgraph === node.__ssGraph) delete node.subgraph;
+    const inner = node.__ssGraph;
+    const uuid = ensureUuid(inner.id);
+    markAsSubgraph(inner, root, uuid);
+    if (node.properties?.[SS_PROP]?.graph) {
+      node.properties[SS_PROP].graph.id = uuid;
+    }
     return node.__ssGraph;
   }
   const data = node.properties?.[SS_PROP]?.graph;
@@ -11664,17 +11696,9 @@ function ssInnerGraph(node) {
     const inner = newInnerGraph(JSON.parse(JSON.stringify(data)));
     inner.__ssHostNode = node;
     const uuid = ensureUuid(data.id || inner.id);
-    inner.id = uuid;
+    markAsSubgraph(inner, root, uuid);
     if (node.properties?.[SS_PROP]?.graph) {
       node.properties[SS_PROP].graph.id = uuid;
-    }
-    inner.isRootGraph = false;
-    const root = app.rootGraph || app.graph?.rootGraph || app.graph;
-    if (root) {
-      inner.rootGraph = root;
-      if (root.subgraphs instanceof Map) {
-        root.subgraphs.set(uuid, inner);
-      }
     }
     inner.name = node.title || "SuperSubgraph";
     if (!inner.__ssAttachWrapped) {
@@ -12022,7 +12046,9 @@ function convertSelectionToSuper(nodes = selectedNodes()) {
   });
   // Groups do ComfyUI com nós da seleção vão para dentro (e viram abas).
   const groups = sortGroups(graphGroups(graph).filter((g) => nodes.some((n) => nodeInGroup(n, g))));
+  const innerUuid = ensureUuid();
   const data = {
+    id: innerUuid,
     last_node_id: Math.max(0, ...nodes.map((n) => Number(n.id) || 0)),
     last_link_id: Math.max(0, ...internal.map((l) => Number(l.id) || 0)),
     nodes: sNodes,
@@ -12033,6 +12059,8 @@ function convertSelectionToSuper(nodes = selectedNodes()) {
     version: 0.4,
   };
   const inner = newInnerGraph(data);
+  const root = app.rootGraph || app.graph?.rootGraph || app.graph;
+  markAsSubgraph(inner, root, innerUuid);
 
   const minX = Math.min(...nodes.map((n) => n.pos[0]));
   const minY = Math.min(...nodes.map((n) => n.pos[1]));
@@ -12063,6 +12091,8 @@ function convertSelectionToSuper(nodes = selectedNodes()) {
     outputs: outputs.map(({ name, type, source }) => ({ name, type, source })),
   };
   sn.__ssGraph = inner;
+  inner.__ssHostNode = sn;
+  inner.name = sn.title || "SuperSubgraph";
   setupSuperNode(sn);
   applySuperSlots(sn);
 
@@ -12141,7 +12171,12 @@ function convertNativeToSuper(node) {
   const proxies = Array.isArray(node.properties?.proxyWidgets) ? node.properties.proxyWidgets : [];
   const before = new Set((graph._nodes || graph.nodes || []).map((n) => n));
 
-  if (!graph.unpackSubgraph(node)) { alert("Super Subgraph: ComfyUI could not unpack this subgraph."); return null; }
+  try {
+    graph.unpackSubgraph(node);
+  } catch (err) {
+    alert("Super Subgraph: ComfyUI could not unpack this subgraph: " + (err?.message || err));
+    return null;
+  }
   // Os nós novos entram na mesma ordem dos de dentro.
   const fresh = (graph._nodes || graph.nodes || []).filter((n) => !before.has(n));
   const idMap = new Map();
@@ -12830,21 +12865,34 @@ function enterSuper(sn) {
   closeObjectInspector();
   SS_NAV.push({ host: sn, from: c.graph, inner, view: { offset: [...(c.ds?.offset || [0, 0])], scale: c.ds?.scale || 1 } });
   c.deselectAll?.();
+
+  const uuid = ensureUuid(inner.id);
+  const root = app.rootGraph || app.graph?.rootGraph || app.graph;
+  markAsSubgraph(inner, root, uuid);
+  if (sn.properties?.[SS_PROP]?.graph) {
+    sn.properties[SS_PROP].graph.id = uuid;
+  }
+
   if (sn.subgraph === inner) delete sn.subgraph;
   if (c.subgraph === inner) delete c.subgraph;
   hookGraphAdd();
+  try {
+    if (typeof window !== "undefined" && window.location) {
+      window.location.hash = "#" + uuid;
+    }
+  } catch {}
   if (typeof c.openSubgraph === "function") {
     c.openSubgraph(inner, sn);
   } else {
     c.setGraph(inner);
-    renderSuperNavBar();
   }
+  renderSuperNavBar();
   fitCanvasTo(inner);
   c.setDirty?.(true, true);
   watchSuperBoundary();
   // Se o workflow for trocado por fora (abrir outro, voltar pelo breadcrumb
   // nativo...), a pilha deixa de valer e a barra some.
-  if (!ssNavWatch && typeof c.openSubgraph !== "function") {
+  if (!ssNavWatch) {
     ssNavWatch = setInterval(() => {
       if (!SS_NAV.length) { clearInterval(ssNavWatch); ssNavWatch = null; return; }
       if (app.canvas?.graph !== SS_NAV[SS_NAV.length - 1].inner) {
@@ -12866,7 +12914,14 @@ function exitSuper(levels = 1) {
   c.deselectAll?.();
   if (frame.host?.subgraph) delete frame.host.subgraph;
   if (c.subgraph) delete c.subgraph;
-  c.setGraph(frame.from);
+  const targetGraph = frame.from || app.rootGraph || app.graph;
+  try {
+    if (typeof window !== "undefined" && window.location) {
+      if (targetGraph?.id) window.location.hash = "#" + targetGraph.id;
+      else window.location.hash = "";
+    }
+  } catch {}
+  c.setGraph(targetGraph);
   if (c.ds) { c.ds.offset = frame.view.offset; c.ds.scale = frame.view.scale; }
   c.setDirty?.(true, true);
   renderSuperNavBar();
@@ -13770,14 +13825,21 @@ app.registerExtension({
           host.__legoState?.refresh?.();
         }
       }
-      if (newGraph && (newGraph.isRootGraph !== false || newGraph === app.rootGraph)) {
-        if (app.canvas && app.canvas.subgraph && app.canvas.subgraph.__ssHostNode) {
-          delete app.canvas.subgraph;
-        }
-        if (SS_NAV.length) {
-          SS_NAV.length = 0;
-          renderSuperNavBar();
-        }
+      const curTop = SS_NAV[SS_NAV.length - 1];
+      if (curTop && (newGraph === curTop.inner || app.canvas?.graph === curTop.inner)) {
+        renderSuperNavBar();
+        return;
+      }
+      if (newGraph && (newGraph === app.rootGraph || newGraph.isRootGraph === true)) {
+        setTimeout(() => {
+          if (app.canvas?.graph === app.rootGraph && SS_NAV.length) {
+            if (app.canvas.subgraph && app.canvas.subgraph.__ssHostNode) {
+              delete app.canvas.subgraph;
+            }
+            SS_NAV.length = 0;
+            renderSuperNavBar();
+          }
+        }, 150);
       }
     };
     window.addEventListener("litegraph:set-graph", handleGraphChange);
@@ -13840,7 +13902,7 @@ app.registerExtension({
         callback: () => exitSuper(1)
       }, null);
     }
-    if (sel.length && SS_NAV.length === 0) sub.push({ content: `Convert Selection to SuperSubgraph (${sel.length})`, callback: () => convertSelectionToSuper(sel) }, null);
+    if (sel.length) sub.push({ content: `Convert Selection to SuperSubgraph (${sel.length})`, callback: () => convertSelectionToSuper(sel) }, null);
     refreshSuperLibrary();   // para a próxima abertura do menu
     if (SS_LIBRARY.length) {
       sub.push({ content: "Add from Library", has_submenu: true, submenu: { options: SS_LIBRARY.map((name) => ({ content: name, callback: () => addSuperFromLibrary(name, pos) })) } });
