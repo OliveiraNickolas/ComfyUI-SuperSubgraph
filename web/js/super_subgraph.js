@@ -4916,17 +4916,19 @@ function snapWidth(ratio, isShift) {
   return `${Math.max(15, Math.min(100, snapped))}%`;
 }
 
-/** Obtém o grupo contíguo de seções que compartilham a mesma linha (larguras < 100%). */
+/** Obtém o grupo contíguo de seções que compartilham a mesma linha (larguras < 100%, mesmo row). */
 function getContiguousRow(sections, idx) {
   if (!Array.isArray(sections) || idx < 0 || idx >= sections.length) return [];
   const sec = sections[idx];
   if (!sec || !sec.width || sec.width === "100%") return sec ? [sec] : [];
   let start = idx;
   while (start > 0 && sections[start - 1].width && sections[start - 1].width !== "100%") {
+    if (!sameRow(sec, sections[start - 1])) break;
     start--;
   }
   let end = idx;
   while (end < sections.length - 1 && sections[end + 1].width && sections[end + 1].width !== "100%") {
+    if (!sameRow(sec, sections[end + 1])) break;
     end++;
   }
   return sections.slice(start, end + 1);
@@ -5037,10 +5039,22 @@ function sectionRequiredHeight(s) {
   return maxY > 0 ? Math.max(120, maxY + 32) : 120;
 }
 
+/** Verifica se duas seções pertencem ao mesmo grupo de colunas (row).
+ *  Retorna true se ambos não tiverem row (backward compat) ou tiverem o mesmo row. */
+function sameRow(a, b) {
+  const rA = a?.row, rB = b?.row;
+  if (rA == null && rB == null) return true;   // legado sem row: agrupa como antes
+  return rA === rB;
+}
+
+/** Gera um id único para row (agrupa colunas lado a lado). */
+function makeRowId() { return Date.now() + Math.random(); }
+
 /**
  * Agrupa seções em linhas completas (100%) e linhas de colunas (largura < 100%).
  * Permite múltiplas zonas empilhadas verticalmente dentro de uma mesma coluna
  * ao lado de uma coluna com zona única que estica para cobrir a mesma altura total.
+ * Seções com `row` diferente nunca são agrupadas na mesma linha de colunas.
  */
 function groupSectionsLayout(sections) {
   if (!Array.isArray(sections)) return [];
@@ -5054,6 +5068,8 @@ function groupSectionsLayout(sections) {
     } else {
       const start = i;
       while (i < sections.length && sections[i].width && sections[i].width !== "100%") {
+        // Seções com row diferente não pertencem ao mesmo grupo de colunas
+        if (i > start && !sameRow(sections[start], sections[i])) break;
         i++;
       }
       const colSecs = sections.slice(start, i);
@@ -5111,7 +5127,9 @@ function requiredNodeWidth(node, host) {
       } else {
         const colMap = new Map();
         let i = 0;
+        const firstRow = sections[0];
         while (i < sections.length && sections[i].width && sections[i].width !== "100%") {
+          if (i > 0 && !sameRow(firstRow, sections[i])) break;
           const s = sections[i];
           const c = typeof s.col === "number" ? s.col : i;
           if (!colMap.has(c)) colMap.set(c, []);
@@ -7464,6 +7482,7 @@ function addZoneBelow({ host, curTab, section, state }) {
   };
   if (isCol) {
     newSec.col = typeof section.col === "number" ? section.col : 0;
+    newSec.row = section.row;  // herda o row do grupo
   }
   sections.splice(idx + 1, 0, newSec);
   if (state) {
@@ -7496,19 +7515,24 @@ function addZoneBeside({ host, curTab, section, state }) {
 
   const isCol = section.width && section.width !== "100%";
   if (!isCol) {
+    const sharedRow = makeRowId();
     section.col = 0;
     section.width = "50%";
+    section.row = sharedRow;
     newSec.col = 1;
     newSec.width = "50%";
+    newSec.row = sharedRow;
     sections.splice(idx + 1, 0, newSec);
   } else {
     const targetCol = typeof section.col === "number" ? section.col : 0;
     let start = idx;
     while (start > 0 && sections[start - 1].width && sections[start - 1].width !== "100%") {
+      if (!sameRow(section, sections[start - 1])) break;
       start--;
     }
     let end = idx;
     while (end < sections.length - 1 && sections[end + 1].width && sections[end + 1].width !== "100%") {
+      if (!sameRow(section, sections[end + 1])) break;
       end++;
     }
     const groupSecs = sections.slice(start, end + 1);
@@ -7519,6 +7543,7 @@ function addZoneBeside({ host, curTab, section, state }) {
       }
     });
     newSec.col = targetCol + 1;
+    newSec.row = section.row;  // herda o row do grupo
 
     let insertIdx = idx;
     for (let i = start; i <= end; i++) {
@@ -9318,12 +9343,14 @@ function buildCard(host, state) {
               // Empilha na MESMA COLUNA da zona alvo
               moved.col = typeof s.col === "number" ? s.col : 0;
               moved.width = s.width;
+              moved.row = s.row;   // herda o row do grupo alvo
               const insertIdx = (dir === "bottom") ? targetIdx + 1 : targetIdx;
               sections.splice(insertIdx, 0, moved);
             } else {
               // Alvo é 100% full-width: vira uma linha própria de 100%
               moved.width = "100%";
               delete moved.col;
+              delete moved.row;
               const insertIdx = (dir === "bottom") ? targetIdx + 1 : targetIdx;
               sections.splice(insertIdx, 0, moved);
             }
@@ -9333,10 +9360,12 @@ function buildCard(host, state) {
               const targetCol = typeof s.col === "number" ? s.col : 0;
               let start = targetIdx;
               while (start > 0 && sections[start - 1].width && sections[start - 1].width !== "100%") {
+                if (!sameRow(s, sections[start - 1])) break;
                 start--;
               }
               let end = targetIdx;
               while (end < sections.length - 1 && sections[end + 1].width && sections[end + 1].width !== "100%") {
+                if (!sameRow(s, sections[end + 1])) break;
                 end++;
               }
               const colSecs = sections.slice(start, end + 1);
@@ -9346,12 +9375,14 @@ function buildCard(host, state) {
                   if (typeof x.col === "number" && x.col >= targetCol) x.col++;
                 });
                 moved.col = targetCol;
+                moved.row = s.row;   // herda o row do grupo
                 sections.splice(targetIdx, 0, moved);
               } else {
                 colSecs.forEach((x) => {
                   if (typeof x.col === "number" && x.col > targetCol) x.col++;
                 });
                 moved.col = targetCol + 1;
+                moved.row = s.row;   // herda o row do grupo
                 let lastInCol = targetIdx;
                 for (let i = start; i <= end; i++) {
                   if (sections[i].col === targetCol) lastInCol = i;
@@ -9372,8 +9403,11 @@ function buildCard(host, state) {
               }
             } else {
               // Alvo é 100%: divide em duas colunas de 50%!
+              const sharedRow = makeRowId();
               s.width = "50%";
               moved.width = "50%";
+              s.row = sharedRow;
+              moved.row = sharedRow;
               if (dir === "left") {
                 s.col = 1;
                 moved.col = 0;
@@ -9803,7 +9837,14 @@ function buildCard(host, state) {
               }
             } else {
               s.width = finalW;
-              if (finalW !== "100%") s.col = 0;
+              if (finalW !== "100%") {
+                s.col = 0;
+                // Row próprio para não fundir com grupos de colunas vizinhos
+                if (!s.row) s.row = makeRowId();
+              } else {
+                delete s.col;
+                delete s.row;
+              }
             }
             state.refresh();
           };
