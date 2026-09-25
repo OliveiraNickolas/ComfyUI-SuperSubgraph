@@ -32,9 +32,9 @@ const st = () => E((sid) => {
     toolsIn: card.querySelector(".lego-head-tools")?.parentElement?.className || "", enter: !!card.querySelector(".lego-head-tools .lego-ss-enter"), pencil: card.querySelectorAll(".lego-head-tools .lego-iconbtn").length };
 }, sid);
 let r = await st();
-t("view mode: no repeated title, no inner frame, buttons on the zone header: " + JSON.stringify(r), r.merged && !r.title && r.border === "0px" && /lego-sec-h/.test(r.toolsIn) && r.enter && r.pencil === 2);
+t("view mode: no repeated title, no inner frame, buttons on the zone header: " + JSON.stringify(r), r.merged && !r.title && r.border === "0px" && /lego-sec-h/.test(r.toolsIn) && r.enter && r.pencil === 3);
 await pg.screenshot({ path: path.join(dir, "merged_view.png"), clip: { x: 100, y: 80, width: 900, height: 300 } });
-await pg.locator(".lego-head-tools .lego-iconbtn:not(.lego-ss-enter)").click(); await pg.waitForTimeout(400);
+await pg.locator(".lego-head-tools .lego-iconbtn:not(.lego-ss-enter):not(.lego-more-btn)").click(); await pg.waitForTimeout(400);
 r = await st();
 t("edit button still works; in edit mode the buttons sit on the tab bar: " + JSON.stringify(r), await E((sid) => window.app.graph.getNodeById(sid).__legoState.edit, sid) && /lego-tabs/.test(r.toolsIn));
 await pg.screenshot({ path: path.join(dir, "merged_edit.png"), clip: { x: 100, y: 80, width: 900, height: 420 } });

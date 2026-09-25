@@ -45,12 +45,12 @@ t("zone and component colors set and shown: " + JSON.stringify(col), col.zone ==
 await pg.screenshot({ path: path.join(dir, "colors.png") });
 
 // biblioteca
-await E(async ({ sid, ext }) => { const e = eval(ext); await e.__flatNode(window.app.graph.getNodeById(sid)).find(i => i && /^Save to Library/.test(i.content)).callback(); }, { sid, ext });
+await E(async ({ sid, ext }) => { const e = eval(ext); await e.__flatNode(window.app.graph.getNodeById(sid)).find(i => i && /^Save SuperSubgraph to Library/.test(i.content)).callback(); }, { sid, ext });
 await pg.waitForTimeout(500);
 const lib = await E(async () => (await window.comfyAPI.api.api.listUserDataFullInfo("supersubgraph")).map(f => f.path));
 t("saved to the library (userdata): " + NAME, lib.includes(`${NAME}.json`));
 // exporta para arquivo
-const [dl] = await Promise.all([pg.waitForEvent("download"), E(({ sid, ext }) => { const e = eval(ext); e.__flatNode(window.app.graph.getNodeById(sid)).find(i => i && /^Export to File/.test(i.content)).callback(); }, { sid, ext })]);
+const [dl] = await Promise.all([pg.waitForEvent("download"), E(({ sid, ext }) => { const e = eval(ext); e.__flatNode(window.app.graph.getNodeById(sid)).find(i => i && /^Export SuperSubgraph/.test(i.content)).callback(); }, { sid, ext })]);
 const file = path.join(dir, dl.suggestedFilename()); await dl.saveAs(file);
 const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
 t("export downloads a package: " + dl.suggestedFilename(), dl.suggestedFilename() === "Scaler.supersubgraph.json" && pkg.type === "ComfyUI-SuperSubgraph" && pkg.properties.ss_inner.graph.nodes.length === 3);
@@ -67,7 +67,7 @@ const added = await E(async ({ ext, NAME }) => {
   return { title: sn?.title, inner: sn?.__ssGraph?.nodes.length, zone: sn?.properties.ui_layout.tabs[0].sections[0].color, card: !!sn?.__legoHost?.querySelector('.lego-row[data-name="Stepper1"]') };
 }, { ext, NAME });
 t("added from the library with card and colors: " + JSON.stringify(added), added.title === NAME && added.inner === 3 && added.zone === "#3b82f6" && added.card);
-const [fc] = await Promise.all([pg.waitForEvent("filechooser"), E(({ ext }) => { const e = eval(ext); e.__flatCanvas().find(i => i && /^Import from File/.test(i.content)).callback(); }, { ext })]);
+const [fc] = await Promise.all([pg.waitForEvent("filechooser"), E(({ ext }) => { const e = eval(ext); e.__flatCanvas().find(i => i && /^Import SuperSubgraph/.test(i.content)).callback(); }, { ext })]);
 await fc.setFiles(file); await pg.waitForTimeout(800);
 const imported = await E(() => window.app.graph.nodes.filter(n => n.type === "SuperSubgraph").map(n => n.title).sort().join());
 t("imported from file: " + imported, imported === [NAME, "Scaler"].sort().join());
