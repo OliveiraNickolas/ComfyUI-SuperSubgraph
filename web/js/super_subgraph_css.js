@@ -1365,14 +1365,15 @@ export const CSS = `
 }
 .lego-col-divider:hover::before,
 .lego-col-divider.active::before{
-  background: var(--lego-accent, #3b82f6);
-  box-shadow: 0 0 12px rgba(59,130,246,0.9), 0 0 2px #fff;
+  background: #a855f7;
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.9), 0 0 2px #fff;
 }
 .lego-col-divider:hover::after,
 .lego-col-divider.active::after{
   opacity: 1;
-  border-color: var(--lego-accent, #3b82f6);
+  border-color: #a855f7;
   background: var(--lego-panel-hover, #313235);
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.5), 0 2px 6px rgba(0,0,0,0.4);
 }
 
 /* ── Linhas de Nível e Overlay de Alinhamento em Tempo Real ── */
@@ -1397,6 +1398,14 @@ export const CSS = `
   width: 2.5px;
   background: #38bdf8;
   box-shadow: 0 0 14px rgba(56, 189, 248, 0.95), 0 0 4px #fff;
+}
+.lego-level-line-v.col-divider{
+  background: #a855f7;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.85), 0 0 2px #fff;
+}
+.lego-level-line-v.col-divider.snap{
+  background: #c084fc;
+  box-shadow: 0 0 14px rgba(192, 132, 252, 0.95), 0 0 4px #fff;
 }
 .lego-level-line-h{
   position: absolute;
@@ -1439,6 +1448,16 @@ export const CSS = `
   background: rgba(12, 74, 110, 0.96);
   color: #e0f2fe;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.65), 0 0 12px rgba(56, 189, 248, 0.55);
+}
+.lego-guide-badge.col-divider{
+  border-color: rgba(168, 85, 247, 0.65);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55), 0 0 10px rgba(168, 85, 247, 0.45);
+}
+.lego-guide-badge.col-divider.snap{
+  border-color: #c084fc;
+  background: rgba(88, 28, 135, 0.96);
+  color: #f3e8ff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.65), 0 0 14px rgba(192, 132, 252, 0.55);
 }
 
 .lego-sec.resizing{

@@ -4955,12 +4955,13 @@ function renderZoneGuides(body, { vLine, hLine } = {}) {
   overlay.replaceChildren();
 
   if (vLine) {
-    const lineEl = el("div", `lego-level-line-v${vLine.snap ? " snap" : ""}`);
+    const extraCls = vLine.isCol ? " col-divider" : "";
+    const lineEl = el("div", `lego-level-line-v${vLine.snap ? " snap" : ""}${extraCls}`);
     lineEl.style.left = `${Math.round(vLine.x)}px`;
     overlay.append(lineEl);
 
     if (vLine.badgeText) {
-      const badge = el("div", `lego-guide-badge${vLine.snap ? " snap" : ""}`);
+      const badge = el("div", `lego-guide-badge${vLine.snap ? " snap" : ""}${extraCls}`);
       badge.textContent = vLine.badgeText;
       badge.style.left = `${Math.round(vLine.x)}px`;
       badge.style.top = `${Math.round(vLine.badgeY ?? 20)}px`;
@@ -10429,7 +10430,7 @@ function buildCard(host, state) {
             const colBEl = colElements[cIdx + 1];
 
             const divider = el("div", "lego-col-divider");
-            divider.title = "Arrastar aresta entre colunas (Shift para livre)";
+            divider.title = "Drag column divider (hold Shift for smooth)";
 
             divider.addEventListener("pointerdown", (e) => {
               e.stopPropagation();
@@ -10484,7 +10485,7 @@ function buildCard(host, state) {
                 const localX = isSnapped ? snapLocalX : (ev.clientX - bodyRect.left) / curScale;
 
                 const badgeText = isSnapped
-                  ? `⚡ ${finalWA} / ${finalWB} (Alinhado)`
+                  ? `⚡ ${finalWA} / ${finalWB} (Aligned)`
                   : `↔ ${finalWA} (${Math.round(rawWA / curScale)}px) · ${finalWB} (${Math.round(rawWB / curScale)}px)`;
 
                 renderZoneGuides(body, {
@@ -10492,7 +10493,8 @@ function buildCard(host, state) {
                     x: localX,
                     snap: isSnapped,
                     badgeText,
-                    badgeY: (colARect.top - bodyRect.top) / curScale + 24
+                    badgeY: (colARect.top - bodyRect.top) / curScale + 24,
+                    isCol: true
                   }
                 });
               };
