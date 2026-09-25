@@ -5095,6 +5095,7 @@ function groupSectionsLayout(sections) {
 /**
  * A primeira zona (topo / pivot) define a largura necessária do SuperSubgraph.
  * Zonas abaixo do pivot adaptam-se e cabem na largura pivot.
+ * Zonas empilhadas na mesma coluna consideram o MAX da coluna, e não a soma.
  */
 function requiredNodeWidth(node, host) {
   const layout = host?.properties?.[PROP] || node?.properties?.[PROP];
@@ -5103,9 +5104,28 @@ function requiredNodeWidth(node, host) {
     const curTab = typeof activeTabOf === "function" ? activeTabOf(layout) : (layout?.tabs?.[layout?.activeTab || 0] || layout?.tabs?.[0] || null);
     const sections = curTab?.sections || [];
     if (sections.length) {
-      const firstRow = getContiguousRow(sections, 0);
-      const rowWidth = firstRow.reduce((acc, s) => acc + sectionRequiredWidth(s), 0) + Math.max(0, firstRow.length - 1) * 12 + 36;
-      layoutW = Math.max(MIN_W, rowWidth);
+      const firstSec = sections[0];
+      if (!firstSec.width || firstSec.width === "100%") {
+        layoutW = Math.max(MIN_W, sectionRequiredWidth(firstSec) + 36);
+      } else {
+        const colMap = new Map();
+        let i = 0;
+        while (i < sections.length && sections[i].width && sections[i].width !== "100%") {
+          const s = sections[i];
+          const c = typeof s.col === "number" ? s.col : i;
+          if (!colMap.has(c)) colMap.set(c, []);
+          colMap.get(c).push(s);
+          i++;
+        }
+        let colSum = 0;
+        colMap.forEach((colSecs) => {
+          const maxInCol = Math.max(...colSecs.map((s) => sectionRequiredWidth(s)));
+          colSum += maxInCol;
+        });
+        const numCols = colMap.size;
+        const rowWidth = colSum + Math.max(0, numCols - 1) * 12 + 36;
+        layoutW = Math.max(MIN_W, rowWidth);
+      }
     }
   }
   const scale = host?.firstElementChild?.style?.zoom ? parseFloat(host.firstElementChild.style.zoom) : (layout?.scale || 1);
@@ -9724,8 +9744,12 @@ function buildCard(host, state) {
               const nextSecs = sections.filter((x) => x.col === colIdx + 1);
               colSecs.forEach((x) => { x.width = finalW; });
               if (finalNextW) nextSecs.forEach((x) => { x.width = finalNextW; });
+            } else if (colEl) {
+              const colSecs = sections.filter((x) => x.col === colIdx || (!x.col && colIdx === 0));
+              colSecs.forEach((x) => { x.width = finalW; });
             } else {
               s.width = finalW;
+              if (finalW !== "100%") s.col = 0;
             }
             state.refresh();
           };
@@ -10362,7 +10386,8 @@ function buildCard(host, state) {
           const colW = col.width || defaultW;
           const cssW = widthToCss(colW);
           colEl.style.width = cssW;
-          colEl.style.flex = `1 1 ${cssW}`;
+          colEl.style.flex = `0 0 ${cssW}`;
+          colEl.style.maxWidth = cssW;
           colEl.style.minWidth = "0";
           colEl.style.boxSizing = "border-box";
 
