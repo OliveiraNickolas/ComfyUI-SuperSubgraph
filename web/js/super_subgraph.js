@@ -3302,18 +3302,26 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     row.append(lblSpan);
   } else if (isSegmentLike) {
     row = el("div", `lego-row is-segment ${ctrl.kind === "vsegment" ? "vertical" : "horizontal"}`);
-    if (ctrl.header && ctrl.labelPos !== "none") {
+    const groupHeader = ctrl.header || ctrl.label;
+    if (groupHeader && ctrl.labelPos !== "none") {
       row.classList.add("has-header");
-      const head = el("div", "lego-seg-header", ctrl.header);
+      const head = el("div", "lego-seg-header", groupHeader);
       if (ctrl.labelPos === "right") head.style.textAlign = "right";
       if (state.edit) {
         head.title = "Double-click to rename";
         head.addEventListener("dblclick", (e) => {
           e.stopPropagation();
-          const v = prompt("Group header:", ctrl.header);
+          const v = prompt("Group header:", ctrl.header || ctrl.label || "");
           if (v != null) {
             pushUndo(host);
-            if (v.trim()) ctrl.header = v.trim(); else delete ctrl.header;
+            const t = v.trim();
+            if (t) {
+              ctrl.header = t;
+              ctrl.label = t;
+            } else {
+              delete ctrl.header;
+              delete ctrl.label;
+            }
             state.refresh();
           }
         });
@@ -8169,45 +8177,75 @@ function renderObjectInspector(host, state, force) {
     });
     props.append(propRow("Font Color", colorBtn));
   } else if (!isDivider) {
-    // Caption vazio cai no nome do widget vinculado — mostra o efetivo, não o vazio.
-    const hitNow = ctrl.bind ? resolveBind(host, ctrl.bind) : null;
-    const capPadrao = hitNow ? prettify(hitNow.widget.name) : (ctrl.name || "");
-    const capIn = propText(ctrl.label || "", (v) => {
-      ctrl.label = v;
-      state.refresh();
-    });
-    capIn.placeholder = capPadrao;
-    props.append(propRow("Caption", capIn));
+    const isSegment = ctrl.kind === "segment" || ctrl.kind === "vsegment";
 
-    if (ctrl.kind === "segment" || ctrl.kind === "vsegment") {
-      const headIn = propText(ctrl.header || "", (v) => {
+    if (isSegment) {
+      // Para grupos (segment/vsegment), o título visual é o Header (sem campo Caption duplicado).
+      const headText = ctrl.header || ctrl.label || "";
+      const headIn = propText(headText, (v) => {
         const t = String(v).trim();
-        if (t) ctrl.header = t; else delete ctrl.header;
+        if (t) {
+          ctrl.header = t;
+          ctrl.label = t;
+        } else {
+          delete ctrl.header;
+          delete ctrl.label;
+        }
         state.refresh();
       });
       headIn.placeholder = "(no header)";
       props.append(propRow("Header", headIn));
-    }
 
-    const POSICOES = [
-      { id: "left", label: "Left" },
-      { id: "right", label: "Right" },
-      { id: "none", label: "None" },
-    ];
-    const posAtual = POSICOES.find((o) => o.id === (ctrl.labelPos || "left")) || POSICOES[0];
-    const posBtn = el("button", "lego-oi-pick");
-    posBtn.innerHTML = `<span>${posAtual.label}</span>${glyph("chevron", 12)}`;
-    posBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openDropdown(posBtn, POSICOES.map((o) => o.label), posAtual.label, (_v, idx) => {
-        const opt = POSICOES[idx];
-        if (!opt) return;
-        if (opt.id === "left") delete ctrl.labelPos;
-        else ctrl.labelPos = opt.id;
+      const POSICOES = [
+        { id: "left", label: "Left" },
+        { id: "right", label: "Right" },
+        { id: "none", label: "Hidden" },
+      ];
+      const posAtual = POSICOES.find((o) => o.id === (ctrl.labelPos || "left")) || POSICOES[0];
+      const posBtn = el("button", "lego-oi-pick");
+      posBtn.innerHTML = `<span>${posAtual.label}</span>${glyph("chevron", 12)}`;
+      posBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openDropdown(posBtn, POSICOES.map((o) => o.label), posAtual.label, (_v, idx) => {
+          const opt = POSICOES[idx];
+          if (!opt) return;
+          if (opt.id === "left") delete ctrl.labelPos;
+          else ctrl.labelPos = opt.id;
+          state.refresh();
+        });
+      });
+      props.append(propRow("Header Position", posBtn));
+    } else {
+      // Caption vazio cai no nome do widget vinculado — mostra o efetivo, não o vazio.
+      const hitNow = ctrl.bind ? resolveBind(host, ctrl.bind) : null;
+      const capPadrao = hitNow ? prettify(hitNow.widget.name) : (ctrl.name || "");
+      const capIn = propText(ctrl.label || "", (v) => {
+        ctrl.label = v;
         state.refresh();
       });
-    });
-    props.append(propRow("Caption Position", posBtn));
+      capIn.placeholder = capPadrao;
+      props.append(propRow("Caption", capIn));
+
+      const POSICOES = [
+        { id: "left", label: "Left" },
+        { id: "right", label: "Right" },
+        { id: "none", label: "None" },
+      ];
+      const posAtual = POSICOES.find((o) => o.id === (ctrl.labelPos || "left")) || POSICOES[0];
+      const posBtn = el("button", "lego-oi-pick");
+      posBtn.innerHTML = `<span>${posAtual.label}</span>${glyph("chevron", 12)}`;
+      posBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openDropdown(posBtn, POSICOES.map((o) => o.label), posAtual.label, (_v, idx) => {
+          const opt = POSICOES[idx];
+          if (!opt) return;
+          if (opt.id === "left") delete ctrl.labelPos;
+          else ctrl.labelPos = opt.id;
+          state.refresh();
+        });
+      });
+      props.append(propRow("Caption Position", posBtn));
+    }
   }
 
   const isMediaCtrl = ctrl.kind === "media" || ctrl.kind === "video" || ctrl.kind === "audio";

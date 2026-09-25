@@ -157,6 +157,30 @@ if (groupRow) {
   t("inspector element created", !!oi);
   t("inspector aligned to right of element (500 + 14 = 514px)", oi.style.left === "514px");
   t("inspector aligned to top of element (200px)", oi.style.top === "200px");
+
+  // ── 3. TEST CAPTION VS HEADER DISAMBIGUATION ──
+  const oiRows = [...oi.querySelectorAll(".lego-oi-row .lego-oi-key")].map((k) => k.textContent);
+  t("group inspector shows Header row", oiRows.includes("Header"));
+  t("group inspector shows Header Position row", oiRows.includes("Header Position"));
+  t("group inspector does NOT show Caption row", !oiRows.includes("Caption"));
+  t("group inspector does NOT show Caption Position row", !oiRows.includes("Caption Position"));
+
+  // Regular control in same card
+  node.properties.ui_layout.tabs[0].sections[0].controls.push({
+    name: "Slider1",
+    kind: "slider",
+    label: "CFG",
+    x: 20, y: 140, w: 200, h: 48
+  });
+  st.refresh();
+  st.selectedName = "Slider1";
+  st.selectedNames = new Set(["Slider1"]);
+  M.renderObjectInspector(node, st, true);
+
+  const ctrlRows = [...oi.querySelectorAll(".lego-oi-row .lego-oi-key")].map((k) => k.textContent);
+  t("control inspector shows Caption row", ctrlRows.includes("Caption"));
+  t("control inspector shows Caption Position row", ctrlRows.includes("Caption Position"));
+  t("control inspector does NOT show Header row", !ctrlRows.includes("Header"));
 }
 
 console.log(`\n${ok} passed, ${fail} failed`);
