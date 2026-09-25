@@ -219,6 +219,8 @@ if (groupRow) {
   const ctrlRows = [...oi.querySelectorAll(".lego-oi-row .lego-oi-key")].map((k) => k.textContent);
   t("control inspector shows Caption row", ctrlRows.includes("Caption"));
   t("control inspector shows Caption Position row", ctrlRows.includes("Caption Position"));
+  t("control inspector shows Caption Width row", ctrlRows.includes("Caption Width"));
+  t("control inspector has Detach as Label button", [...oi.querySelectorAll("button")].some(b => b.textContent.includes("Detach as Label")));
   t("control inspector does NOT show Header row", !ctrlRows.includes("Header"));
 
   // ── 4. TEST SIDE-BY-SIDE ZONE LAYOUT & WIDTH CONTROLS ──

@@ -39,7 +39,7 @@ import { CSS, CSS_FORM, CSS_OUTPUT, CSS_DRAG } from "./super_subgraph_css.js";
 const EXT = "ComfyUI.SuperSubgraph";
 const PROP = "ui_layout";
 const SCHEMA = 2;
-const MIN_W = 600;
+const MIN_W = 320;
 const PAD = 24;        // folga abaixo do cartão
 const TICK_MS = 250;   // intervalo mínimo entre conferências de tamanho
 const SWEEP_MS = 1000; // varredura de manutenção dos cartões
@@ -3496,7 +3496,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     : (ctrl.kind === "vdivider" ? 16 : (ctrl.kind === "hdivider" ? 256 : (ctrl.kind === "vsegment" ? 240 : (ctrl.kind === "label" ? 160 : (hasMediaItem ? 288 : 256)))));
   const curH = typeof ctrl.h === "number"
     ? ctrl.h
-    : (ctrl.kind === "hdivider" ? 16 : (ctrl.kind === "vdivider" ? 160 : (ctrl.kind === "vsegment" ? 160 : (ctrl.kind === "label" ? 32 : (hasMediaItem ? 144 : (ctrl.kind === "textarea" ? 96 : 46))))));
+    : (ctrl.kind === "hdivider" ? 16 : (ctrl.kind === "vdivider" ? 160 : (ctrl.kind === "vsegment" ? 160 : (ctrl.kind === "label" ? 24 : (hasMediaItem ? 144 : (ctrl.kind === "textarea" ? 96 : 32))))));
 
   ctrl.x = Math.max(0, Math.round(curX / GRID) * GRID);
   ctrl.y = Math.max(0, Math.round(curY / GRID) * GRID);
@@ -3640,6 +3640,11 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   // ── Estrutura Visual 100% IDENTICA em Modo Fixo e Modo Edição ──
   const lbl = el("div", "lego-lbl", ctrl.label || prettify(w.name));
   lbl.title = node === host ? w.name : `${node.title || node.type} #${node.id} → ${w.name}`;
+  if (typeof ctrl.labelW === "number" && ctrl.labelW > 0) {
+    lbl.style.flex = "0 0 auto";
+    lbl.style.width = `${ctrl.labelW}px`;
+    lbl.style.maxWidth = "none";
+  }
   if (state.edit) {
     lbl.addEventListener("dblclick", (e) => {
       e.stopPropagation();
@@ -3656,7 +3661,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     if (!isSlider || !control || !control.track || !control.num) return;
     const effW = targetW ?? ctrl.w;
     const effH = targetH ?? ctrl.h;
-    const shouldStack = effH >= 50 || (effW < 210 && labelPos !== "none");
+    const shouldStack = effH >= 40 || (effW < 180 && labelPos !== "none");
 
     if (shouldStack) {
       row.classList.add("slider-stacked");
@@ -4603,7 +4608,7 @@ function singleCtrlFor(host, node, w) {
     bind: node === host ? w.name : `${node.id}/${w.name}`,
     label: widgetLabel(w),
     w: media ? 288 : kind === "textarea" ? 320 : 256,
-    h: media ? 144 : kind === "textarea" ? 96 : 48,
+    h: media ? 144 : kind === "textarea" ? 96 : 32,
   };
   if (RE_SEED.test(w.name)) c.seed = true;
   return c;
@@ -6852,7 +6857,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
         x: initialPos?.x ?? 16,
         y: initialPos?.y ?? 16,
         w: selectedTarget.defaultW || 256,
-        h: selectedTarget.defaultH || 44,
+        h: selectedTarget.defaultH || 32,
         bind: ""
       };
 
@@ -7583,7 +7588,7 @@ function addZoneBeside({ host, curTab, section, state }) {
  * bloco largo que some com o espaço do formulário.
  */
 const MIN_CTRL_W = 80;
-const MIN_CTRL_H = 48;
+const MIN_CTRL_H = 32;
 
 const TOOLBOX_CATEGORIES = [
   {
@@ -8688,6 +8693,38 @@ function renderObjectInspector(host, state, force) {
         });
       });
       props.append(propRow("Caption Position", posBtn));
+
+      // Largura da caixa do caption (0 = automático conforme o texto)
+      props.append(propRow("Caption Width", propNumber(ctrl.labelW || 0, (v) => {
+        if (v > 0) ctrl.labelW = v;
+        else delete ctrl.labelW;
+        state.refresh();
+      })));
+
+      if (!parentGroup && Array.isArray(list)) {
+        const detachBtn = el("button", "lego-btn", "Detach as Label");
+        detachBtn.style.cssText = "margin-top:4px;width:100%;font-size:10px;padding:3px 6px;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.4);color:#c084fc;border-radius:4px;cursor:pointer;";
+        detachBtn.title = "Converte este caption em um label 2D independente no canvas e oculta o caption interno.";
+        detachBtn.addEventListener("click", () => {
+          pushUndo(host);
+          const captionText = ctrl.label || capPadrao || "Label";
+          const newLbl = {
+            kind: "label",
+            text: captionText,
+            label: captionText,
+            x: ctrl.x,
+            y: Math.max(0, ctrl.y - 24),
+            w: Math.max(64, Math.min(ctrl.w || 200, Math.round((captionText.length * 8 + 16) / GRID) * GRID)),
+            h: 24
+          };
+          ensureComponentName(layout, newLbl);
+          list.push(newLbl);
+          ctrl.labelPos = "none";
+          state.selectedName = newLbl.name;
+          state.refresh();
+        });
+        props.append(propRow("", detachBtn));
+      }
     }
   }
 
@@ -8695,7 +8732,7 @@ function renderObjectInspector(host, state, force) {
   const isTextarea = ctrl.kind === "textarea";
   const { minW, minH } = getComponentMinDimensions(ctrl);
   const defW = ctrl.w || (parentGroup ? (isTextarea ? 160 : (isDivider ? (ctrl.kind === "vdivider" ? 16 : 192) : 100)) : (isDivider ? (ctrl.kind === "vdivider" ? 16 : 256) : 256));
-  const defH = ctrl.h || (parentGroup ? (isTextarea ? 80 : (isMediaCtrl ? 96 : (isDivider ? 16 : 32))) : (isTextarea ? 96 : (isDivider ? 16 : 46)));
+  const defH = ctrl.h || (parentGroup ? (isTextarea ? 80 : (isMediaCtrl ? 96 : (isDivider ? 16 : 32))) : (isTextarea ? 96 : (isDivider ? 16 : 32)));
   props.append(propRow("Width", propNumber(defW, (v) => { ctrl.w = Math.max(minW, v); state.refresh(); })));
   props.append(propRow("Height", propNumber(defH, (v) => { ctrl.h = Math.max(minH, v); state.refresh(); })));
 
