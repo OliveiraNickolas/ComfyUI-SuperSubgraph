@@ -11661,35 +11661,44 @@ function setupSuperNode(node) {
 
 /** Mostra só as entradas/saídas em uso, com o nome e o tipo de verdade. */
 function applySuperSlots(node) {
-  const meta = node.properties?.[SS_PROP];
-  if (!meta) return;
-  const nIn = (meta.inputs || []).length;
-  const nOut = (meta.outputs || []).length;
-  for (let i = (node.inputs || []).length - 1; i >= 0; i--) {
-    const m = /^in_(\d+)$/.exec(node.inputs[i].name);
-    if (m && Number(m[1]) > nIn && node.inputs[i].link == null) node.removeInput(i);
-  }
-  meta.inputs.forEach((inp, k) => {
-    let slot = (node.inputs || []).find((s) => s.name === `in_${k + 1}`);
-    if (!slot) {
-      node.addInput?.(`in_${k + 1}`, inp.type || "*");
-      slot = (node.inputs || []).find((s) => s.name === `in_${k + 1}`);
+  try {
+    const meta = node.properties?.[SS_PROP];
+    if (!meta) return;
+    if (!Array.isArray(meta.inputs)) meta.inputs = [];
+    if (!Array.isArray(meta.outputs)) meta.outputs = [];
+    const nIn = meta.inputs.length;
+    const nOut = meta.outputs.length;
+    for (let i = (node.inputs || []).length - 1; i >= 0; i--) {
+      if (!node.inputs[i]) continue;
+      const m = /^in_(\d+)$/.exec(node.inputs[i].name);
+      if (m && Number(m[1]) > nIn && node.inputs[i].link == null) node.removeInput(i);
     }
-    if (slot) { slot.label = inp.name; slot.localized_name = inp.name; if (inp.type) slot.type = inp.type; }
-  });
-  while ((node.outputs || []).length > nOut) {
-    const last = node.outputs.length - 1;
-    if (node.outputs[last].links?.length) break;
-    node.removeOutput(last);
-  }
-  meta.outputs.forEach((out, j) => {
-    let slot = node.outputs?.[j];
-    if (!slot) {
-      node.addOutput?.(`out_${j + 1}`, out.type || "*");
-      slot = node.outputs?.[j];
+    meta.inputs.forEach((inp, k) => {
+      if (!inp) return;
+      let slot = (node.inputs || []).find((s) => s.name === `in_${k + 1}`);
+      if (!slot) {
+        node.addInput?.(`in_${k + 1}`, inp.type || "*");
+        slot = (node.inputs || []).find((s) => s.name === `in_${k + 1}`);
+      }
+      if (slot) { slot.label = inp.name; slot.localized_name = inp.name; if (inp.type) slot.type = inp.type; }
+    });
+    while ((node.outputs || []).length > nOut) {
+      const last = node.outputs.length - 1;
+      if (node.outputs[last]?.links?.length) break;
+      node.removeOutput(last);
     }
-    if (slot) { slot.label = out.name; slot.localized_name = out.name; if (out.type) slot.type = out.type; }
-  });
+    meta.outputs.forEach((out, j) => {
+      if (!out) return;
+      let slot = node.outputs?.[j];
+      if (!slot) {
+        node.addOutput?.(`out_${j + 1}`, out.type || "*");
+        slot = node.outputs?.[j];
+      }
+      if (slot) { slot.label = out.name; slot.localized_name = out.name; if (out.type) slot.type = out.type; }
+    });
+  } catch (err) {
+    console.error(LOG, "applySuperSlots error:", err);
+  }
 }
 
 /**
@@ -13537,20 +13546,36 @@ app.registerExtension({
     proto.onSerialize = function (o) {
       origSerialize?.apply(this, arguments);
       if (this.__ssGraph && o?.properties?.[SS_PROP]) {
-        o.properties[SS_PROP].graph = this.__ssGraph.serialize();
+        try {
+          o.properties[SS_PROP].graph = this.__ssGraph.serialize();
+        } catch (e) {
+          console.warn(LOG, "serialize inner failed", e);
+        }
       }
     };
 
     // Carregar/colar: o grafo de dentro é refeito a partir das propriedades.
     const origConfigure = proto.onConfigure;
     proto.onConfigure = function () {
-      const r = origConfigure?.apply(this, arguments);
+      let r;
+      try {
+        r = origConfigure?.apply(this, arguments);
+      } catch (e) {
+        console.error(LOG, "origConfigure error", e);
+      }
       this.__ssGraph = null;
-      setupSuperNode(this);
-      applySuperSlots(this);
-      // O frontend ainda mexe nos slots depois do configure (entradas de
-      // widget); de novo no próximo tique, para sobrar só as in_N em uso.
-      setTimeout(() => { applySuperSlots(this); this.setDirtyCanvas?.(true, true); }, 0);
+      try {
+        setupSuperNode(this);
+        applySuperSlots(this);
+      } catch (e) {
+        console.error(LOG, "setupSuperNode/applySuperSlots configure error", e);
+      }
+      setTimeout(() => {
+        try {
+          applySuperSlots(this);
+          this.setDirtyCanvas?.(true, true);
+        } catch {}
+      }, 0);
       return r;
     };
   },
