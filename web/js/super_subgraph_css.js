@@ -973,6 +973,7 @@ export const CSS = `
 }
 
 .lego-head{display:flex;align-items:center;gap:10px}
+.lego-head.compact{justify-content:flex-end;gap:6px;margin-bottom:2px}
 /* Cartão fundido ao nó: sem moldura própria, o título fica só na barra do nó. */
 .lego-card.merged,.lego-card.merged.has-node-color{border:0;box-shadow:none;background:transparent;padding:4px 2px 2px}
 /* Num grupo horizontal o rótulo nunca fica menor que o próprio texto: sem

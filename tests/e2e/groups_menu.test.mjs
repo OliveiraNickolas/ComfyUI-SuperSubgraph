@@ -53,7 +53,7 @@ await pg.screenshot({ path: path.join(dir, "card_rightclick.png") });
 await pg.keyboard.press("Escape"); await pg.mouse.click(1450, 900); await pg.waitForTimeout(300);
 await E(() => document.querySelectorAll(".litecontextmenu").forEach(m => m.remove()));
 // botão ⋯
-await pg.locator(".lego-head-tools .lego-more-btn").first().click(); await pg.waitForTimeout(400);
+await pg.locator(".lego-head .lego-more-btn").first().click(); await pg.waitForTimeout(400);
 const more = await E(() => [...document.querySelectorAll(".litecontextmenu")].at(-1)?.innerText.split("\n").map(s => s.trim()).filter(Boolean) || []);
 t("⋯ button opens the SuperSubgraph menu: " + more.join("|"), ["Open Inside", "Edit Card", "Save Card Layout…", "Save SuperSubgraph to Library…", "Files", "More"].every(x => more.includes(x)));
 await pg.screenshot({ path: path.join(dir, "more_menu.png") });
