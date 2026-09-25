@@ -4941,6 +4941,55 @@ function widthForCount(count) {
   return `${(100 / count).toFixed(1)}%`;
 }
 
+/**
+ * Renderiza linhas de nível (horizontais e verticais) e badges com feedback visual
+ * em tempo real durante o redimensionamento de arestas e o manejo (drag & drop) de zonas.
+ */
+function renderZoneGuides(body, { vLine, hLine } = {}) {
+  if (!body) return;
+  let overlay = body.querySelector(":scope > .lego-guide-overlay");
+  if (!overlay) {
+    overlay = el("div", "lego-guide-overlay");
+    body.append(overlay);
+  }
+  overlay.replaceChildren();
+
+  if (vLine) {
+    const lineEl = el("div", `lego-level-line-v${vLine.snap ? " snap" : ""}`);
+    lineEl.style.left = `${Math.round(vLine.x)}px`;
+    overlay.append(lineEl);
+
+    if (vLine.badgeText) {
+      const badge = el("div", `lego-guide-badge${vLine.snap ? " snap" : ""}`);
+      badge.textContent = vLine.badgeText;
+      badge.style.left = `${Math.round(vLine.x)}px`;
+      badge.style.top = `${Math.round(vLine.badgeY ?? 20)}px`;
+      overlay.append(badge);
+    }
+  }
+
+  if (hLine) {
+    const lineEl = el("div", `lego-level-line-h${hLine.snap ? " snap" : ""}`);
+    lineEl.style.top = `${Math.round(hLine.y)}px`;
+    overlay.append(lineEl);
+
+    if (hLine.badgeText) {
+      const badge = el("div", `lego-guide-badge${hLine.snap ? " snap" : ""}`);
+      badge.textContent = hLine.badgeText;
+      badge.style.top = `${Math.round(hLine.y)}px`;
+      badge.style.left = `${Math.round(hLine.badgeX ?? 120)}px`;
+      overlay.append(badge);
+    }
+  }
+}
+
+/** Remove as linhas de nível e o overlay de guias visuais. */
+function clearZoneGuides(body) {
+  if (!body) return;
+  const overlay = body.querySelector(":scope > .lego-guide-overlay");
+  if (overlay) overlay.remove();
+}
+
 /** Largura mínima necessária para uma seção conter todos os seus controles internos. */
 function sectionRequiredWidth(s) {
   if (!s) return 200;
@@ -9163,6 +9212,49 @@ function buildCard(host, state) {
           else if (dir === "bottom") sec.classList.add("lego-drop-bottom");
           else if (dir === "left") sec.classList.add("lego-drop-side-left");
           else if (dir === "right") sec.classList.add("lego-drop-side-right");
+
+          // Linhas de nível em tempo real no manejo de zonas
+          const bodyRect = body.getBoundingClientRect();
+          const cardScale = layout?.scale || 1;
+          const curScale = (app?.canvas?.ds?.scale || 1) * cardScale;
+          const zoneTitle = s.header || "Zona";
+          if (dir === "top") {
+            renderZoneGuides(body, {
+              hLine: {
+                y: (rect.top - bodyRect.top) / curScale,
+                snap: true,
+                badgeText: `⚡ Nível Superior · Inserir acima de "${zoneTitle}"`,
+                badgeX: (rect.left - bodyRect.left) / curScale + (rect.width / curScale) / 2
+              }
+            });
+          } else if (dir === "bottom") {
+            renderZoneGuides(body, {
+              hLine: {
+                y: (rect.bottom - bodyRect.top) / curScale,
+                snap: true,
+                badgeText: `⚡ Nível Inferior · Inserir abaixo de "${zoneTitle}"`,
+                badgeX: (rect.left - bodyRect.left) / curScale + (rect.width / curScale) / 2
+              }
+            });
+          } else if (dir === "left") {
+            renderZoneGuides(body, {
+              vLine: {
+                x: (rect.left - bodyRect.left) / curScale,
+                snap: true,
+                badgeText: `⚡ Nova Coluna à Esquerda (50% / 50%)`,
+                badgeY: (rect.top - bodyRect.top) / curScale + 24
+              }
+            });
+          } else if (dir === "right") {
+            renderZoneGuides(body, {
+              vLine: {
+                x: (rect.right - bodyRect.left) / curScale,
+                snap: true,
+                badgeText: `⚡ Nova Coluna à Direita (50% / 50%)`,
+                badgeY: (rect.top - bodyRect.top) / curScale + 24
+              }
+            });
+          }
         } else if (state.draggingControl) {
           e.preventDefault();
           sec.classList.add("drop-target");
@@ -9174,10 +9266,12 @@ function buildCard(host, state) {
 
       sec.addEventListener("dragleave", () => {
         sec.classList.remove("lego-drop-top", "lego-drop-bottom", "lego-drop-side-right", "lego-drop-side-left", "drop-target");
+        clearZoneGuides(body);
       });
 
       sec.addEventListener("drop", (e) => {
         sec.classList.remove("lego-drop-top", "lego-drop-bottom", "lego-drop-side-right", "lego-drop-side-left", "drop-target");
+        clearZoneGuides(body);
 
         // 1. Arrastando uma ZONA sobre outra ZONA
         if (state.draggingSection && state.draggingSection.sec !== s) {
@@ -9335,6 +9429,7 @@ function buildCard(host, state) {
         h.addEventListener("dragend", () => {
           state.draggingSection = null;
           sec.classList.remove("dragging");
+          clearZoneGuides(body);
         });
       }
 
@@ -9517,30 +9612,105 @@ function buildCard(host, state) {
           sec.classList.add("resizing");
 
           const startClientX = e.clientX;
-          const origW = sec.getBoundingClientRect().width;
-          const bodyW = (body.getBoundingClientRect().width) || 800;
-          const curScale = app?.canvas?.ds?.scale || 1;
+          const bodyRect = body.getBoundingClientRect();
+          const cardScale = layout?.scale || 1;
+          const curScale = (app?.canvas?.ds?.scale || 1) * cardScale;
+          const bodyW = bodyRect.width || 800;
+
+          // Se estiver dentro de uma coluna, redimensiona a coluna e a vizinha em tempo real
+          const colEl = sec.closest(".lego-col");
+          const colsRow = colEl?.closest(".lego-cols-row");
+          const siblingCols = colsRow ? Array.from(colsRow.querySelectorAll(":scope > .lego-col")) : [];
+          const colIdx = colEl ? siblingCols.indexOf(colEl) : -1;
+          const nextColEl = (colIdx >= 0 && colIdx < siblingCols.length - 1) ? siblingCols[colIdx + 1] : null;
+
+          const origW = (colEl || sec).getBoundingClientRect().width;
+          const nextColOrigW = nextColEl ? nextColEl.getBoundingClientRect().width : 0;
+          const totalPairW = origW + nextColOrigW;
 
           let finalW = s.width || "100%";
+          let finalNextW = null;
 
           const onMoveW = (ev) => {
             ev.stopPropagation();
             const minWAllowed = sectionRequiredWidth(s);
-            const rawW = Math.max(minWAllowed, Math.min(bodyW, origW + (ev.clientX - startClientX) / curScale));
-            const ratio = Math.max(0.15, Math.min(1.0, rawW / bodyW));
-            finalW = snapWidth(ratio, ev.shiftKey);
+            const dx = (ev.clientX - startClientX) / curScale;
 
-            const cssW = widthToCss(finalW);
-            sec.style.width = cssW;
-            sec.style.flex = `0 0 ${cssW}`;
-            sec.style.minWidth = `${minWAllowed}px`;
-            sec.style.maxWidth = cssW;
+            let isSnapped = false;
+            let snapLabel = "";
+            let localX = (ev.clientX - bodyRect.left) / curScale;
+
+            if (nextColEl) {
+              const minNextW = 120;
+              const rawW = Math.max(minWAllowed, Math.min(totalPairW - minNextW, origW + dx));
+              const rawNextW = totalPairW - rawW;
+              const ratio = rawW / bodyW;
+              const ratioNext = rawNextW / bodyW;
+
+              finalW = snapWidth(ratio, ev.shiftKey);
+              finalNextW = snapWidth(ratioNext, ev.shiftKey);
+
+              const cssW = widthToCss(finalW);
+              const cssNextW = widthToCss(finalNextW);
+              colEl.style.width = cssW;
+              colEl.style.flex = `0 0 ${cssW}`;
+              nextColEl.style.width = cssNextW;
+              nextColEl.style.flex = `0 0 ${cssNextW}`;
+
+              isSnapped = !ev.shiftKey && (finalW === "25%" || finalW === "33.3%" || finalW === "50%" || finalW === "66.7%" || finalW === "75%");
+              snapLabel = isSnapped ? `⚡ ${finalW} / ${finalNextW} (Alinhado)` : `↔ ${finalW} (${Math.round(rawW)}px) · ${finalNextW} (${Math.round(rawNextW)}px)`;
+            } else {
+              const rawW = Math.max(minWAllowed, Math.min(bodyW, origW + dx));
+              const ratio = Math.max(0.15, Math.min(1.0, rawW / bodyW));
+              finalW = snapWidth(ratio, ev.shiftKey);
+
+              const targetContainer = colEl || sec;
+              const cssW = widthToCss(finalW);
+              targetContainer.style.width = cssW;
+              targetContainer.style.flex = `0 0 ${cssW}`;
+              targetContainer.style.maxWidth = cssW;
+
+              isSnapped = !ev.shiftKey && (finalW === "25%" || finalW === "33.3%" || finalW === "50%" || finalW === "66.7%" || finalW === "75%" || finalW === "100%");
+              snapLabel = isSnapped ? `⚡ ${finalW} (Alinhado)` : `↔ ${finalW} (${Math.round(rawW)}px)`;
+            }
+
+            // Alinhamento com arestas verticais de outras zonas (Linhas de nível verticais)
+            if (!ev.shiftKey) {
+              const otherSecs = Array.from(body.querySelectorAll(".lego-sec")).filter((x) => x !== sec);
+              for (const other of otherSecs) {
+                const oR = other.getBoundingClientRect();
+                const otherRightX = (oR.right - bodyRect.left) / curScale;
+                const otherLeftX = (oR.left - bodyRect.left) / curScale;
+                if (Math.abs(localX - otherRightX) <= 8) {
+                  localX = otherRightX;
+                  isSnapped = true;
+                  snapLabel = `⚡ Nível com "${other.querySelector(".lego-sec-h span")?.textContent || "Zona"}"`;
+                  break;
+                }
+                if (Math.abs(localX - otherLeftX) <= 8) {
+                  localX = otherLeftX;
+                  isSnapped = true;
+                  snapLabel = `⚡ Alinhado com "${other.querySelector(".lego-sec-h span")?.textContent || "Zona"}"`;
+                  break;
+                }
+              }
+            }
+
+            renderZoneGuides(body, {
+              vLine: {
+                x: localX,
+                snap: isSnapped,
+                badgeText: snapLabel,
+                badgeY: (sec.getBoundingClientRect().top - bodyRect.top) / curScale + 20
+              }
+            });
           };
 
           const onUpW = (ev) => {
             ev?.stopPropagation();
             resizerW.classList.remove("active");
             sec.classList.remove("resizing");
+            clearZoneGuides(body);
 
             window.removeEventListener("pointermove", onMoveW, true);
             window.removeEventListener("pointerup", onUpW, true);
@@ -9548,7 +9718,15 @@ function buildCard(host, state) {
             window.removeEventListener("mousemove", onMoveW, true);
             window.removeEventListener("mouseup", onUpW, true);
 
-            s.width = finalW;
+            pushUndo(host);
+            if (colEl && nextColEl) {
+              const colSecs = sections.filter((x) => x.col === colIdx || (!x.col && colIdx === 0));
+              const nextSecs = sections.filter((x) => x.col === colIdx + 1);
+              colSecs.forEach((x) => { x.width = finalW; });
+              if (finalNextW) nextSecs.forEach((x) => { x.width = finalNextW; });
+            } else {
+              s.width = finalW;
+            }
             state.refresh();
           };
 
@@ -9578,21 +9756,79 @@ function buildCard(host, state) {
 
           const startClientY = e.clientY;
           const origH = sec.getBoundingClientRect().height;
-          const curScale = app?.canvas?.ds?.scale || 1;
+          const cardScale = layout?.scale || 1;
+          const curScale = (app?.canvas?.ds?.scale || 1) * cardScale;
+          const bodyRect = body.getBoundingClientRect();
+          const secRect = sec.getBoundingClientRect();
+          const secTopY = (secRect.top - bodyRect.top) / curScale;
+
+          // Referências para linhas de nível horizontais (outras zonas)
+          const otherLevels = [];
+          body.querySelectorAll(".lego-sec").forEach((other) => {
+            if (other === sec) return;
+            const oR = other.getBoundingClientRect();
+            otherLevels.push({
+              bottomY: (oR.bottom - bodyRect.top) / curScale,
+              h: oR.height / curScale,
+              name: other.querySelector(".lego-sec-h span")?.textContent || "Zona"
+            });
+          });
 
           let finalH = origH;
 
           const onMoveH = (ev) => {
             ev.stopPropagation();
             const minHAllowed = sectionRequiredHeight(s);
-            finalH = Math.max(minHAllowed, Math.round(origH + (ev.clientY - startClientY) / curScale));
+            let rawH = Math.max(minHAllowed, Math.round(origH + (ev.clientY - startClientY) / curScale));
+            let currentBottomY = secTopY + rawH;
+
+            let hSnap = false;
+            let snapName = "";
+            if (!ev.shiftKey) {
+              for (const lvl of otherLevels) {
+                // Alinhamento com a base de outra zona
+                if (Math.abs(currentBottomY - lvl.bottomY) <= 8) {
+                  currentBottomY = lvl.bottomY;
+                  rawH = Math.max(minHAllowed, Math.round(currentBottomY - secTopY));
+                  hSnap = true;
+                  snapName = lvl.name;
+                  break;
+                }
+                // Alinhamento de mesma altura
+                if (Math.abs(rawH - lvl.h) <= 8) {
+                  rawH = Math.max(minHAllowed, Math.round(lvl.h));
+                  currentBottomY = secTopY + rawH;
+                  hSnap = true;
+                  snapName = lvl.name;
+                  break;
+                }
+              }
+            }
+
+            finalH = rawH;
             sec.style.minHeight = `${finalH}px`;
+
+            const badgeText = hSnap
+              ? `⚡ ${finalH}px (Linha de Nível com "${snapName}")`
+              : `↕ ${finalH}px`;
+
+            const badgeX = (sec.getBoundingClientRect().left - bodyRect.left) / curScale + (sec.getBoundingClientRect().width / curScale) / 2;
+
+            renderZoneGuides(body, {
+              hLine: {
+                y: currentBottomY,
+                snap: hSnap,
+                badgeText,
+                badgeX
+              }
+            });
           };
 
           const onUpH = (ev) => {
             ev?.stopPropagation();
             resizerH.classList.remove("active");
             sec.classList.remove("resizing");
+            clearZoneGuides(body);
 
             window.removeEventListener("pointermove", onMoveH, true);
             window.removeEventListener("pointerup", onUpH, true);
@@ -9600,6 +9836,7 @@ function buildCard(host, state) {
             window.removeEventListener("mousemove", onMoveH, true);
             window.removeEventListener("mouseup", onUpH, true);
 
+            pushUndo(host);
             s.height = `${finalH}px`;
             state.refresh();
           };
@@ -10117,6 +10354,8 @@ function buildCard(host, state) {
       } else if (g.type === "columns") {
         const colsRow = el("div", "lego-cols-row");
         const numCols = g.columns.length;
+        const colElements = [];
+
         g.columns.forEach((col) => {
           const colEl = el("div", "lego-col");
           const defaultW = widthForCount(numCols);
@@ -10132,7 +10371,106 @@ function buildCard(host, state) {
             const secEl = buildSectionElement(sec, globalIndex, false, isStretch);
             colEl.append(secEl);
           });
-          colsRow.append(colEl);
+          colElements.push(colEl);
+        });
+
+        g.columns.forEach((col, cIdx) => {
+          colsRow.append(colElements[cIdx]);
+
+          // Divisor interativo entre esta coluna e a próxima (Aresta de redimensionamento)
+          if (state.edit && cIdx < numCols - 1) {
+            const colA = col;
+            const colB = g.columns[cIdx + 1];
+            const colAEl = colElements[cIdx];
+            const colBEl = colElements[cIdx + 1];
+
+            const divider = el("div", "lego-col-divider");
+            divider.title = "Arrastar aresta entre colunas (Shift para livre)";
+
+            divider.addEventListener("pointerdown", (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              divider.classList.add("active");
+
+              const startClientX = e.clientX;
+              const bodyRect = body.getBoundingClientRect();
+              const cardScale = layout?.scale || 1;
+              const curScale = (app?.canvas?.ds?.scale || 1) * cardScale;
+              const bodyW = bodyRect.width || 800;
+
+              const colARect = colAEl.getBoundingClientRect();
+              const colBRect = colBEl.getBoundingClientRect();
+              const totalPairW = colARect.width + colBRect.width;
+
+              const minWA = Math.max(...colA.entries.map(ent => sectionRequiredWidth(ent.sec)), 100);
+              const minWB = Math.max(...colB.entries.map(ent => sectionRequiredWidth(ent.sec)), 100);
+
+              let finalWA = colA.width || widthForCount(numCols);
+              let finalWB = colB.width || widthForCount(numCols);
+
+              const onMoveCol = (ev) => {
+                ev.stopPropagation();
+                const dx = (ev.clientX - startClientX) / curScale;
+                const newWA_px = Math.max(minWA, Math.min(totalPairW - minWB, colARect.width + dx));
+                const newWB_px = totalPairW - newWA_px;
+
+                const ratioA = newWA_px / bodyW;
+                const ratioB = newWB_px / bodyW;
+
+                finalWA = snapWidth(ratioA, ev.shiftKey);
+                finalWB = snapWidth(ratioB, ev.shiftKey);
+
+                const cssWA = widthToCss(finalWA);
+                const cssWB = widthToCss(finalWB);
+                colAEl.style.width = cssWA;
+                colAEl.style.flex = `0 0 ${cssWA}`;
+                colBEl.style.width = cssWB;
+                colBEl.style.flex = `0 0 ${cssWB}`;
+
+                const localX = (ev.clientX - bodyRect.left) / curScale;
+                const isSnapped = !ev.shiftKey && (
+                  finalWA === "25%" || finalWA === "33.3%" || finalWA === "50%" || finalWA === "66.7%" || finalWA === "75%"
+                );
+                const badgeText = isSnapped
+                  ? `⚡ ${finalWA} / ${finalWB} (Alinhado)`
+                  : `↔ ${finalWA} (${Math.round(newWA_px)}px) · ${finalWB} (${Math.round(newWB_px)}px)`;
+
+                renderZoneGuides(body, {
+                  vLine: {
+                    x: localX,
+                    snap: isSnapped,
+                    badgeText,
+                    badgeY: (colARect.top - bodyRect.top) / curScale + 24
+                  }
+                });
+              };
+
+              const onUpCol = (ev) => {
+                ev?.stopPropagation();
+                divider.classList.remove("active");
+                clearZoneGuides(body);
+
+                window.removeEventListener("pointermove", onMoveCol, true);
+                window.removeEventListener("pointerup", onUpCol, true);
+                window.removeEventListener("pointercancel", onUpCol, true);
+                window.removeEventListener("mousemove", onMoveCol, true);
+                window.removeEventListener("mouseup", onUpCol, true);
+
+                pushUndo(host);
+                colA.entries.forEach(ent => { ent.sec.width = finalWA; });
+                colB.entries.forEach(ent => { ent.sec.width = finalWB; });
+                state.refresh();
+              };
+
+              window.addEventListener("pointermove", onMoveCol, true);
+              window.addEventListener("pointerup", onUpCol, true);
+              window.addEventListener("pointercancel", onUpCol, true);
+              window.addEventListener("mousemove", onMoveCol, true);
+              window.addEventListener("mouseup", onUpCol, true);
+            });
+
+            colsRow.append(divider);
+          }
         });
         body.append(colsRow);
       }
@@ -10140,12 +10478,35 @@ function buildCard(host, state) {
     // Suporte a soltar componentes diretamente no fundo do Canvas com Snap to Grid de 20px
     if (state.edit) {
       body.addEventListener("dragover", (e) => {
+        if (state.draggingSection) {
+          e.preventDefault();
+          if (!e.target.closest(".lego-sec")) {
+            const bodyRect = body.getBoundingClientRect();
+            const cardScale = layout?.scale || 1;
+            const curScale = (app?.canvas?.ds?.scale || 1) * cardScale;
+            renderZoneGuides(body, {
+              hLine: {
+                y: (bodyRect.bottom - bodyRect.top) / curScale - 6,
+                snap: true,
+                badgeText: "⚡ Nova Linha no Final (100%)",
+                badgeX: (bodyRect.width / curScale) / 2
+              }
+            });
+          }
+        }
         if (state.draggingComponent || state.draggingControl) {
           e.preventDefault();
         }
       });
 
+      body.addEventListener("dragleave", (e) => {
+        if (!e.relatedTarget || !body.contains(e.relatedTarget)) {
+          clearZoneGuides(body);
+        }
+      });
+
       body.addEventListener("drop", (e) => {
+        clearZoneGuides(body);
         if (e.target.closest(".lego-sec")) return; // Deixa o card tratar se o drop foi em cima de um card
 
         const bodyRect = body.getBoundingClientRect();

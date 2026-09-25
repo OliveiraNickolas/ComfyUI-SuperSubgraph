@@ -14,7 +14,7 @@ const EXPORTS = [
   "widthForCount", "createNewZone", "hookGraphAdd", "ensureSuperOutput", "ensureSuperInput",
   "renameBoundaryIO", "quickOutNode", "quickOutNodes", "applySuperSlots", "viewURL",
   "sectionRequiredWidth", "requiredNodeWidth", "groupSectionsLayout", "addZoneBelow", "addZoneBeside",
-  "sameUrl", "MEDIA_ELEMENT_CACHE", "OUTPUT_VIEW_CACHE",
+  "sameUrl", "MEDIA_ELEMENT_CACHE", "OUTPUT_VIEW_CACHE", "renderZoneGuides", "clearZoneGuides",
 ];
 
 let src = fs.readFileSync(SRC, "utf8");

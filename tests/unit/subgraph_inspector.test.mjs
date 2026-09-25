@@ -590,5 +590,66 @@ const refreshedImgEl = mediaHostNode.domElement.querySelector(".lego-media-thumb
 t("MEDIA_ELEMENT_CACHE reuses the exact same img DOM element across card refreshes", refreshedImgEl === firstImgEl);
 t("reused img element maintains display block without placeholder flash", refreshedImgEl?.style?.display === "block");
 
+// Testes de feedback visual em tempo real, arestas e linhas de nível
+const testBody = document.createElement("div");
+testBody.className = "lego-body";
+document.body.append(testBody);
+
+M.renderZoneGuides(testBody, {
+  vLine: { x: 300, snap: true, badgeText: "⚡ 50% / 50% (Alinhado)", badgeY: 40 },
+  hLine: { y: 220, snap: false, badgeText: "↕ 220px", badgeX: 150 }
+});
+
+const guideOverlay = testBody.querySelector(".lego-guide-overlay");
+t("renderZoneGuides creates .lego-guide-overlay", !!guideOverlay);
+const vLineEl = guideOverlay?.querySelector(".lego-level-line-v");
+t("renderZoneGuides renders vertical level line", !!vLineEl && vLineEl.style.left === "300px");
+t("vertical level line has snap class", vLineEl?.classList?.contains("snap"));
+const hLineEl = guideOverlay?.querySelector(".lego-level-line-h");
+t("renderZoneGuides renders horizontal level line", !!hLineEl && hLineEl.style.top === "220px");
+t("horizontal level line does not have snap class when snap is false", !hLineEl?.classList?.contains("snap"));
+
+const badges = guideOverlay?.querySelectorAll(".lego-guide-badge");
+t("renderZoneGuides renders badges for lines", badges?.length === 2);
+t("badge text matches snap feedback", badges?.[0]?.textContent === "⚡ 50% / 50% (Alinhado)");
+
+M.clearZoneGuides(testBody);
+t("clearZoneGuides removes the overlay", !testBody.querySelector(".lego-guide-overlay"));
+
+// Teste de divisores de coluna (lego-col-divider) em modo de edição
+const colNode = {
+  id: "node_col_test",
+  properties: {
+    ui_layout: {
+      schema: 2,
+      tabs: [{
+        name: "Tab 1",
+        sections: [
+          { header: "ZONE A", width: "50%", col: 0, controls: [] },
+          { header: "ZONE B", width: "50%", col: 1, controls: [] }
+        ]
+      }]
+    }
+  },
+  widgets: [],
+  addDOMWidget(name, type, element) {
+    this.domElement = element;
+    return { name, type, element };
+  },
+  setSize() {},
+  computeSize() { return [700, 400]; }
+};
+
+const colState = M.attach(colNode);
+colState.edit = true;
+colState.refresh();
+
+const colDivider = colNode.domElement.querySelector(".lego-col-divider");
+t("edit mode renders .lego-col-divider between columns", !!colDivider);
+const secResizerW = colNode.domElement.querySelector(".lego-sec-resizer");
+t("section renders width edge resizer in edit mode", !!secResizerW);
+const secResizerH = colNode.domElement.querySelector(".lego-sec-resizer-bottom");
+t("section renders height edge resizer in edit mode", !!secResizerH);
+
 console.log(`\n${ok} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

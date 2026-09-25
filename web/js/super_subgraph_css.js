@@ -1038,6 +1038,7 @@ export const CSS = `
 
 /* ── Layout Geral de Cards no Subgrafo ── */
 .lego-body{
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -1305,13 +1306,145 @@ export const CSS = `
 .lego-sec.dragging{opacity:0.35;outline:2px dashed var(--lego-dim)}
 
 /* ── Alças de Redimensionamento de Zona (Largura ↔ e Altura ↕) ── */
-.lego-sec-resizer{position:absolute;top:0;right:-4px;bottom:8px;width:9px;cursor:col-resize;
+.lego-sec-resizer{position:absolute;top:0;right:-5px;bottom:8px;width:10px;cursor:col-resize;
   z-index:30;user-select:none;border-radius:4px;transition:background .15s}
-.lego-sec-resizer:hover, .lego-sec-resizer.active{background:var(--lego-accent);box-shadow:0 0 10px rgba(59,130,246,0.7)}
+.lego-sec-resizer::after{content:"";position:absolute;top:0;bottom:0;left:4px;width:2px;
+  background:transparent;border-radius:1px;transition:background .15s, box-shadow .15s}
+.lego-sec-resizer:hover::after, .lego-sec-resizer.active::after{background:var(--lego-accent);
+  box-shadow:0 0 10px rgba(59,130,246,0.9), 0 0 2px #fff}
+.lego-sec-resizer:hover, .lego-sec-resizer.active{background:rgba(59,130,246,0.15)}
 
-.lego-sec-resizer-bottom{position:absolute;left:0;right:8px;bottom:-4px;height:9px;cursor:row-resize;
+.lego-sec-resizer-bottom{position:absolute;left:0;right:8px;bottom:-5px;height:10px;cursor:row-resize;
   z-index:30;user-select:none;border-radius:4px;transition:background .15s}
-.lego-sec-resizer-bottom:hover, .lego-sec-resizer-bottom.active{background:var(--lego-accent);box-shadow:0 0 10px rgba(59,130,246,0.7)}
+.lego-sec-resizer-bottom::after{content:"";position:absolute;left:0;right:0;top:4px;height:2px;
+  background:transparent;border-radius:1px;transition:background .15s, box-shadow .15s}
+.lego-sec-resizer-bottom:hover::after, .lego-sec-resizer-bottom.active::after{background:var(--lego-accent);
+  box-shadow:0 0 10px rgba(59,130,246,0.9), 0 0 2px #fff}
+.lego-sec-resizer-bottom:hover, .lego-sec-resizer-bottom.active{background:rgba(59,130,246,0.15)}
+
+/* Divisor de Colunas Interativo (Aresta entre colunas) */
+.lego-col-divider{
+  position: relative;
+  width: 12px;
+  margin: 0 -6px;
+  flex: 0 0 12px;
+  cursor: col-resize;
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  touch-action: none;
+}
+.lego-col-divider::before{
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 5px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 1px;
+  transition: background .15s, box-shadow .15s;
+}
+.lego-col-divider::after{
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 28px;
+  border-radius: 4px;
+  background: var(--lego-surface, #2d2e32);
+  border: 1px solid var(--lego-line, rgba(255,255,255,0.15));
+  opacity: 0;
+  transition: opacity .15s, background .15s, border-color .15s;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+.lego-col-divider:hover::before,
+.lego-col-divider.active::before{
+  background: var(--lego-accent, #3b82f6);
+  box-shadow: 0 0 12px rgba(59,130,246,0.9), 0 0 2px #fff;
+}
+.lego-col-divider:hover::after,
+.lego-col-divider.active::after{
+  opacity: 1;
+  border-color: var(--lego-accent, #3b82f6);
+  background: var(--lego-panel-hover, #313235);
+}
+
+/* ── Linhas de Nível e Overlay de Alinhamento em Tempo Real ── */
+.lego-guide-overlay{
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000;
+  overflow: visible;
+}
+.lego-level-line-v{
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 2px;
+  background: var(--lego-accent, #3b82f6);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.8), 0 0 2px #fff;
+  pointer-events: none;
+  z-index: 1001;
+}
+.lego-level-line-v.snap{
+  width: 2.5px;
+  background: #38bdf8;
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.95), 0 0 4px #fff;
+}
+.lego-level-line-h{
+  position: absolute;
+  left: -6px;
+  right: -6px;
+  height: 2px;
+  background: var(--lego-accent, #3b82f6);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.8), 0 0 2px #fff;
+  pointer-events: none;
+  z-index: 1001;
+}
+.lego-level-line-h.snap{
+  height: 2.5px;
+  background: #38bdf8;
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.95), 0 0 4px #fff;
+}
+.lego-guide-badge{
+  position: absolute;
+  transform: translate(-50%, -100%);
+  margin-top: -10px;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(8px);
+  color: #f8fafc;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+  border: 1px solid rgba(59, 130, 246, 0.55);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55), 0 0 8px rgba(59, 130, 246, 0.35);
+  z-index: 1005;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lego-guide-badge.snap{
+  border-color: #38bdf8;
+  background: rgba(12, 74, 110, 0.96);
+  color: #e0f2fe;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.65), 0 0 12px rgba(56, 189, 248, 0.55);
+}
+
+.lego-sec.resizing{
+  outline: 2px solid var(--lego-accent, #3b82f6) !important;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.35) !important;
+}
 
 /* Alças de Redimensionamento de Componente (Largura ↔ e Altura ↕) */
 .lego-row-resizer{position:absolute;top:0;right:-3px;bottom:6px;width:7px;cursor:col-resize;
