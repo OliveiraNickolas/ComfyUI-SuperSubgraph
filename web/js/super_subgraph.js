@@ -4889,7 +4889,7 @@ function widthToCss(w) {
   if (typeof w === "string" && w.endsWith("%")) {
     const pct = parseFloat(w);
     if (pct >= 100) return "100%";
-    const gapOffset = Math.ceil((1 - pct / 100) * 12 + 0.5);
+    const gapOffset = Math.round((1 - pct / 100) * 12);
     return `calc(${pct}% - ${gapOffset}px)`;
   }
   return w;
@@ -9695,7 +9695,7 @@ function buildCard(host, state) {
               const snapLocalX = ((colRect.left - bodyRect.left) + (pctA / 100 * bodyW)) / curScale;
               if (isSnapped) localX = snapLocalX;
               snapLabel = isSnapped
-                ? `⚡ ${finalW} / ${finalNextW} (Alinhado)`
+                ? `⚡ ${finalW} / ${finalNextW} (Aligned)`
                 : `↔ ${finalW} (${Math.round(rawW / curScale)}px) · ${finalNextW} (${Math.round(rawNextW / curScale)}px)`;
             } else {
               const rawW = Math.max(minWAllowed, Math.min(bodyW, origW + dx));
@@ -9711,27 +9711,64 @@ function buildCard(host, state) {
               const pctA = parseFloat(finalW) || (ratio * 100);
               const snapLocalX = ((colRect.left - bodyRect.left) + (pctA / 100 * bodyW)) / curScale;
               if (isSnapped) localX = snapLocalX;
-              snapLabel = isSnapped ? `⚡ ${finalW} (Alinhado)` : `↔ ${finalW} (${Math.round(rawW / curScale)}px)`;
+              snapLabel = isSnapped ? `⚡ ${finalW} (Aligned)` : `↔ ${finalW} (${Math.round(rawW / curScale)}px)`;
             }
 
-            // Alinhamento com arestas verticais de outras zonas (Linhas de nível verticais)
+            // Alinhamento magnético real com arestas verticais de outras zonas
             if (!ev.shiftKey) {
               const otherSecs = Array.from(body.querySelectorAll(".lego-sec")).filter((x) => x !== sec);
               for (const other of otherSecs) {
                 const oR = other.getBoundingClientRect();
                 const otherRightX = (oR.right - bodyRect.left) / curScale;
                 const otherLeftX = (oR.left - bodyRect.left) / curScale;
-                if (Math.abs(localX - otherRightX) <= 8) {
-                  localX = otherRightX;
-                  isSnapped = true;
-                  snapLabel = `⚡ Nível com "${other.querySelector(".lego-sec-h span")?.textContent || "Zona"}"`;
-                  break;
-                }
-                if (Math.abs(localX - otherLeftX) <= 8) {
-                  localX = otherLeftX;
-                  isSnapped = true;
-                  snapLabel = `⚡ Alinhado com "${other.querySelector(".lego-sec-h span")?.textContent || "Zona"}"`;
-                  break;
+
+                let snapTargetX = null;
+                if (Math.abs(localX - otherRightX) <= 12) snapTargetX = otherRightX;
+                else if (Math.abs(localX - otherLeftX) <= 12) snapTargetX = otherLeftX;
+
+                if (snapTargetX !== null) {
+                  // Largura exata em pixels de tela para alinhar a borda direita
+                  const targetWidthScreen = bodyRect.left + snapTargetX * curScale - colRect.left;
+                  const targetRatio = targetWidthScreen / bodyW;
+                  const targetPct = Math.round(targetRatio * 1000) / 10;
+                  const snapName = other.querySelector(".lego-sec-h span")?.textContent || "Zone";
+
+                  if (targetWidthScreen >= minWAllowed && targetPct >= 15) {
+                    if (nextColEl) {
+                      const pairTotalPct = totalPairRatio * 100;
+                      const remPct = Math.max(5, Math.round((pairTotalPct - targetPct) * 10) / 10);
+                      const nextEntries = nextColEl.__colEntries || [];
+                      const minNextWScreen = (nextEntries.length
+                        ? Math.max(...nextEntries.map((ent) => sectionRequiredWidth(ent.sec)))
+                        : 80) * curScale;
+                      if (totalPairW - targetWidthScreen >= minNextWScreen) {
+                        finalW = `${targetPct}%`;
+                        finalNextW = `${remPct}%`;
+                        const cssW = widthToCss(finalW);
+                        const cssNextW = widthToCss(finalNextW);
+                        colEl.style.width = cssW;
+                        colEl.style.flex = `0 0 ${cssW}`;
+                        colEl.style.maxWidth = cssW;
+                        nextColEl.style.width = cssNextW;
+                        nextColEl.style.flex = `0 0 ${cssNextW}`;
+                        nextColEl.style.maxWidth = cssNextW;
+                        localX = snapTargetX;
+                        isSnapped = true;
+                        snapLabel = `⚡ Aligned with "${snapName}" (${finalW} / ${finalNextW})`;
+                        break;
+                      }
+                    } else {
+                      finalW = `${targetPct}%`;
+                      const cssW = widthToCss(finalW);
+                      colTarget.style.width = cssW;
+                      colTarget.style.flex = `0 0 ${cssW}`;
+                      colTarget.style.maxWidth = cssW;
+                      localX = snapTargetX;
+                      isSnapped = true;
+                      snapLabel = `⚡ Aligned with "${snapName}" (${finalW})`;
+                      break;
+                    }
+                  }
                 }
               }
             }
@@ -10478,15 +10515,57 @@ function buildCard(host, state) {
                 colBEl.style.flex = `0 0 ${cssWB}`;
                 colBEl.style.maxWidth = cssWB;
 
-                const isSnapped = !ev.shiftKey && (
+                let isSnapped = !ev.shiftKey && (
                   finalWA === "25%" || finalWA === "33.3%" || finalWA === "50%" || finalWA === "66.7%" || finalWA === "75%"
                 );
                 const snapLocalX = ((colARect.left - bodyRect.left) + (pctA / 100 * bodyW)) / curScale;
-                const localX = isSnapped ? snapLocalX : (ev.clientX - bodyRect.left) / curScale;
+                let localX = isSnapped ? snapLocalX : (ev.clientX - bodyRect.left) / curScale;
 
-                const badgeText = isSnapped
+                let badgeText = isSnapped
                   ? `⚡ ${finalWA} / ${finalWB} (Aligned)`
                   : `↔ ${finalWA} (${Math.round(rawWA / curScale)}px) · ${finalWB} (${Math.round(rawWB / curScale)}px)`;
+
+                // Alinhamento magnético com arestas de zonas de outras linhas
+                if (!ev.shiftKey && !isSnapped) {
+                  const colASecs = colAEl.querySelectorAll(".lego-sec");
+                  const otherSecs = Array.from(body.querySelectorAll(".lego-sec")).filter(
+                    (x) => !colAEl.contains(x)
+                  );
+                  for (const other of otherSecs) {
+                    const oR = other.getBoundingClientRect();
+                    const otherRightX = (oR.right - bodyRect.left) / curScale;
+                    const otherLeftX = (oR.left - bodyRect.left) / curScale;
+
+                    let snapTargetX = null;
+                    if (Math.abs(localX - otherRightX) <= 12) snapTargetX = otherRightX;
+                    else if (Math.abs(localX - otherLeftX) <= 12) snapTargetX = otherLeftX;
+
+                    if (snapTargetX !== null) {
+                      const targetWScreen = bodyRect.left + snapTargetX * curScale - colARect.left;
+                      const targetRatio = targetWScreen / bodyW;
+                      const tPct = Math.round(targetRatio * 1000) / 10;
+                      const tRemPct = Math.max(5, Math.round((pairTotalPct - tPct) * 10) / 10);
+
+                      if (targetWScreen >= minWA && totalPairW - targetWScreen >= minWB && tPct >= 15) {
+                        finalWA = `${tPct}%`;
+                        finalWB = `${tRemPct}%`;
+                        const cA = widthToCss(finalWA);
+                        const cB = widthToCss(finalWB);
+                        colAEl.style.width = cA;
+                        colAEl.style.flex = `0 0 ${cA}`;
+                        colAEl.style.maxWidth = cA;
+                        colBEl.style.width = cB;
+                        colBEl.style.flex = `0 0 ${cB}`;
+                        colBEl.style.maxWidth = cB;
+                        localX = snapTargetX;
+                        isSnapped = true;
+                        const snapName = other.querySelector(".lego-sec-h span")?.textContent || "Zone";
+                        badgeText = `⚡ Aligned with "${snapName}" (${finalWA} / ${finalWB})`;
+                        break;
+                      }
+                    }
+                  }
+                }
 
                 renderZoneGuides(body, {
                   vLine: {
