@@ -1460,12 +1460,31 @@ function mkText(node, w, ctrl, state, multiline) {
 }
 
 function mkButton(node, w, ctrl) {
-  const b = el("button", "lego-in", ctrl.label || prettify(w.name));
+  const text = ctrl?.text || ctrl?.label || prettify(w?.name || "Button");
+  const b = el("button", "lego-in lego-btn-ctrl", text);
+  b.type = "button";
   b.style.cursor = "pointer";
-  b.addEventListener("pointerdown", eatPointer);
+  b.style.width = "100%";
+  b.style.height = "100%";
+  b.style.boxSizing = "border-box";
+  b.style.justifyContent = ctrl?.align === "left" ? "flex-start" : ctrl?.align === "right" ? "flex-end" : "center";
+  b.style.textAlign = ctrl?.align || "center";
+  if (ctrl) applyLabelStyle(b, ctrl);
+
+  b.addEventListener("pointerdown", (e) => {
+    eatPointer(e);
+    b.classList.add("lego-btn-clicked");
+  });
+  window.addEventListener("pointerup", () => {
+    b.classList.remove("lego-btn-clicked");
+  });
   b.addEventListener("click", (e) => {
     e.stopPropagation();
-    try { w.callback?.call(node, w, app.canvas, node, [0, 0], {}); } catch {}
+    b.classList.remove("lego-btn-clicked");
+    void b.offsetWidth;
+    b.classList.add("lego-btn-clicked");
+    setTimeout(() => b.classList.remove("lego-btn-clicked"), 160);
+    try { w?.callback?.call(node, w, app.canvas, node, [0, 0], {}); } catch {}
   });
   return b;
 }
@@ -3253,7 +3272,10 @@ function applyLabelStyle(span, ctrl) {
   if (ctrl.bold) span.style.fontWeight = "700";
   if (ctrl.italic) span.style.fontStyle = "italic";
   if (ctrl.fontSize) span.style.fontSize = `${ctrl.fontSize}px`;
-  if (ctrl.align) span.style.justifyContent = ctrl.align === "center" ? "center" : ctrl.align === "right" ? "flex-end" : "flex-start";
+  if (ctrl.align) {
+    span.style.justifyContent = ctrl.align === "center" ? "center" : ctrl.align === "right" ? "flex-end" : "flex-start";
+    span.style.textAlign = ctrl.align;
+  }
   const deco = [ctrl.underline && "underline", ctrl.strike && "line-through"].filter(Boolean).join(" ");
   if (deco) span.style.textDecoration = deco;
   if (ctrl.fontFamily) span.style.fontFamily = ctrl.fontFamily;
@@ -3269,6 +3291,34 @@ function ghostControl(kind, ctrl) {
     const gLbl = el("div", "lego-canvas-label", ctrl?.text || ctrl?.label || "Label");
     if (ctrl) applyLabelStyle(gLbl, ctrl);
     box.append(gLbl);
+  } else if (kind === "button") {
+    const text = ctrl?.text || ctrl?.label || "Button";
+    const b = el("button", "lego-in lego-btn-ctrl", text);
+    b.type = "button";
+    b.style.cursor = "pointer";
+    b.style.width = "100%";
+    b.style.height = "100%";
+    b.style.boxSizing = "border-box";
+    b.style.justifyContent = ctrl?.align === "left" ? "flex-start" : ctrl?.align === "right" ? "flex-end" : "center";
+    b.style.textAlign = ctrl?.align || "center";
+    if (ctrl) applyLabelStyle(b, ctrl);
+    b.addEventListener("pointerdown", (e) => {
+      eatPointer(e);
+      b.classList.add("lego-btn-clicked");
+    });
+    window.addEventListener("pointerup", () => {
+      b.classList.remove("lego-btn-clicked");
+    });
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      b.classList.remove("lego-btn-clicked");
+      void b.offsetWidth;
+      b.classList.add("lego-btn-clicked");
+      setTimeout(() => b.classList.remove("lego-btn-clicked"), 160);
+    });
+    box.style.width = "100%";
+    box.style.height = "100%";
+    box.append(b);
   } else if (kind === "toggle") {
     box.append(el("div", "lego-ghost-sw"));
     box.classList.add("shrink");
@@ -3437,7 +3487,11 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     if (groupHeader && ctrl.labelPos !== "none") {
       row.classList.add("has-header");
       const head = el("div", "lego-seg-header", groupHeader);
+      head.style.width = "100%";
+      head.style.boxSizing = "border-box";
       if (ctrl.labelPos === "right") head.style.textAlign = "right";
+      else if (ctrl.labelPos === "center") head.style.textAlign = "center";
+      else head.style.textAlign = "left";
       if (state.edit) {
         head.title = "Double-click to rename";
         head.addEventListener("dblclick", (e) => {
@@ -3474,7 +3528,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   } else if (isGroup) {
     row = buildGroup(host, ctrl, state, sectionCtrls);
   } else {
-    row = el("div", `lego-row${wide ? " wide" : ""}${isMedia ? " is-media" : ""}`);
+    row = el("div", `lego-row${wide ? " wide" : ""}${isMedia ? " is-media" : ""}${ctrl.kind === "button" ? " is-btn-row" : ""}`);
   }
   if (isGroup && (ctrl.items || []).some((i) => isMediaLike(i.kind))) {
     // Mosaico de referência: numa coluna de grade não cabe miniatura, combo e
@@ -3634,7 +3688,10 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     control.style.height = "100%";
     control.style.boxSizing = "border-box";
   }
-  else if (kind === "button") control = mkButton(node, w, ctrl);
+  else if (kind === "button") {
+    row.classList.add("is-btn-row");
+    control = mkButton(node, w, ctrl);
+  }
   else control = mkText(node, w, ctrl, state, false);
 
   // ── Estrutura Visual 100% IDENTICA em Modo Fixo e Modo Edição ──
@@ -3651,11 +3708,24 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       const v = prompt("Label:", ctrl.label || w.name);
       if (v != null) { ctrl.label = v; state.refresh(); }
     });
+    if ((kind === "button" || ctrl.kind === "button") && control) {
+      control.title = "Double-click to edit button text";
+      control.addEventListener("dblclick", (e) => {
+        e.stopPropagation();
+        const v = prompt("Button text:", ctrl.text || ctrl.label || prettify(w?.name || "Button"));
+        if (v != null) {
+          ctrl.text = v;
+          ctrl.label = v;
+          state.refresh();
+        }
+      });
+    }
   }
 
   // Posição do rótulo: à esquerda (padrão), à direita, ou escondido. Escondido
   // é só não desenhar — o nome continua no `title` e no Inspetor de Objetos.
-  const labelPos = ctrl.labelPos || "left";
+  // Botões não têm rótulo externo por padrão (o texto fica dentro do botão).
+  const labelPos = ctrl.labelPos || (kind === "button" ? "none" : "left");
 
   applySliderResponsiveLayout = (targetW, targetH) => {
     if (!isSlider || !control || !control.track || !control.num) return;
@@ -8545,16 +8615,19 @@ function renderObjectInspector(host, state, force) {
 
   const isDivider = ctrl.kind === "hdivider" || ctrl.kind === "vdivider";
   const isLabel = ctrl.kind === "label";
+  const isButton = ctrl.kind === "button";
   const isContainer = ctrl.kind === "group" || ctrl.kind === "segment" || ctrl.kind === "vsegment";
 
-  if (isLabel) {
-    props.append(propRow("Text", propText(ctrl.text || ctrl.label || "", (v) => {
+  if (isLabel || isButton) {
+    const hitNow = ctrl.bind ? resolveBind(host, ctrl.bind) : null;
+    const defaultText = isButton ? (ctrl.text || ctrl.label || (hitNow ? prettify(hitNow.widget.name) : "Button")) : "Label";
+    props.append(propRow(isButton ? "Button Text" : "Text", propText(ctrl.text || ctrl.label || (isButton ? defaultText : ""), (v) => {
       ctrl.text = v;
       ctrl.label = v;
       state.refresh();
     })));
 
-    // Formatação do label
+    // Formatação do label / botão
     const styleRow = el("div", "lego-oi-style-row");
     styleRow.style.cssText = "display:flex;align-items:center;gap:4px;flex-wrap:wrap";
     const mkToggle = (label, title, key, css) => {
@@ -8578,18 +8651,21 @@ function renderObjectInspector(host, state, force) {
       { id: "right", icon: "≡ʀ" },
     ];
     for (const a of ALIGNS) {
-      const btn = el("button", `lego-oi-style-btn${(ctrl.align || "left") === a.id ? " on" : ""}`);
+      const isDefCenter = isButton && !ctrl.align;
+      const isActive = ctrl.align ? ctrl.align === a.id : (isDefCenter ? a.id === "center" : a.id === "left");
+      const btn = el("button", `lego-oi-style-btn${isActive ? " on" : ""}`);
       btn.textContent = a.icon;
       btn.title = `Align ${a.id}`;
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (a.id === "left") delete ctrl.align; else ctrl.align = a.id;
+        if (a.id === (isButton ? "center" : "left")) delete ctrl.align; else ctrl.align = a.id;
         state.refresh();
       });
       styleRow.append(btn);
     }
 
-    const sizeIn = propNumber(ctrl.fontSize || 14, (v) => { ctrl.fontSize = Math.max(8, Math.min(72, v)); state.refresh(); }, 1);
+    const defSize = isButton ? 11 : 14;
+    const sizeIn = propNumber(ctrl.fontSize || defSize, (v) => { ctrl.fontSize = Math.max(8, Math.min(72, v)); state.refresh(); }, 1);
     sizeIn.style.width = "48px";
     sizeIn.title = "Font size (px)";
     styleRow.append(sizeIn);
@@ -8646,6 +8722,7 @@ function renderObjectInspector(host, state, force) {
 
       const POSICOES = [
         { id: "left", label: "Left" },
+        { id: "center", label: "Center" },
         { id: "right", label: "Right" },
         { id: "none", label: "Hidden" },
       ];
@@ -8663,7 +8740,7 @@ function renderObjectInspector(host, state, force) {
         });
       });
       props.append(propRow("Header Position", posBtn));
-    } else {
+    } else if (!isButton) {
       // Caption vazio cai no nome do widget vinculado — mostra o efetivo, não o vazio.
       const hitNow = ctrl.bind ? resolveBind(host, ctrl.bind) : null;
       const capPadrao = hitNow ? prettify(hitNow.widget.name) : (ctrl.name || "");

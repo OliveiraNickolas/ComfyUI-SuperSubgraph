@@ -223,6 +223,52 @@ if (groupRow) {
   t("control inspector has Detach as Label button", [...oi.querySelectorAll("button")].some(b => b.textContent.includes("Detach as Label")));
   t("control inspector does NOT show Header row", !ctrlRows.includes("Header"));
 
+  // ── 3b. TEST BUTTON FORMATTING & GROUP HEADER CENTERING ──
+  // Group header centering
+  const hGroupCtrl = node.properties.ui_layout.tabs[0].sections[0].controls.find(c => c.name === "HGroup4");
+  hGroupCtrl.header = "Parameters Group";
+  hGroupCtrl.labelPos = "center";
+  st.refresh();
+  const segHeaderEl = node.__legoHost.querySelector("[data-name='HGroup4'] .lego-seg-header");
+  t("centered group header has textAlign center", segHeaderEl && segHeaderEl.style.textAlign === "center");
+
+  // Button control with full label formatting
+  node.properties.ui_layout.tabs[0].sections[0].controls.push({
+    name: "BtnAction",
+    kind: "button",
+    text: "Execute Run",
+    bold: true,
+    fontSize: 13,
+    align: "center",
+    fontColor: "#60a5fa",
+    x: 20, y: 200, w: 180, h: 32
+  });
+  st.refresh();
+  st.selectedName = "BtnAction";
+  st.selectedNames = new Set(["BtnAction"]);
+  M.renderObjectInspector(node, st, true);
+
+  const btnRows = [...oi.querySelectorAll(".lego-oi-row .lego-oi-key")].map((k) => k.textContent);
+  t("button inspector shows Button Text row", btnRows.includes("Button Text"));
+  t("button inspector shows Style row (bold/italic/align)", btnRows.includes("Style"));
+  t("button inspector shows Font row", btnRows.includes("Font"));
+  t("button inspector shows Font Color row", btnRows.includes("Font Color"));
+  t("button inspector does NOT show Caption row", !btnRows.includes("Caption"));
+  t("button inspector does NOT show Caption Position row", !btnRows.includes("Caption Position"));
+  t("button inspector does NOT show Caption Width row", !btnRows.includes("Caption Width"));
+
+  const btnEl = node.__legoHost.querySelector("[data-name='BtnAction'] button.lego-btn-ctrl");
+  t("button rendered with .lego-btn-ctrl", !!btnEl);
+  t("button text formatting applied (bold)", btnEl && btnEl.style.fontWeight === "700");
+  t("button text formatting applied (font size 13px)", btnEl && btnEl.style.fontSize === "13px");
+  t("button text formatting applied (color)", btnEl && btnEl.style.color === "rgb(96, 165, 250)");
+
+  // Test button tactile click animation feedback
+  btnEl.dispatchEvent(new globalThis.PointerEvent("pointerdown", { bubbles: true }));
+  t("pointerdown adds .lego-btn-clicked class", btnEl.classList.contains("lego-btn-clicked"));
+  btnEl.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  t("click retains .lego-btn-clicked transient class", btnEl.classList.contains("lego-btn-clicked"));
+
   // ── 4. TEST SIDE-BY-SIDE ZONE LAYOUT & WIDTH CONTROLS ──
   node.properties.ui_layout.tabs[0].sections = [
     { header: "ZONE A", width: "50%", controls: [] },

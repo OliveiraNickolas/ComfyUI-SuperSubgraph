@@ -2153,6 +2153,8 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 }
 .lego-seg-header{
   flex: none;
+  width: 100%;
+  box-sizing: border-box;
   padding: 0 4px;
   font-size: 10px;
   font-weight: 700;
@@ -2606,6 +2608,47 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-btn:hover{background:rgba(255,255,255,0.12);color:#fff}
 .lego-btn-primary{background:var(--lego-accent);border-color:var(--lego-accent);color:#fff}
 .lego-btn-primary:hover{background:#2563eb}
+
+.lego-row.is-btn-row{
+  padding:0 !important;
+  background:transparent !important;
+  border-color:transparent !important;
+  box-shadow:none !important;
+}
+.lego-btn-ctrl{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  text-align:center !important;
+  cursor:pointer !important;
+  user-select:none !important;
+  height:100% !important;
+  min-height:22px !important;
+  width:100% !important;
+  font-size:11px !important;
+  font-weight:600 !important;
+  border-radius:4px !important;
+  box-sizing:border-box !important;
+  padding:2px 8px !important;
+  background:rgba(255,255,255,0.08) !important;
+  border:1px solid var(--lego-line, rgba(255,255,255,0.15)) !important;
+  color:var(--lego-text, #cbd5e1) !important;
+  outline:none !important;
+  transition:transform .08s cubic-bezier(0.2, 0.9, 0.3, 1), background .12s ease, border-color .12s ease, box-shadow .12s ease, filter .08s ease !important;
+}
+.lego-btn-ctrl:hover{
+  background:rgba(255,255,255,0.14) !important;
+  border-color:var(--lego-accent, #3b82f6) !important;
+  color:#ffffff !important;
+}
+.lego-btn-ctrl:active, .lego-btn-ctrl.lego-btn-clicked{
+  transform:scale(0.96) translateY(1.5px) !important;
+  background:var(--lego-accent, #3b82f6) !important;
+  border-color:#60a5fa !important;
+  color:#ffffff !important;
+  box-shadow:0 0 12px rgba(59,130,246,0.65), inset 0 2px 4px rgba(0,0,0,0.5) !important;
+  filter:brightness(1.15) !important;
+}
 
 /* ── Visual Workflow Explorer (HUD & Picker) ── */
 .lego-btn-explore{
