@@ -199,9 +199,40 @@ if (groupRow) {
   t("zone A has maxWidth matching calc", secA.style.maxWidth.includes("calc(50%"));
   t("zone B has width calc with gap offset", secB.style.width.includes("calc(50%"));
 
-  // Check card width action button
+  // Check card width action button (removed per user directive: fluid modular drag & snap instead of rigid percentages)
   const widthBtns = node.__legoHost.querySelectorAll(".lego-sec-actions button[title*='Card width']");
-  t("each zone has a Card Width action button in edit mode", widthBtns.length === 2);
+  t("no rigid Card Width percentage buttons in edit mode", widthBtns.length === 0);
+
+  // ── 5. TEST FLUID ROW REBALANCING & SUB-TABS ZONE CREATION ──
+  t("widthForCount(1) is 100%", M.widthForCount(1) === "100%");
+  t("widthForCount(2) is 50%", M.widthForCount(2) === "50%");
+  t("widthForCount(3) is 33.3%", M.widthForCount(3) === "33.3%");
+  t("widthForCount(4) is 25%", M.widthForCount(4) === "25%");
+
+  const testSecs = [
+    { header: "Z1", width: "50%" },
+    { header: "Z2", width: "50%" },
+    { header: "Z3", width: "100%" }
+  ];
+  const rowZ1 = M.getContiguousRow(testSecs, 0);
+  t("getContiguousRow detects side-by-side row of 2 zones", rowZ1.length === 2 && rowZ1[0].header === "Z1" && rowZ1[1].header === "Z2");
+  const rowZ3 = M.getContiguousRow(testSecs, 2);
+  t("getContiguousRow detects standalone 100% zone", rowZ3.length === 1 && rowZ3[0].header === "Z3");
+
+  // Test createNewZone structure
+  const curTab = { sections: [] };
+  const origPrompt = globalThis.prompt;
+  globalThis.prompt = () => "CUSTOM ZONE";
+  M.createNewZone({ host: node, curTab, state: st });
+  globalThis.prompt = origPrompt;
+
+  t("createNewZone created a zone in curTab", curTab.sections.length === 1);
+  const createdSec = curTab.sections[0];
+  t("new zone header is upper case", createdSec.header === "CUSTOM ZONE");
+  t("new zone defaults to 100% full width", createdSec.width === "100%");
+  t("new zone defaults to internal sub-tabs structure", Array.isArray(createdSec.tabs) && createdSec.tabs.length === 2);
+  t("new zone has Tab 1 and Tab 2", createdSec.tabs[0].name === "Tab 1" && createdSec.tabs[1].name === "Tab 2");
+  t("new zone has activeTab 0", createdSec.activeTab === 0);
 }
 
 console.log(`\n${ok} passed, ${fail} failed`);

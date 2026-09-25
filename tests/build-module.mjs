@@ -10,7 +10,8 @@ const EXPORTS = [
   "esc", "removeControlsByName", "renameClone", "walkControls", "attach", "pasteComponents",
   "copySelectedComponents", "doUndo", "openTabContextMenu", "renderObjectInspector", "ATTACHED",
   "writeWidget", "autoLayout", "dropArmedTool", "addItemToSegment", "OUTPUTS", "openInspector",
-  "alignInspectorToTarget", "enterSuper", "exitSuper", "ssInnerGraph",
+  "alignInspectorToTarget", "enterSuper", "exitSuper", "ssInnerGraph", "getContiguousRow",
+  "widthForCount", "createNewZone",
 ];
 
 let src = fs.readFileSync(SRC, "utf8");

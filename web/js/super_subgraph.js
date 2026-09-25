@@ -4785,21 +4785,59 @@ function snapWidth(ratio, isShift) {
   return `${Math.max(15, Math.min(100, snapped))}%`;
 }
 
+/** Obtém o grupo contíguo de seções que compartilham a mesma linha (larguras < 100%). */
+function getContiguousRow(sections, idx) {
+  if (!Array.isArray(sections) || idx < 0 || idx >= sections.length) return [];
+  const sec = sections[idx];
+  if (!sec || !sec.width || sec.width === "100%") return sec ? [sec] : [];
+  let start = idx;
+  while (start > 0 && sections[start - 1].width && sections[start - 1].width !== "100%") {
+    start--;
+  }
+  let end = idx;
+  while (end < sections.length - 1 && sections[end + 1].width && sections[end + 1].width !== "100%") {
+    end++;
+  }
+  return sections.slice(start, end + 1);
+}
+
+/** Calcula a largura percentual proporcional para N seções lado a lado. */
+function widthForCount(count) {
+  if (count <= 1) return "100%";
+  if (count === 2) return "50%";
+  if (count === 3) return "33.3%";
+  if (count === 4) return "25%";
+  return `${(100 / count).toFixed(1)}%`;
+}
+
 /** Determina a direção de drop 4-Way (top, bottom, left, right) com base na posição do cursor. */
 function getDropDirection(e, rect) {
-  const relX = (e.clientX - rect.left) / Math.max(1, rect.width);
-  const relY = (e.clientY - rect.top) / Math.max(1, rect.height);
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const w = Math.max(1, rect.width);
+  const h = Math.max(1, rect.height);
 
-  // Bordas laterais claras (< 35% ou > 65%) indicam intenção de posicionar lado a lado
-  if (relX > 0.65) return "right";
+  const relX = x / w;
+  const relY = y / h;
+
+  // Se estiver claramente no topo ou na base (25% superior ou inferior)
+  if (relY < 0.25) return "top";
+  if (relY > 0.75) return "bottom";
+
+  // Se estiver nas laterais (35% esquerda ou direita)
   if (relX < 0.35) return "left";
+  if (relX > 0.65) return "right";
 
-  // Faixa vertical (topo ou base)
-  if (relY < 0.35) return "top";
-  if (relY > 0.65) return "bottom";
-
-  // Miolo: divide pela metade horizontal
-  return relX > 0.5 ? "right" : "left";
+  // Miolo: divide pelos quadrantes diagonais
+  const distL = relX;
+  const distR = 1 - relX;
+  const distT = relY;
+  const distB = 1 - relY;
+  const minD = Math.min(distL, distR, distT, distB);
+  if (minD === distL) return "left";
+  if (minD === distR) return "right";
+  if (minD === distT) return "top";
+  return "bottom";
 }
 
 /** Diálogo modal Inspetor de Propriedades para configurar componentes. */
@@ -7014,117 +7052,28 @@ function openComponentContextMenu(e, host, state, ctrl, list) {
   return openLegoContextMenu(e, entries);
 }
 
-/** Diálogo modal para adicionar uma nova Zona (Seção). */
-function openAddZoneModal({ host, curTab, state }) {
-  document.querySelector(".lego-ins-backdrop")?.remove();
-
-  const backdrop = el("div", "lego-ins-backdrop");
-  backdrop.addEventListener("pointerdown", eatPointer);
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) backdrop.remove();
-  });
-
-  const modal = el("div", "lego-inspector");
-  modal.style.maxWidth = "440px";
-  modal.addEventListener("click", (e) => e.stopPropagation());
-
-  const head = el("div", "lego-ins-header");
-  head.append(el("div", "lego-ins-title", "NEW ZONE"), glyphBtn("lego-iconbtn", "close", 13));
-  head.querySelector("button").addEventListener("click", () => backdrop.remove());
-  modal.append(head);
-
-  const body = el("div", "lego-ins-body");
-
-  // Nome da Zona
-  const fName = el("div", "lego-ins-field");
-  fName.append(el("label", null, "New Zone Name:"));
-  const inName = el("input", "lego-in");
-  inName.value = `ZONE ${(curTab.sections || []).length + 1}`;
-  inName.placeholder = "Ex: MODELS & CHECKPOINTS, SAMPLING, LORAS...";
-  inName.addEventListener("keydown", (e) => e.stopPropagation());
-  fName.append(inName);
-  body.append(fName);
-
-  // Largura inicial do Card
-  const fWidth = el("div", "lego-ins-field");
-  fWidth.append(el("label", null, "Initial Card Width:"));
-  const selWidth = el("select", "lego-in");
-  const widths = [
-    { id: "100%", label: "100% — Full width" },
-    { id: "50%", label: "50% — Half width (side by side)" },
-    { id: "33%", label: "33% — One third (3 per row)" },
-    { id: "25%", label: "25% — One quarter (4 per row)" },
-    { id: "66%", label: "66% — Two thirds" },
-    { id: "75%", label: "75% — Three quarters" },
-  ];
-  for (const w of widths) {
-    const opt = el("option", null, w.label);
-    opt.value = w.id;
-    selWidth.append(opt);
-  }
-  fWidth.append(selWidth);
-  body.append(fWidth);
-
-  // Modo Especial (Opcional)
-  const fSpecial = el("div", "lego-ins-field");
-  fSpecial.append(el("label", null, "Special Layout (Optional):"));
-  const selSpecial = el("select", "lego-in");
-  const specials = [
-    { id: "normal", label: "Standard (Flexible Card with Components)" },
-    { id: "grid3", label: "Image Grid (3×3 Grid)" },
-    { id: "tabs", label: "Panel with Internal Sub-Tabs" },
-  ];
-  for (const s of specials) {
-    const opt = el("option", null, s.label);
-    opt.value = s.id;
-    selSpecial.append(opt);
-  }
-  fSpecial.append(selSpecial);
-  body.append(fSpecial);
-
-  modal.append(body);
-
-  const foot = el("div", "lego-ins-footer");
-  const btnCancel = el("button", "lego-btn", "Cancel");
-  btnCancel.addEventListener("click", () => backdrop.remove());
-
-  const btnCreate = glyphTextBtn("lego-btn lego-btn-primary", "plus", "Create zone", 14);
-  btnCreate.addEventListener("click", () => {
-    const name = inName.value.trim().toUpperCase() || "NEW ZONE";
-    const chosenWidth = selWidth.value;
-    const chosenSpecial = selSpecial.value;
-
-    const newSec = {
-      header: name,
-      width: chosenWidth,
-      controls: []
-    };
-
-    if (chosenSpecial === "grid3") {
-      newSec.grid = 3;
-    } else if (chosenSpecial === "tabs") {
-      delete newSec.controls;
-      newSec.activeTab = 0;
-      newSec.tabs = [
-        { name: "Tab 1", controls: [] },
-        { name: "Tab 2", controls: [] }
-      ];
-    }
-
-    if (!curTab.sections) curTab.sections = [];
-    curTab.sections.push(newSec);
-
-    backdrop.remove();
-    state.refresh();
-  });
-
-  foot.append(btnCancel, btnCreate);
-  modal.append(foot);
-
-  backdrop.append(modal);
-  document.body.append(backdrop);
-  inName.focus();
+/** Cria uma nova Zona (com sub-abas internas como padrão e largura 100%). */
+function createNewZone({ host, curTab, state }) {
+  if (!curTab) return;
+  const count = (curTab.sections || []).length + 1;
+  const name = prompt("New Zone Name:", `ZONE ${count}`);
+  if (name == null) return;
+  const zoneName = (name.trim() || `ZONE ${count}`).toUpperCase();
+  pushUndo(host);
+  const newSec = {
+    header: zoneName,
+    width: "100%",
+    activeTab: 0,
+    tabs: [
+      { name: "Tab 1", controls: [] },
+      { name: "Tab 2", controls: [] }
+    ]
+  };
+  if (!curTab.sections) curTab.sections = [];
+  curTab.sections.push(newSec);
+  state.refresh();
 }
+const openAddZoneModal = createNewZone;
 
 /* ══════════════════════════════════════════════════════════════════════════
    FORM MODE (Delphi 7 style)
@@ -8669,7 +8618,18 @@ function buildCard(host, state) {
           onAdd: () => {
             const v = prompt("New tab name:", `Tab ${tabs.length + 1}`);
             if (!v) return;
-            tabs.push({ name: v, sections: [{ header: v.toUpperCase(), controls: [] }] });
+            tabs.push({
+              name: v,
+              sections: [{
+                header: v.toUpperCase(),
+                width: "100%",
+                activeTab: 0,
+                tabs: [
+                  { name: "Tab 1", controls: [] },
+                  { name: "Tab 2", controls: [] }
+                ]
+              }]
+            });
             layout.activeTab = tabs.length - 1;
             state.refresh();
           }
@@ -8687,7 +8647,18 @@ function buildCard(host, state) {
         e.stopPropagation();
         const v = prompt("New tab name:", `Tab ${tabs.length + 1}`);
         if (!v) return;
-        tabs.push({ name: v, sections: [{ header: v.toUpperCase(), controls: [] }] });
+        tabs.push({
+          name: v,
+          sections: [{
+            header: v.toUpperCase(),
+            width: "100%",
+            activeTab: 0,
+            tabs: [
+              { name: "Tab 1", controls: [] },
+              { name: "Tab 2", controls: [] }
+            ]
+          }]
+        });
         layout.activeTab = tabs.length - 1;
         state.refresh();
       });
@@ -8776,26 +8747,38 @@ function buildCard(host, state) {
 
           pushUndo(host);
           const fromIdx = state.draggingSection.fromIndex;
-          const moved = sections.splice(fromIdx, 1)[0];
+          const moved = sections[fromIdx];
           state.draggingSection = null;
+          if (!moved || moved === s) return;
 
+          // 1. Identifica os vizinhos de linha da posição original e reequilibra
+          const oldRow = getContiguousRow(sections, fromIdx);
+          sections.splice(fromIdx, 1);
+          const oldRem = oldRow.filter((x) => x !== moved);
+          if (oldRem.length) {
+            const oldW = widthForCount(oldRem.length);
+            oldRem.forEach((x) => { x.width = oldW; });
+          }
+
+          // 2. Insere na nova posição conforme a direção de encaixe (4-Way)
           const targetIdx = sections.indexOf(s);
-
           if (dir === "left" || dir === "right") {
-            // LADO A LADO: só define 50% se não houver dimensão customizada
-            if (!s.width || s.width === "100%") s.width = "50%";
-            if (!moved.width || moved.width === "100%") moved.width = "50%";
+            // LADO A LADO: junta à linha do card alvo
+            const targetRow = getContiguousRow(sections, targetIdx);
+            const isTargetAlone = !s.width || s.width === "100%";
             const insertIdx = (dir === "right") ? targetIdx + 1 : targetIdx;
             sections.splice(insertIdx, 0, moved);
+
+            const newRow = isTargetAlone ? [s, moved] : [...targetRow, moved];
+            const newW = widthForCount(newRow.length);
+            newRow.forEach((x) => { x.width = newW; });
           } else if (dir === "top") {
-            // EM CIMA (coluna vertical): restaura para 100% apenas se estavam no 50% padrão
-            if (!moved.width || moved.width === "50%") moved.width = "100%";
-            if (s.width === "50%") s.width = "100%";
+            // EM CIMA: vira uma linha própria (100% de largura)
+            moved.width = "100%";
             sections.splice(targetIdx, 0, moved);
           } else {
-            // EM BAIXO (coluna vertical): restaura para 100% apenas se estavam no 50% padrão
-            if (!moved.width || moved.width === "50%") moved.width = "100%";
-            if (s.width === "50%") s.width = "100%";
+            // EM BAIXO: vira uma linha própria (100% de largura)
+            moved.width = "100%";
             sections.splice(targetIdx + 1, 0, moved);
           }
 
@@ -8945,33 +8928,6 @@ function buildCard(host, state) {
         });
         actions.append(colorBtn);
 
-        // Largura do Card (100%, 50%, 33%, etc.)
-        const widthBtn = el("button", "lego-iconbtn");
-        widthBtn.innerHTML = glyph("hgroup", 12);
-        const curWidthLabel = s.width || "100%";
-        widthBtn.title = `Card width: ${curWidthLabel} (click to change)`;
-        widthBtn.addEventListener("pointerdown", eatPointer);
-        widthBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const WIDTH_OPTIONS = [
-            { id: "100%", label: "100% — Full width" },
-            { id: "50%", label: "50% — Half (side by side, 2 per row)" },
-            { id: "33.3%", label: "33% — One third (3 per row)" },
-            { id: "25%", label: "25% — One quarter (4 per row)" },
-            { id: "66.7%", label: "66% — Two thirds" },
-            { id: "75%", label: "75% — Three quarters" },
-          ];
-          const curOpt = WIDTH_OPTIONS.find((o) => o.id === (s.width || "100%")) || WIDTH_OPTIONS[0];
-          openDropdown(widthBtn, WIDTH_OPTIONS.map((o) => o.label), curOpt.label, (_v, idx) => {
-            const opt = WIDTH_OPTIONS[idx];
-            if (!opt) return;
-            pushUndo(host);
-            s.width = opt.id;
-            state.refresh();
-          });
-        });
-        actions.append(widthBtn);
-
         // Mover para cima/lado
         if (sIdx > 0) {
           const upBtn = glyphBtn("lego-iconbtn", "up", 12);
@@ -9021,7 +8977,14 @@ function buildCard(host, state) {
             ? s.tabs.reduce((acc, tab) => acc + (tab.controls?.length || 0), 0)
             : (s.controls?.length || 0);
           if (totalCtrls && !confirm(`Delete card "${s.header}" and its ${totalCtrls} components?`)) return;
+          pushUndo(host);
+          const sRow = getContiguousRow(sections, sIdx);
           sections.splice(sIdx, 1);
+          const rem = sRow.filter((x) => x !== s);
+          if (rem.length) {
+            const w = widthForCount(rem.length);
+            rem.forEach((x) => { x.width = w; });
+          }
           state.refresh();
         });
         actions.append(delSec);
