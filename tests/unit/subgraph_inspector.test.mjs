@@ -532,5 +532,63 @@ const pivotOnlyNode = {
 const pReqW = M.requiredNodeWidth(pivotOnlyNode, null);
 t("requiredNodeWidth pivots strictly on first row without sub-row inflation", pReqW === 702 + 36);
 
+// Test sameUrl normalization
+const urlA = "/api/view?filename=nothing.png&type=input&subfolder=";
+const urlB = "http://127.0.0.1:8188/api/view?filename=nothing.png&type=input&subfolder=";
+t("sameUrl identifies relative and absolute ComfyUI URLs as identical", M.sameUrl(urlA, urlB));
+t("sameUrl returns true for empty/null comparisons", M.sameUrl("", null) && M.sameUrl(null, null));
+t("sameUrl returns false for genuinely different URLs", !M.sameUrl(urlA, "/api/view?filename=other.png"));
+
+// Test MEDIA_ELEMENT_CACHE and persistent DOM element reuse across card refreshes
+const mediaHostNode = {
+  id: 42,
+  title: "MediaHost",
+  size: [700, 400],
+  properties: {
+    ui_layout: {
+      schema: 2,
+      tabs: [{
+        name: "Tab 1",
+        sections: [{
+          header: "IMAGE SECTION",
+          width: "100%",
+          controls: [{
+            name: "ImageCtrl1",
+            kind: "media",
+            bind: "w_img",
+            w: 200,
+            h: 120
+          }]
+        }]
+      }]
+    }
+  },
+  widgets: [{
+    name: "w_img",
+    type: "combo",
+    value: "test_image.png",
+    options: { values: ["test_image.png"] }
+  }],
+  addDOMWidget(name, type, element) {
+    this.domElement = element;
+    return { name, type, element };
+  },
+  setSize() {},
+  computeSize() { return [700, 400]; }
+};
+
+const mediaState = M.attach(mediaHostNode);
+const firstImgEl = mediaHostNode.domElement.querySelector(".lego-media-thumb img");
+const firstPhEl = mediaHostNode.domElement.querySelector(".lego-media-thumb div");
+t("media control renders img element", !!firstImgEl);
+t("initial img element has display block (no initial flash)", firstImgEl?.style?.display === "block");
+t("initial placeholder has display none when image is present", firstPhEl?.style?.display === "none");
+
+// Now trigger state.refresh() as happens on every switch/tab interaction
+mediaState.refresh();
+const refreshedImgEl = mediaHostNode.domElement.querySelector(".lego-media-thumb img");
+t("MEDIA_ELEMENT_CACHE reuses the exact same img DOM element across card refreshes", refreshedImgEl === firstImgEl);
+t("reused img element maintains display block without placeholder flash", refreshedImgEl?.style?.display === "block");
+
 console.log(`\n${ok} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

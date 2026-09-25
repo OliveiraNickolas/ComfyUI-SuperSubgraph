@@ -1473,6 +1473,25 @@ function mkButton(node, w, ctrl) {
 /* ── Media grid ─────────────────────────────────────────────────────────── */
 
 const MEDIA_VERSIONS = new Map();
+const MEDIA_ELEMENT_CACHE = new Map();
+
+/** Compara duas URLs normalizando caminhos relativos para evitar reatribuições redundantes. */
+function sameUrl(a, b) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  if (a === b) return true;
+  try {
+    let base = "http://127.0.0.1:8188/";
+    if (typeof location !== "undefined" && location?.origin && location.origin !== "null" && !location.origin.startsWith("about:")) {
+      base = location.origin + "/";
+    }
+    const ua = new URL(a, base);
+    const ub = new URL(b, base);
+    return ua.pathname === ub.pathname && ua.search === ub.search;
+  } catch {
+    return a === b;
+  }
+}
 
 function viewURL(name, bust = false) {
   // O Mask Editor grava "clipspace/clipspace-mask-123.png [input]": o sufixo
@@ -1560,18 +1579,32 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
   const thumb = el("div", "lego-media-thumb");
   thumb.title = `Click or drag a ${mediaTypeName} file here`;
 
+  const hostId = state?.hostNode?.id || node?.id || "h";
+  const ctrlKey = ctrl?.name || ctrl?.bind || (ctrl?.id != null ? String(ctrl.id) : "") || (w ? w.name : "media");
+  const cacheKey = `${hostId}:${node?.id || "n"}:${ctrlKey}`;
+
+  let cached = MEDIA_ELEMENT_CACHE.get(cacheKey);
+  if (cached && cached.kind !== mediaTypeName) {
+    cached = null;
+  }
+
   let img, video, audioEl, audioWrap, playBtn;
 
   if (isVideo) {
-    video = el("video");
-    video.muted = true;
-    video.playsInline = true;
-    video.loop = true;
-    video.preload = "metadata";
-    video.style.display = "none";
-    video.style.width = "100%";
-    video.style.height = "100%";
-    video.style.objectFit = "cover";
+    if (cached?.video) {
+      video = cached.video;
+    } else {
+      video = el("video");
+      video.muted = true;
+      video.playsInline = true;
+      video.loop = true;
+      video.preload = "metadata";
+      video.style.width = "100%";
+      video.style.height = "100%";
+      video.style.objectFit = "cover";
+      cached = { kind: "video", video, lastLoadedUrl: "" };
+      MEDIA_ELEMENT_CACHE.set(cacheKey, cached);
+    }
 
     thumb.addEventListener("mouseenter", () => {
       if (video.src && video.style.display !== "none") {
@@ -1584,146 +1617,195 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
       }
     });
   } else if (isAudio) {
-    audioEl = el("audio");
-    audioEl.preload = "metadata";
+    if (cached?.audioEl && cached?.audioWrap) {
+      audioEl = cached.audioEl;
+      audioWrap = cached.audioWrap;
+      playBtn = cached.playBtn;
+    } else {
+      audioEl = el("audio");
+      audioEl.preload = "metadata";
 
-    audioWrap = el("div", "lego-audio-player");
-    audioWrap.style.display = "none";
-    audioWrap.addEventListener("pointerdown", eatPointer);
+      audioWrap = el("div", "lego-audio-player");
+      audioWrap.style.display = "none";
+      audioWrap.addEventListener("pointerdown", eatPointer);
 
-    // 1. Equalizador / Visualizador de Ondas Sonoras
-    const vis = el("div", "lego-audio-visualizer");
-    const barHeights = [25, 45, 80, 60, 95, 40, 70, 85, 30, 65, 90, 50, 75, 100, 55, 35, 70, 45, 80, 30];
-    barHeights.forEach((h, idx) => {
-      const b = el("div", "lego-audio-vbar");
-      b.style.height = `${Math.round(h * 0.22)}px`;
-      b.style.animationDelay = `${(idx * 0.04).toFixed(2)}s`;
-      vis.append(b);
-    });
+      // 1. Equalizador / Visualizador de Ondas Sonoras
+      const vis = el("div", "lego-audio-visualizer");
+      const barHeights = [25, 45, 80, 60, 95, 40, 70, 85, 30, 65, 90, 50, 75, 100, 55, 35, 70, 45, 80, 30];
+      barHeights.forEach((h, idx) => {
+        const b = el("div", "lego-audio-vbar");
+        b.style.height = `${Math.round(h * 0.22)}px`;
+        b.style.animationDelay = `${(idx * 0.04).toFixed(2)}s`;
+        vis.append(b);
+      });
 
-    // 2. Linha de Controles: Play + Timeline + Tempo
-    const ctrlRow = el("div", "lego-audio-controls");
+      // 2. Linha de Controles: Play + Timeline + Tempo
+      const ctrlRow = el("div", "lego-audio-controls");
 
-    playBtn = el("div", "lego-audio-play-btn");
-    playBtn.innerHTML = glyph("play", 13);
-    playBtn.title = "Play / Pause";
-    playBtn.addEventListener("pointerdown", eatPointer);
+      playBtn = el("div", "lego-audio-play-btn");
+      playBtn.innerHTML = glyph("play", 13);
+      playBtn.title = "Play / Pause";
+      playBtn.addEventListener("pointerdown", eatPointer);
 
-    const timeline = el("div", "lego-audio-timeline");
-    timeline.title = "Click or drag to seek";
-    timeline.addEventListener("pointerdown", eatPointer);
-    const rail = el("div", "lego-audio-rail");
-    const prog = el("div", "lego-audio-progress");
-    rail.append(prog);
-    const knob = el("div", "lego-audio-knob");
-    timeline.append(rail, knob);
+      const timeline = el("div", "lego-audio-timeline");
+      timeline.title = "Click or drag to seek";
+      timeline.addEventListener("pointerdown", eatPointer);
+      const rail = el("div", "lego-audio-rail");
+      const prog = el("div", "lego-audio-progress");
+      rail.append(prog);
+      const knob = el("div", "lego-audio-knob");
+      timeline.append(rail, knob);
 
-    const timeLabel = el("div", "lego-audio-time", "0:00 / 0:00");
+      const timeLabel = el("div", "lego-audio-time", "0:00 / 0:00");
 
-    ctrlRow.append(playBtn, timeline, timeLabel);
-    audioWrap.append(vis, ctrlRow);
+      ctrlRow.append(playBtn, timeline, timeLabel);
+      audioWrap.append(vis, ctrlRow);
 
-    const formatAudioTime = (s) => {
-      if (!s || isNaN(s) || !Number.isFinite(s) || s < 0) return "0:00";
-      const m = Math.floor(s / 60);
-      const sec = Math.floor(s % 60);
-      return `${m}:${sec < 10 ? "0" : ""}${sec}`;
-    };
+      const formatAudioTime = (s) => {
+        if (!s || isNaN(s) || !Number.isFinite(s) || s < 0) return "0:00";
+        const m = Math.floor(s / 60);
+        const sec = Math.floor(s % 60);
+        return `${m}:${sec < 10 ? "0" : ""}${sec}`;
+      };
 
-    const updateTimes = () => {
-      const cur = audioEl.currentTime || 0;
-      const dur = audioEl.duration || 0;
-      timeLabel.textContent = `${formatAudioTime(cur)} / ${formatAudioTime(dur)}`;
-    };
+      const updateTimes = () => {
+        const cur = audioEl.currentTime || 0;
+        const dur = audioEl.duration || 0;
+        timeLabel.textContent = `${formatAudioTime(cur)} / ${formatAudioTime(dur)}`;
+      };
 
-    let isSeeking = false;
-    const seekTo = (e) => {
-      const rect = timeline.getBoundingClientRect();
-      if (rect.width <= 0) return;
-      const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-      const pct = Math.max(0, Math.min(1, x / rect.width));
-      prog.style.width = `${pct * 100}%`;
-      knob.style.left = `${pct * 100}%`;
-      if (audioEl.duration && Number.isFinite(audioEl.duration)) {
-        audioEl.currentTime = pct * audioEl.duration;
+      let isSeeking = false;
+      const seekTo = (e) => {
+        const rect = timeline.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const pct = Math.max(0, Math.min(1, x / rect.width));
+        prog.style.width = `${pct * 100}%`;
+        knob.style.left = `${pct * 100}%`;
+        if (audioEl.duration && Number.isFinite(audioEl.duration)) {
+          audioEl.currentTime = pct * audioEl.duration;
+          updateTimes();
+        }
+      };
+
+      timeline.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        isSeeking = true;
+        timeline.classList.add("dragging");
+        seekTo(e);
+
+        const onPointerMove = (ev) => {
+          ev.stopPropagation();
+          seekTo(ev);
+        };
+        const onPointerUp = (ev) => {
+          ev?.stopPropagation();
+          isSeeking = false;
+          timeline.classList.remove("dragging");
+          window.removeEventListener("pointermove", onPointerMove, true);
+          window.removeEventListener("pointerup", onPointerUp, true);
+        };
+
+        window.addEventListener("pointermove", onPointerMove, true);
+        window.addEventListener("pointerup", onPointerUp, true);
+      });
+
+      const toggleAudio = (e) => {
+        e?.stopPropagation();
+        e?.preventDefault();
+        if (!audioEl.src) return;
+        if (audioEl.paused) {
+          audioEl.play().catch((err) => console.warn(LOG, "Audio playback error:", err));
+        } else {
+          audioEl.pause();
+        }
+      };
+
+      playBtn.addEventListener("click", toggleAudio);
+
+      audioEl.addEventListener("loadedmetadata", updateTimes);
+      audioEl.addEventListener("durationchange", updateTimes);
+      audioEl.addEventListener("timeupdate", () => {
+        if (isSeeking) return;
+        const cur = audioEl.currentTime || 0;
+        const dur = audioEl.duration || 0;
+        const pct = (dur > 0 && Number.isFinite(dur)) ? (cur / dur) * 100 : 0;
+        prog.style.width = `${pct}%`;
+        knob.style.left = `${pct}%`;
         updateTimes();
-      }
-    };
+      });
+      audioEl.addEventListener("play", () => {
+        playBtn.innerHTML = glyph("pause", 13);
+        audioWrap.classList.add("playing");
+      });
+      audioEl.addEventListener("pause", () => {
+        playBtn.innerHTML = glyph("play", 13);
+        audioWrap.classList.remove("playing");
+      });
+      audioEl.addEventListener("ended", () => {
+        playBtn.innerHTML = glyph("play", 13);
+        audioWrap.classList.remove("playing");
+        prog.style.width = "0%";
+        knob.style.left = "0%";
+        audioEl.currentTime = 0;
+        updateTimes();
+      });
 
-    timeline.addEventListener("pointerdown", (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      isSeeking = true;
-      timeline.classList.add("dragging");
-      seekTo(e);
-
-      const onPointerMove = (ev) => {
-        ev.stopPropagation();
-        seekTo(ev);
-      };
-      const onPointerUp = (ev) => {
-        ev?.stopPropagation();
-        isSeeking = false;
-        timeline.classList.remove("dragging");
-        window.removeEventListener("pointermove", onPointerMove, true);
-        window.removeEventListener("pointerup", onPointerUp, true);
-      };
-
-      window.addEventListener("pointermove", onPointerMove, true);
-      window.addEventListener("pointerup", onPointerUp, true);
-    });
-
-    const toggleAudio = (e) => {
-      e?.stopPropagation();
-      e?.preventDefault();
-      if (!audioEl.src) return;
-      if (audioEl.paused) {
-        audioEl.play().catch((err) => console.warn(LOG, "Audio playback error:", err));
-      } else {
-        audioEl.pause();
-      }
-    };
-
-    playBtn.addEventListener("click", toggleAudio);
-
-    audioEl.addEventListener("loadedmetadata", updateTimes);
-    audioEl.addEventListener("durationchange", updateTimes);
-    audioEl.addEventListener("timeupdate", () => {
-      if (isSeeking) return;
-      const cur = audioEl.currentTime || 0;
-      const dur = audioEl.duration || 0;
-      const pct = (dur > 0 && Number.isFinite(dur)) ? (cur / dur) * 100 : 0;
-      prog.style.width = `${pct}%`;
-      knob.style.left = `${pct}%`;
-      updateTimes();
-    });
-    audioEl.addEventListener("play", () => {
-      playBtn.innerHTML = glyph("pause", 13);
-      audioWrap.classList.add("playing");
-    });
-    audioEl.addEventListener("pause", () => {
-      playBtn.innerHTML = glyph("play", 13);
-      audioWrap.classList.remove("playing");
-    });
-    audioEl.addEventListener("ended", () => {
-      playBtn.innerHTML = glyph("play", 13);
-      audioWrap.classList.remove("playing");
-      prog.style.width = "0%";
-      knob.style.left = "0%";
-      audioEl.currentTime = 0;
-      updateTimes();
-    });
+      cached = { kind: "audio", audioEl, audioWrap, playBtn, lastLoadedUrl: "" };
+      MEDIA_ELEMENT_CACHE.set(cacheKey, cached);
+    }
   } else {
-    img = el("img");
-    img.style.display = "none";
+    if (cached?.img) {
+      img = cached.img;
+    } else {
+      img = el("img");
+      cached = { kind: "image", img, lastLoadedUrl: "" };
+      MEDIA_ELEMENT_CACHE.set(cacheKey, cached);
+    }
   }
 
+  // Define os estados visuais antes da inserção no DOM para eliminar qualquer flash
+  let initialVal = w?.value;
+  if ((!initialVal || typeof initialVal !== "string") && Array.isArray(node?.imgs) && node.imgs.length > 0) {
+    const firstImg = node.imgs[0];
+    if (firstImg) {
+      initialVal = firstImg.src || firstImg.filename || "";
+    }
+  }
+  const hasInitialVal = !!(initialVal && typeof initialVal === "string");
+  const initialUrl = hasInitialVal
+    ? (initialVal.startsWith("http") || initialVal.startsWith("data:") || initialVal.startsWith("/") ? initialVal : viewURL(initialVal))
+    : "";
+
   const ph = el("div");
-  ph.style.display = "flex";
   ph.style.flexDirection = "column";
   ph.style.alignItems = "center";
   ph.style.justifyContent = "center";
   ph.innerHTML = `<span class="lego-glyph-wrap" style="opacity:0.4;">${glyph(mediaGlyph, 30)}</span><span class="lego-media-ph-hint" style="font-size:11px;opacity:0.6;margin-top:6px;font-weight:500;">Drop or click to load ${mediaTypeName}</span>`;
+
+  if (hasInitialVal) {
+    ph.style.display = "none";
+    if (isVideo) {
+      video.style.display = "block";
+      if (!sameUrl(video.src, initialUrl)) video.src = initialUrl;
+    } else if (isAudio) {
+      audioWrap.style.display = "flex";
+      if (!sameUrl(audioEl.src, initialUrl)) audioEl.src = initialUrl;
+    } else {
+      img.style.display = "block";
+      if (!sameUrl(img.src, initialUrl)) img.src = initialUrl;
+    }
+  } else {
+    ph.style.display = "flex";
+    if (isVideo) {
+      video.style.display = "none";
+    } else if (isAudio) {
+      audioWrap.style.display = "none";
+    } else {
+      img.style.display = "none";
+    }
+  }
 
   if (isVideo) {
     thumb.append(video, ph);
@@ -1733,7 +1815,7 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
     thumb.append(img, ph);
   }
 
-  let lastLoadedUrl = "";
+  let lastLoadedUrl = cached?.lastLoadedUrl || initialUrl;
   const updateThumb = (bust = false) => {
     let val = w?.value;
     if ((!val || typeof val !== "string") && Array.isArray(node?.imgs) && node.imgs.length > 0) {
@@ -1744,12 +1826,13 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
     }
     if (val && typeof val === "string") {
       const url = val.startsWith("http") || val.startsWith("data:") || val.startsWith("/") ? val : viewURL(val, bust);
-      if (url === lastLoadedUrl && !bust) {
+      if (sameUrl(url, lastLoadedUrl) && !bust) {
         return;
       }
       lastLoadedUrl = url;
+      if (cached) cached.lastLoadedUrl = url;
       if (isVideo) {
-        if (video.src !== url) video.src = url;
+        if (!sameUrl(video.src, url)) video.src = url;
         video.style.display = "block";
         ph.style.display = "none";
         video.onerror = () => {
@@ -1757,7 +1840,7 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
           ph.style.display = "flex";
         };
       } else if (isAudio) {
-        if (audioEl.src !== url) audioEl.src = url;
+        if (!sameUrl(audioEl.src, url)) audioEl.src = url;
         audioWrap.style.display = "flex";
         ph.style.display = "none";
         audioEl.onerror = () => {
@@ -1765,7 +1848,7 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
           ph.style.display = "flex";
         };
       } else {
-        if (img.src !== url) img.src = url;
+        if (!sameUrl(img.src, url)) img.src = url;
         img.style.display = "block";
         ph.style.display = "none";
         img.onerror = () => {
@@ -1775,6 +1858,7 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
       }
     } else {
       lastLoadedUrl = "";
+      if (cached) cached.lastLoadedUrl = "";
       if (isVideo) {
         video.style.display = "none";
         video.removeAttribute("src");
@@ -2198,6 +2282,8 @@ function openOutputSourceDialog(host, ctrl, state, list) {
   });
 }
 
+const OUTPUT_VIEW_CACHE = new Map();
+
 /** A área que mostra o output: imagem, vídeo ou áudio, com navegação no lote. */
 function mkOutputView(host, ctrl, state) {
   const media = OUTPUT_KINDS[ctrl.kind] || "image";
@@ -2212,15 +2298,20 @@ function mkOutputView(host, ctrl, state) {
   bar.append(prev, count, next);
   box.append(stage, bar);
 
-  let files = [];
-  let seq = 0;
-  let idx = 0;
-  let sig = null;
+  const outKey = `${host?.id || "h"}:${ctrl?.name || ctrl?.id || ctrl?.kind || "out"}`;
+  const cachedOut = OUTPUT_VIEW_CACHE.get(outKey);
+  let files = cachedOut?.files || [];
+  let seq = cachedOut?.seq || 0;
+  let idx = cachedOut?.idx || 0;
+  let sig = cachedOut?.sig ?? null;
+  let cachedEl = cachedOut?.el || null;
 
   const render = () => {
     stage.replaceChildren();
     bar.style.display = files.length > 1 ? "" : "none";
     if (!files.length) {
+      cachedEl = null;
+      if (OUTPUT_VIEW_CACHE.has(outKey)) OUTPUT_VIEW_CACHE.delete(outKey);
       const empty = el("div", "lego-out-empty");
       empty.append(glyphEl(media === "image" ? "media" : media, 26));
       empty.append(el("span", null, `No ${media} output yet — run the workflow`));
@@ -2233,34 +2324,50 @@ function mkOutputView(host, ctrl, state) {
     const url = outputURL(f, seq);
     stage.title = f.filename;
     if (media === "video") {
-      const v = el("video");
-      v.src = url;
-      v.controls = true;
-      v.loop = true;
-      v.muted = true;
-      v.autoplay = true;
-      v.playsInline = true;
+      let v = cachedEl;
+      if (!v || v.tagName?.toLowerCase() !== "video" || !sameUrl(v.src, url)) {
+        v = el("video");
+        v.src = url;
+        v.controls = true;
+        v.loop = true;
+        v.muted = true;
+        v.autoplay = true;
+        v.playsInline = true;
+        cachedEl = v;
+      }
       stage.append(v);
     } else if (media === "audio") {
-      const a = el("audio");
-      a.src = url;
-      a.controls = true;
-      a.preload = "metadata";
+      let a = cachedEl;
+      if (!a || a.tagName?.toLowerCase() !== "audio" || !sameUrl(a.src, url)) {
+        a = el("audio");
+        a.src = url;
+        a.controls = true;
+        a.preload = "metadata";
+        cachedEl = a;
+      }
       stage.append(el("div", "lego-out-audio-name", f.filename), a);
     } else {
-      const img = el("img");
-      img.src = url;
-      img.alt = f.filename;
-      img.draggable = false;
-      img.addEventListener("click", () => { if (!state.edit) window.open(url, "_blank"); });
+      let img = cachedEl;
+      if (!img || img.tagName?.toLowerCase() !== "img" || !sameUrl(img.src, url)) {
+        img = el("img");
+        img.src = url;
+        img.alt = f.filename;
+        img.draggable = false;
+        img.addEventListener("click", () => { if (!state.edit) window.open(url, "_blank"); });
+        cachedEl = img;
+      }
       stage.append(img);
     }
+    OUTPUT_VIEW_CACHE.set(outKey, { files, seq, idx, sig, el: cachedEl });
   };
 
   const update = () => {
     const res = latestOutputFor(host, ctrl, media);
     const nextSig = res ? `${res.key}#${res.seq}` : "";
-    if (nextSig === sig) return;   // nada novo: não recarrega a mídia
+    if (nextSig === sig && cachedEl && files.length) {
+      render();
+      return;
+    }
     sig = nextSig;
     files = res ? res.files : [];
     seq = res ? res.seq : 0;
@@ -10556,6 +10663,7 @@ function attach(node) {
 
   let lastObservedH = 0;
   const state = {
+    hostNode: node,
     edit: false,
     dragging: null,
     armedTool: null,   // ferramenta da paleta esperando um clique no formulário

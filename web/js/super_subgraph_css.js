@@ -1458,7 +1458,7 @@ textarea.lego-in{resize:vertical;min-height:75px;font-family:ui-monospace,SFMono
   justify-content: center;
   cursor: pointer;
   position: relative;
-  transition: all .15s ease;
+  transition: border-color .15s ease, box-shadow .15s ease;
   box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
 }
 .lego-media-box:not(.tall) .lego-media-thumb img,
@@ -1501,7 +1501,7 @@ textarea.lego-in{resize:vertical;min-height:75px;font-family:ui-monospace,SFMono
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all .15s ease;
+  transition: border-color .15s ease, box-shadow .15s ease;
   box-shadow: inset 0 2px 10px rgba(0,0,0,0.7);
 }
 .lego-media-box.tall .lego-media-thumb img,
