@@ -1466,7 +1466,9 @@ function mkButton(node, w, ctrl) {
 
 /* ── Media grid ─────────────────────────────────────────────────────────── */
 
-function viewURL(name) {
+const MEDIA_VERSIONS = new Map();
+
+function viewURL(name, bust = false) {
   // O Mask Editor grava "clipspace/clipspace-mask-123.png [input]": o sufixo
   // diz a pasta (input/output/temp) e não faz parte do nome do arquivo.
   let raw = String(name || "");
@@ -1476,8 +1478,14 @@ function viewURL(name) {
   const i = raw.lastIndexOf("/");
   const sub = i > 0 ? raw.slice(0, i) : "";
   const file = i > 0 ? raw.slice(i + 1) : raw;
+  const cacheKey = `${type}/${sub}/${file}`;
+  if (bust) {
+    MEDIA_VERSIONS.set(cacheKey, Date.now());
+  }
+  const v = MEDIA_VERSIONS.get(cacheKey);
+  const vParam = v ? `&v=${v}` : "";
   return api.apiURL(
-    `/view?filename=${encodeURIComponent(file)}&type=${type}&subfolder=${encodeURIComponent(sub)}&rand=${Math.random()}`
+    `/view?filename=${encodeURIComponent(file)}&type=${type}&subfolder=${encodeURIComponent(sub)}${vParam}`
   );
 }
 
@@ -1526,6 +1534,7 @@ async function uploadTo(node, w, file) {
   const name = data.subfolder ? `${data.subfolder}/${data.name}` : data.name;
   const vals = w.options?.values;
   if (Array.isArray(vals) && !vals.includes(name)) vals.push(name);
+  viewURL(name, true);
   writeWidget(node, w, name);
   return name;
 }
@@ -1718,7 +1727,8 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
     thumb.append(img, ph);
   }
 
-  const updateThumb = () => {
+  let lastLoadedUrl = "";
+  const updateThumb = (bust = false) => {
     let val = w?.value;
     if ((!val || typeof val !== "string") && Array.isArray(node?.imgs) && node.imgs.length > 0) {
       const firstImg = node.imgs[0];
@@ -1727,9 +1737,13 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
       }
     }
     if (val && typeof val === "string") {
-      const url = val.startsWith("http") || val.startsWith("data:") || val.startsWith("/") ? val : viewURL(val);
+      const url = val.startsWith("http") || val.startsWith("data:") || val.startsWith("/") ? val : viewURL(val, bust);
+      if (url === lastLoadedUrl && !bust) {
+        return;
+      }
+      lastLoadedUrl = url;
       if (isVideo) {
-        video.src = url;
+        if (video.src !== url) video.src = url;
         video.style.display = "block";
         ph.style.display = "none";
         video.onerror = () => {
@@ -1737,7 +1751,7 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
           ph.style.display = "flex";
         };
       } else if (isAudio) {
-        audioEl.src = url;
+        if (audioEl.src !== url) audioEl.src = url;
         audioWrap.style.display = "flex";
         ph.style.display = "none";
         audioEl.onerror = () => {
@@ -1745,7 +1759,7 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
           ph.style.display = "flex";
         };
       } else {
-        img.src = url;
+        if (img.src !== url) img.src = url;
         img.style.display = "block";
         ph.style.display = "none";
         img.onerror = () => {
@@ -1754,6 +1768,7 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
         };
       }
     } else {
+      lastLoadedUrl = "";
       if (isVideo) {
         video.style.display = "none";
         video.removeAttribute("src");
@@ -1915,6 +1930,9 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
   }
 
   if (w && state?.watch) {
+    if (state.seen && !state.seen.has(w)) {
+      state.seen.set(w, w.value);
+    }
     state.watch(w, () => {
       populateOptions();
       updateThumb();

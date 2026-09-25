@@ -375,5 +375,15 @@ t("hostNode output connects to ejected node input", inner2.inputs[0].link != nul
 t("hostNode exposed input for inner3", hostNode.properties.ss_inner.inputs.length === 1);
 t("ejected node output connects to hostNode input", hostNode.inputs[0].link != null);
 
+// ── 9. TEST STABLE MEDIA VIEW URL (NO FLICKERING/RELOAD ON CARD USE) ──
+const url1 = M.viewURL("my_image.png");
+const url2 = M.viewURL("my_image.png");
+t("viewURL is stable across calls", url1 === url2);
+t("viewURL does not contain Math.random query param", !url1.includes("rand="));
+const urlBust = M.viewURL("my_image.png", true);
+t("viewURL supports explicit cache busting on upload/save", urlBust !== url1 && urlBust.includes("&v="));
+const urlBustRepeat = M.viewURL("my_image.png");
+t("viewURL maintains new version without regenerating random noise", urlBustRepeat === urlBust);
+
 console.log(`\n${ok} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

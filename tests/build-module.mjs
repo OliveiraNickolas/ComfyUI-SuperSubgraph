@@ -12,7 +12,7 @@ const EXPORTS = [
   "writeWidget", "autoLayout", "dropArmedTool", "addItemToSegment", "OUTPUTS", "openInspector",
   "alignInspectorToTarget", "enterSuper", "exitSuper", "ssInnerGraph", "getContiguousRow",
   "widthForCount", "createNewZone", "hookGraphAdd", "ensureSuperOutput", "ensureSuperInput",
-  "renameBoundaryIO", "quickOutNode", "quickOutNodes", "applySuperSlots",
+  "renameBoundaryIO", "quickOutNode", "quickOutNodes", "applySuperSlots", "viewURL",
 ];
 
 let src = fs.readFileSync(SRC, "utf8");
