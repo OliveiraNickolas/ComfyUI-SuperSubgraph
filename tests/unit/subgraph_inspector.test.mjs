@@ -181,6 +181,27 @@ if (groupRow) {
   t("control inspector shows Caption row", ctrlRows.includes("Caption"));
   t("control inspector shows Caption Position row", ctrlRows.includes("Caption Position"));
   t("control inspector does NOT show Header row", !ctrlRows.includes("Header"));
+
+  // ── 4. TEST SIDE-BY-SIDE ZONE LAYOUT & WIDTH CONTROLS ──
+  node.properties.ui_layout.tabs[0].sections = [
+    { header: "ZONE A", width: "50%", controls: [] },
+    { header: "ZONE B", width: "50%", controls: [] }
+  ];
+  st.refresh();
+
+  const secEls = node.__legoHost.querySelectorAll(".lego-sec");
+  t("renders two zone elements", secEls.length === 2);
+
+  const secA = secEls[0];
+  const secB = secEls[1];
+  t("zone A has width calc with gap offset", secA.style.width.includes("calc(50%"));
+  t("zone A flex basis matches calc", secA.style.flex.includes("calc(50%"));
+  t("zone A has maxWidth matching calc", secA.style.maxWidth.includes("calc(50%"));
+  t("zone B has width calc with gap offset", secB.style.width.includes("calc(50%"));
+
+  // Check card width action button
+  const widthBtns = node.__legoHost.querySelectorAll(".lego-sec-actions button[title*='Card width']");
+  t("each zone has a Card Width action button in edit mode", widthBtns.length === 2);
 }
 
 console.log(`\n${ok} passed, ${fail} failed`);

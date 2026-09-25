@@ -4758,7 +4758,7 @@ function widthToCss(w) {
   if (typeof w === "string" && w.endsWith("%")) {
     const pct = parseFloat(w);
     if (pct >= 100) return "100%";
-    const gapOffset = Math.max(1, Math.round(10 * (1 - pct / 100)));
+    const gapOffset = Math.ceil((1 - pct / 100) * 12 + 0.5);
     return `calc(${pct}% - ${gapOffset}px)`;
   }
   return w;
@@ -4790,13 +4790,16 @@ function getDropDirection(e, rect) {
   const relX = (e.clientX - rect.left) / Math.max(1, rect.width);
   const relY = (e.clientY - rect.top) / Math.max(1, rect.height);
 
-  // Bordas laterais (< 22% ou > 78%) indicam intenção de posicionar lado a lado
-  if (relX > 0.78) return "right";
-  if (relX < 0.22) return "left";
+  // Bordas laterais claras (< 35% ou > 65%) indicam intenção de posicionar lado a lado
+  if (relX > 0.65) return "right";
+  if (relX < 0.35) return "left";
 
-  // Área central (> 56% da largura) indica intenção vertical: coluna (cima ou baixo)
-  if (relY < 0.5) return "top";
-  return "bottom";
+  // Faixa vertical (topo ou base)
+  if (relY < 0.35) return "top";
+  if (relY > 0.65) return "bottom";
+
+  // Miolo: divide pela metade horizontal
+  return relX > 0.5 ? "right" : "left";
 }
 
 /** Diálogo modal Inspetor de Propriedades para configurar componentes. */
@@ -8715,8 +8718,11 @@ function buildCard(host, state) {
 
       // Aplica a largura do Card (100%, 50%, 33%, etc.) no container geral
       const secW = s.width || (s.w ? `${s.w}px` : "100%");
-      sec.style.width = widthToCss(secW);
-      sec.style.flex = `0 0 ${widthToCss(secW)}`;
+      const cssW = widthToCss(secW);
+      sec.style.width = cssW;
+      sec.style.flex = `0 0 ${cssW}`;
+      sec.style.maxWidth = cssW;
+      sec.style.boxSizing = "border-box";
 
       if (s.height) {
         sec.style.minHeight = s.height;
@@ -8768,6 +8774,7 @@ function buildCard(host, state) {
           const rect = sec.getBoundingClientRect();
           const dir = getDropDirection(e, rect);
 
+          pushUndo(host);
           const fromIdx = state.draggingSection.fromIndex;
           const moved = sections.splice(fromIdx, 1)[0];
           state.draggingSection = null;
@@ -8938,6 +8945,33 @@ function buildCard(host, state) {
         });
         actions.append(colorBtn);
 
+        // Largura do Card (100%, 50%, 33%, etc.)
+        const widthBtn = el("button", "lego-iconbtn");
+        widthBtn.innerHTML = glyph("hgroup", 12);
+        const curWidthLabel = s.width || "100%";
+        widthBtn.title = `Card width: ${curWidthLabel} (click to change)`;
+        widthBtn.addEventListener("pointerdown", eatPointer);
+        widthBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const WIDTH_OPTIONS = [
+            { id: "100%", label: "100% — Full width" },
+            { id: "50%", label: "50% — Half (side by side, 2 per row)" },
+            { id: "33.3%", label: "33% — One third (3 per row)" },
+            { id: "25%", label: "25% — One quarter (4 per row)" },
+            { id: "66.7%", label: "66% — Two thirds" },
+            { id: "75%", label: "75% — Three quarters" },
+          ];
+          const curOpt = WIDTH_OPTIONS.find((o) => o.id === (s.width || "100%")) || WIDTH_OPTIONS[0];
+          openDropdown(widthBtn, WIDTH_OPTIONS.map((o) => o.label), curOpt.label, (_v, idx) => {
+            const opt = WIDTH_OPTIONS[idx];
+            if (!opt) return;
+            pushUndo(host);
+            s.width = opt.id;
+            state.refresh();
+          });
+        });
+        actions.append(widthBtn);
+
         // Mover para cima/lado
         if (sIdx > 0) {
           const upBtn = glyphBtn("lego-iconbtn", "up", 12);
@@ -9018,12 +9052,14 @@ function buildCard(host, state) {
 
           const onMoveW = (ev) => {
             ev.stopPropagation();
-            const rawW = Math.max(220, Math.min(bodyW, origW + (ev.clientX - startClientX) / curScale));
-            const ratio = Math.max(0.2, Math.min(1.0, rawW / bodyW));
+            const rawW = Math.max(120, Math.min(bodyW, origW + (ev.clientX - startClientX) / curScale));
+            const ratio = Math.max(0.15, Math.min(1.0, rawW / bodyW));
             finalW = snapWidth(ratio, ev.shiftKey);
 
-            sec.style.width = widthToCss(finalW);
-            sec.style.flex = `0 0 ${widthToCss(finalW)}`;
+            const cssW = widthToCss(finalW);
+            sec.style.width = cssW;
+            sec.style.flex = `0 0 ${cssW}`;
+            sec.style.maxWidth = cssW;
           };
 
           const onUpW = (ev) => {

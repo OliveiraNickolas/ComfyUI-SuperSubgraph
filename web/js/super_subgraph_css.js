@@ -1036,7 +1036,7 @@ export const CSS = `
   background: var(--lego-panel);
   border: 1px solid var(--lego-line);
   box-sizing: border-box;
-  min-width: 240px;
+  min-width: 0;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   transition: border-color .15s, box-shadow .15s;
 }
