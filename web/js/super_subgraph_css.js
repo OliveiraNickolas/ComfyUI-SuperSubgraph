@@ -2960,6 +2960,110 @@ export const CSS_OUTPUT = `
 .lego-out-count{font-size:9px;color:var(--lego-dim);min-width:40px;text-align:center;font-variant-numeric:tabular-nums}
 .lego-out-caption{font-size:9.5px;font-weight:600;color:var(--lego-dim);flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lego-segment-item.kind-outimage,.lego-segment-item.kind-outvideo,.lego-segment-item.kind-outaudio{flex-direction:column;align-items:stretch}
+
+/* Media Censor / Hide Preview */
+.lego-media-thumb.is-censored > img,
+.lego-media-thumb.is-censored > video,
+.lego-out-stage.is-censored > img,
+.lego-out-stage.is-censored > video {
+  filter: blur(28px) grayscale(40%);
+  transform: scale(1.12);
+  pointer-events: none;
+}
+.lego-media-thumb.is-censored,
+.lego-out-stage.is-censored {
+  overflow: hidden !important;
+}
+.lego-media-censor-overlay,
+.lego-out-censor-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(18, 18, 24, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.85);
+  z-index: 5;
+  pointer-events: none;
+  user-select: none;
+}
+.lego-media-thumb.is-censored .lego-media-censor-overlay,
+.lego-out-stage.is-censored .lego-out-censor-overlay {
+  display: flex;
+}
+.lego-censor-icon {
+  opacity: 0.85;
+}
+.lego-censor-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+  text-transform: uppercase;
+}
+.lego-media-hide-btn,
+.lego-out-hide-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  z-index: 8;
+  transition: all 0.15s ease;
+}
+.lego-media-hide-btn:hover,
+.lego-out-hide-btn:hover {
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.lego-oi-toggle {
+  width: 34px;
+  height: 18px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  position: relative;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+}
+.lego-oi-toggle.on {
+  background: var(--lego-accent, #3b82f6);
+  border-color: var(--lego-accent, #3b82f6);
+}
+.lego-oi-toggle-knob {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+.lego-oi-toggle.on .lego-oi-toggle-knob {
+  transform: translateX(16px);
+}
+.lego-preview-override-box {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--lego-line);
+}
 `;
 
 /* Arraste entre grupos, zonas e sub-abas: feedback de entrada e saída */

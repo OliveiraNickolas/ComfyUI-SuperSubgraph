@@ -703,5 +703,86 @@ const colEls = colNode.domElement.querySelectorAll(".lego-col");
 t("colEl has __colEntries attached", !!colEls[0]?.__colEntries && colEls[0].__colEntries.length === 1);
 t("colEl has correct section in __colEntries", colEls[0]?.__colEntries?.[0]?.sec?.header === "ZONE A");
 
+// ── 15. TEST MEDIA CENSORSHIP & HIDE PREVIEW ──
+const censorTestNode = {
+  id: 301,
+  title: "MediaNode",
+  size: [400, 300],
+  properties: {
+    ui_layout: {
+      schema: 2,
+      activeTab: 0,
+      tabs: [{
+        sections: [{
+          header: "INPUTS",
+          controls: [{
+            name: "ImageCtrl",
+            kind: "media",
+            bind: "image_input",
+            hidePreview: true,
+            w: 180,
+            h: 120
+          }]
+        }]
+      }]
+    }
+  },
+  widgets: [{
+    name: "image_input",
+    type: "combo",
+    value: "test.png",
+    options: { values: ["test.png", "other.png"] }
+  }],
+  flags: {},
+  setSize() {},
+  addDOMWidget(name, type, el, opts) {
+    this.domElement = el;
+    const w = { name, type, element: el, ...opts };
+    this.widgets.push(w);
+    return w;
+  }
+};
+
+const censorTestState = M.attach(censorTestNode);
+censorTestState.refresh();
+
+const thumbEl = censorTestNode.domElement.querySelector(".lego-media-thumb");
+t("censored media control has is-censored class", thumbEl?.classList.contains("is-censored"));
+const censorOverlay = censorTestNode.domElement.querySelector(".lego-media-censor-overlay");
+t("censored media control renders censor overlay", !!censorOverlay);
+const hideBtn = censorTestNode.domElement.querySelector(".lego-media-hide-btn");
+t("media control renders hide toggle button", !!hideBtn);
+
+// Click hide toggle button
+hideBtn.click();
+t("clicking hide toggle unhides preview", !thumbEl.classList.contains("is-censored"));
+
+// ── 16. TEST MODEL PREVIEW OVERRIDE KJ & NATIVE SUBGRAPH ENTRY ──
+const kjWidget = {
+  name: "preview",
+  type: "kj_preview",
+  element: dom.window.document.createElement("div")
+};
+const descKJ = M.describeWidget(kjWidget);
+t("describeWidget maps kj_preview to preview_override", descKJ.kind === "preview_override");
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+let openedSub = null;
+let openedHost = null;
+fakeCanvas.openSubgraph = function(sub, host) {
+  openedSub = sub;
+  openedHost = host;
+  this.subgraph = sub;
+  this.graph = sub;
+};
+
+M.enterSuper(sn);
+t("enterSuper calls openSubgraph when available", openedSub !== null && openedHost === sn);
+t("inner graph id is a valid UUID", UUID_RE.test(openedSub.id));
+t("canvas.subgraph is assigned the inner graph", fakeCanvas.subgraph === openedSub);
+
+delete fakeCanvas.openSubgraph;
+M.exitSuper(1);
+
 console.log(`\n${ok} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

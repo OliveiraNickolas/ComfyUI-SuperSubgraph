@@ -537,6 +537,7 @@ function describeWidget(w) {
   const o = w?.options || {};
   const t = String(w?.type || "").toLowerCase();
 
+  if (t === "kj_preview" || (w?.name === "preview" && t.includes("preview"))) return { kind: "preview_override" };
   if (t === "toggle" || typeof w?.value === "boolean") return { kind: "toggle" };
   if (t === "button") return { kind: "button" };
   if (t === "combo" || Array.isArray(o.values) || typeof o.values === "function" || t.includes("combo")) return { kind: "combo" };
@@ -571,6 +572,7 @@ function usable(w) {
   if (isHelperWidget(w)) return false;
   const t = String(w.type || "").toLowerCase();
   if (t === "converted-widget" || t === "hidden") return false;
+  if (t === "kj_preview") return true;
   if (t.startsWith("dom")) return false;
   return typeof w.name === "string" && w.name.length > 0;
 }
@@ -1059,6 +1061,14 @@ const GLYPHS = {
   copy:
     '<rect x="8.5" y="8.5" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.9"/>' +
     '<path d="M5.5 15.5H4.5a2 2 0 0 1-2-2V4.5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
+  eye:
+    '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.9"/>',
+  eyeSlash:
+    '<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<line x1="2" y1="2" x2="22" y2="22" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
 };
 
 /**
@@ -1834,6 +1844,34 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
     thumb.append(img, ph);
   }
 
+  if (!isAudio) {
+    const censorOverlay = el("div", "lego-media-censor-overlay");
+    censorOverlay.innerHTML = `<span class="lego-censor-icon">${glyph("eyeSlash", 20)}</span><span class="lego-censor-label">Preview hidden</span>`;
+
+    const hideBtn = el("button", "lego-media-hide-btn");
+    hideBtn.type = "button";
+
+    const updateCensorUI = () => {
+      const censored = !!ctrl.hidePreview;
+      thumb.classList.toggle("is-censored", censored);
+      hideBtn.innerHTML = glyph(censored ? "eyeSlash" : "eye", 12);
+      hideBtn.title = censored ? "Show preview" : "Hide / Censor preview";
+    };
+
+    hideBtn.addEventListener("pointerdown", eatPointer);
+    hideBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      ctrl.hidePreview = !ctrl.hidePreview;
+      node.graph?.setDirtyCanvas?.(true, true);
+      app.canvas?.setDirty?.(true, true);
+      updateCensorUI();
+    });
+
+    updateCensorUI();
+    thumb.append(censorOverlay, hideBtn);
+  }
+
   let lastLoadedUrl = cached?.lastLoadedUrl || initialUrl;
   const updateThumb = (bust = false) => {
     let val = w?.value;
@@ -2376,6 +2414,33 @@ function mkOutputView(host, ctrl, state) {
         cachedEl = img;
       }
       stage.append(img);
+    }
+    if (media !== "audio") {
+      const censorOverlay = el("div", "lego-out-censor-overlay");
+      censorOverlay.innerHTML = `<span class="lego-censor-icon">${glyph("eyeSlash", 22)}</span><span class="lego-censor-label">Preview hidden</span>`;
+
+      const hideBtn = el("button", "lego-out-hide-btn");
+      hideBtn.type = "button";
+
+      const updateOutCensor = () => {
+        const censored = !!ctrl.hidePreview;
+        stage.classList.toggle("is-censored", censored);
+        hideBtn.innerHTML = glyph(censored ? "eyeSlash" : "eye", 12);
+        hideBtn.title = censored ? "Show preview" : "Hide / Censor preview";
+      };
+
+      hideBtn.addEventListener("pointerdown", eatPointer);
+      hideBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        ctrl.hidePreview = !ctrl.hidePreview;
+        host.graph?.setDirtyCanvas?.(true, true);
+        app.canvas?.setDirty?.(true, true);
+        updateOutCensor();
+      });
+
+      updateOutCensor();
+      stage.append(censorOverlay, hideBtn);
     }
     OUTPUT_VIEW_CACHE.set(outKey, { files, seq, idx, sig, el: cachedEl });
   };
@@ -3200,9 +3265,24 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
 }
 
 /** Tipos de controle que o componente escolhe e que o desenho respeita. */
-const CONTROL_KINDS = new Set(["toggle", "slider", "number", "combo", "text", "textarea", "button", "media", "video", "audio"]);
+const CONTROL_KINDS = new Set(["toggle", "slider", "number", "combo", "text", "textarea", "button", "media", "video", "audio", "preview_override"]);
 function controlKindFor(ctrl, w) {
   return CONTROL_KINDS.has(ctrl?.kind) ? ctrl.kind : null;
+}
+
+function mkPreviewOverride(node, w, ctrl, state) {
+  const box = el("div", "lego-preview-override-box");
+  box.style.cssText = "width:100%;height:100%;min-height:120px;display:flex;flex-direction:column;position:relative;overflow:hidden;border-radius:6px;";
+  if (w?.element) {
+    box.append(w.element);
+    w.element.style.width = "100%";
+    w.element.style.height = "100%";
+    w.element.style.minHeight = "120px";
+  } else {
+    const ph = el("div", "lego-empty", "Preview Override (KJ)");
+    box.append(ph);
+  }
+  return box;
 }
 
 /** Constrói o controle nu de um bind, sem a linha ao redor. Null se sumiu. */
@@ -3213,6 +3293,7 @@ function buildBare(host, ctrl, state) {
   const kind = (ctrl.kind === "video" || ctrl.kind === "audio" || ctrl.kind === "media")
     ? ctrl.kind
     : (isVideoCombo(w) ? "video" : isAudioCombo(w) ? "audio" : isImageCombo(w) ? "media" : describeWidget(w).kind);
+  if (kind === "preview_override" || w?.type === "kj_preview") return mkPreviewOverride(node, w, ctrl, state);
   if (kind === "toggle") return mkToggle(node, w, ctrl, state);
   if (kind === "slider") return mkSlider(node, w, ctrl, state);
   if (kind === "number") return mkNumber(node, w, ctrl, state);
@@ -8252,6 +8333,19 @@ function propNumber(value, onChange, step = 8) {
   return i;
 }
 
+function propToggle(value, onChange) {
+  const t = el("button", `lego-oi-toggle${value ? " on" : ""}`);
+  t.type = "button";
+  t.innerHTML = '<span class="lego-oi-toggle-knob"></span>';
+  t.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const next = !t.classList.contains("on");
+    t.classList.toggle("on", next);
+    onChange(next);
+  });
+  return t;
+}
+
 /**
  * Adapta a posição do Object Properties para ficar ao lado do Seletor de Nós/Componentes
  * sem que haja qualquer sobreposição entre as duas janelas.
@@ -8806,6 +8900,14 @@ function renderObjectInspector(host, state, force) {
   }
 
   const isMediaCtrl = ctrl.kind === "media" || ctrl.kind === "video" || ctrl.kind === "audio";
+  const isVisualMedia = ctrl.kind === "media" || ctrl.kind === "video" || ctrl.kind === "outimage" || ctrl.kind === "outvideo";
+  if (isVisualMedia) {
+    props.append(propRow("Hide Preview", propToggle(!!ctrl.hidePreview, (v) => {
+      if (v) ctrl.hidePreview = true;
+      else delete ctrl.hidePreview;
+      state.refresh();
+    })));
+  }
   const isTextarea = ctrl.kind === "textarea";
   const { minW, minH } = getComponentMinDimensions(ctrl);
   const defW = ctrl.w || (parentGroup ? (isTextarea ? 160 : (isDivider ? (ctrl.kind === "vdivider" ? 16 : 192) : 100)) : (isDivider ? (ctrl.kind === "vdivider" ? 16 : 256) : 256));
@@ -11539,6 +11641,16 @@ function newInnerGraph(data) {
   return g;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function ensureUuid(id) {
+  if (typeof id === "string" && UUID_REGEX.test(id)) return id;
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
 /** O LGraph de dentro de um Super Subgraph (criado sob demanda a partir das propriedades). */
 function ssInnerGraph(node) {
   if (!isSuperNode(node)) return null;
@@ -11549,7 +11661,31 @@ function ssInnerGraph(node) {
   const data = node.properties?.[SS_PROP]?.graph;
   if (!data) return null;
   try {
-    node.__ssGraph = newInnerGraph(JSON.parse(JSON.stringify(data)));
+    const inner = newInnerGraph(JSON.parse(JSON.stringify(data)));
+    inner.__ssHostNode = node;
+    const uuid = ensureUuid(data.id || inner.id);
+    inner.id = uuid;
+    if (node.properties?.[SS_PROP]?.graph) {
+      node.properties[SS_PROP].graph.id = uuid;
+    }
+    inner.isRootGraph = false;
+    const root = app.rootGraph || app.graph?.rootGraph || app.graph;
+    if (root) {
+      inner.rootGraph = root;
+      if (root.subgraphs instanceof Map) {
+        root.subgraphs.set(uuid, inner);
+      }
+    }
+    inner.name = node.title || "SuperSubgraph";
+    if (!inner.__ssAttachWrapped) {
+      inner.__ssAttachWrapped = true;
+      const origAttach = inner.attachCanvas;
+      inner.attachCanvas = function (canvas) {
+        origAttach?.call(this, canvas);
+        canvas.subgraph = this;
+      };
+    }
+    node.__ssGraph = inner;
     if (node.subgraph === node.__ssGraph) delete node.subgraph;
   } catch (e) {
     console.error(LOG, "could not load the inner graph of", node.id, e);
@@ -12697,14 +12833,18 @@ function enterSuper(sn) {
   if (sn.subgraph === inner) delete sn.subgraph;
   if (c.subgraph === inner) delete c.subgraph;
   hookGraphAdd();
-  c.setGraph(inner);
+  if (typeof c.openSubgraph === "function") {
+    c.openSubgraph(inner, sn);
+  } else {
+    c.setGraph(inner);
+    renderSuperNavBar();
+  }
   fitCanvasTo(inner);
   c.setDirty?.(true, true);
-  renderSuperNavBar();
   watchSuperBoundary();
   // Se o workflow for trocado por fora (abrir outro, voltar pelo breadcrumb
   // nativo...), a pilha deixa de valer e a barra some.
-  if (!ssNavWatch) {
+  if (!ssNavWatch && typeof c.openSubgraph !== "function") {
     ssNavWatch = setInterval(() => {
       if (!SS_NAV.length) { clearInterval(ssNavWatch); ssNavWatch = null; return; }
       if (app.canvas?.graph !== SS_NAV[SS_NAV.length - 1].inner) {
@@ -13593,6 +13733,55 @@ app.registerExtension({
       if (d.display_node != null && String(d.display_node) !== String(d.node)) recordOutput(d.display_node, d.output);
       notifyOutputViews();
     });
+
+    // Ponte de eventos para custom nodes (ex: ModelPreviewOverrideKJ) que usam
+    // IDs prefixados pelo SuperSubgraph (ex: "72.3").
+    api.addEventListener("kj_preview_override", (e) => {
+      const data = e?.detail;
+      if (!data || data.node_id == null) return;
+      const idStr = String(data.node_id);
+      if (idStr.includes(".")) {
+        const dotIdx = idStr.indexOf(".");
+        const hostId = idStr.slice(0, dotIdx);
+        const innerId = idStr.slice(dotIdx + 1);
+        const host = app.graph?.getNodeById?.(hostId) || app.rootGraph?.getNodeById?.(hostId);
+        if (host && isSuperNode(host)) {
+          const inner = ssInnerGraph(host);
+          const leafNode = inner?.getNodeById?.(innerId) || inner?.getNodeById?.(parseInt(innerId, 10));
+          if (leafNode?._kjPreviewHandler) {
+            leafNode._kjPreviewHandler(data);
+          }
+        }
+      }
+    });
+
+    const handleGraphChange = (e) => {
+      const oldGraph = e.detail?.oldGraph;
+      const newGraph = e.detail?.newGraph;
+      if (oldGraph && oldGraph.__ssHostNode) {
+        const host = oldGraph.__ssHostNode;
+        if (host && isSuperNode(host) && host.properties?.[SS_PROP]) {
+          try {
+            host.properties[SS_PROP].graph = oldGraph.serialize ? oldGraph.serialize() : host.properties[SS_PROP].graph;
+          } catch (err) {
+            console.warn(LOG, "serialize inner on graph change", err);
+          }
+          pruneSuperBoundary(host);
+          host.__legoState?.refresh?.();
+        }
+      }
+      if (newGraph && (newGraph.isRootGraph !== false || newGraph === app.rootGraph)) {
+        if (app.canvas && app.canvas.subgraph && app.canvas.subgraph.__ssHostNode) {
+          delete app.canvas.subgraph;
+        }
+        if (SS_NAV.length) {
+          SS_NAV.length = 0;
+          renderSuperNavBar();
+        }
+      }
+    };
+    window.addEventListener("litegraph:set-graph", handleGraphChange);
+    app.canvas?.canvas?.addEventListener("litegraph:set-graph", handleGraphChange);
     refreshSuperLibrary();
     refreshLayoutLibrary();
     for (const type of ["execution_start", "progress_state", "executing", "execution_error", "execution_interrupted", "execution_success"]) {
