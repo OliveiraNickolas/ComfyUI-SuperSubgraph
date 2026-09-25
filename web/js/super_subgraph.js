@@ -1010,6 +1010,9 @@ const GLYPHS = {
   folder:
     '<path d="M3 6.5h6l2 2.5h10v9.5a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 18.5z" ' +
     'fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>',
+  // Três pontos: menu.
+  more:
+    '<circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/>',
   // Máscara: o mesmo ícone do Mask Editor nativo do ComfyUI (comfy--mask, 16x16).
   mask:
     '<g transform="scale(1.5)" stroke="currentColor" stroke-width="1.3"><path d="M6.05 2C5.52 7.295 9.23 10.472 14 9.943"/><path stroke-linecap="round" d="M6.5 5.5 10 2"/><path stroke-linecap="square" d="m8 8 4.5-4.5"/><path stroke-linecap="round" d="M10.5 9.5 14 6"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 14.667A6.667 6.667 0 108 1.333a6.667 6.667 0 000 13.334"/></g>',
@@ -8263,7 +8266,13 @@ function renderObjectInspector(host, state, force) {
 function buildCard(host, state) {
   const layout = host.properties[PROP];
   const root = el("div", `lego-card${state.edit ? " editing" : ""}`);
-  root.addEventListener("contextmenu", (e) => e.stopPropagation());
+  // Botão direito no cartão (fora de um componente, que tem menu próprio, e
+  // fora de campos de texto, que ficam com o menu do navegador): menu do nó.
+  root.addEventListener("contextmenu", (e) => {
+    e.stopPropagation();
+    if (e.defaultPrevented || e.target.closest?.("input, textarea, select, [contenteditable='true']")) return;
+    openNodeMenuFromCard(host, e);
+  });
   applyNodeColorTheme(host, root);
 
   /* — cabeçalho — */
@@ -8317,6 +8326,11 @@ function buildCard(host, state) {
     enter.addEventListener("click", (e) => { e.stopPropagation(); enterSuper(host); });
     head.append(enter);
   }
+
+  const more = glyphBtn("lego-iconbtn lego-more-btn", "more", 13, "SuperSubgraph menu (layouts, save, files…)");
+  more.addEventListener("pointerdown", eatPointer);
+  more.addEventListener("click", (e) => openSuperMenu(host, e));
+  head.append(more);
 
   const pencil = glyphBtn(`lego-iconbtn${state.edit ? " on" : ""}`, "pencil", 12);
   pencil.title = "Edit layout mode";
@@ -10146,14 +10160,21 @@ function applySuperSlots(node) {
  * Layout de um Super Subgraph recém-compactado: VAZIO. Nada é promovido
  * sozinho — o que aparece no cartão é escolha de quem monta.
  */
-function emptySuperLayout(node) {
+function emptySuperLayout(node, groups = [], loose = true) {
+  // Um group do ComfyUI = uma aba (com o nome e a cor dele), ainda vazia.
+  const tabs = groups.map((g) => ({
+    name: g.title || "Group",
+    sections: [{ header: String(g.title || "GROUP").toUpperCase(), ...(g.color ? { color: g.color } : {}), controls: [] }],
+  }));
+  if (!tabs.length) tabs.push({ name: "Controls", sections: [{ header: "PARAMETERS", controls: [] }] });
+  else if (loose) tabs.push({ name: "Other", sections: [{ header: "OTHER", controls: [] }] });
   node.properties[PROP] = {
     schema: SCHEMA,
     title: (node.title || "Super Subgraph").toUpperCase(),
     subtitle: "Super Subgraph",
     badge: `${innerNodesOf(node).length} nodes`,
     activeTab: 0,
-    tabs: [{ name: "Controls", sections: [{ header: "PARAMETERS", controls: [] }] }],
+    tabs,
   };
   return node.properties[PROP];
 }
@@ -10165,16 +10186,28 @@ function emptySuperLayout(node) {
 function superAutoLayout(node) {
   const base = autoLayout(node);   // cabeçalho e aba Output (se houver Preview/Save dentro)
   node.properties[PROP] = { ...base, tabs: [] };
-  const controls = [];
-  const zone = { header: "PARAMETERS", controls };
-  node.properties[PROP].tabs.push({ name: "Controls", sections: [zone] });
-  let y = 16;
+  // Com groups do ComfyUI lá dentro: uma aba por group com os nós dele; o
+  // que não está em group nenhum vai para "Other".
+  const groups = sortGroups(graphGroups(ssInnerGraph(node)));
+  const tabFor = new Map();
+  const tabOf = (g) => {
+    const key = g || null;
+    if (!tabFor.has(key)) {
+      const zone = { header: g ? String(g.title || "GROUP").toUpperCase() : (groups.length ? "OTHER" : "PARAMETERS"), ...(g?.color ? { color: g.color } : {}), controls: [] };
+      tabFor.set(key, { tab: { name: g ? (g.title || "Group") : (groups.length ? "Other" : "Controls"), sections: [zone] }, zone, y: 16 });
+    }
+    return tabFor.get(key);
+  };
+  for (const g of groups) tabOf(g);
   for (const inner of innerNodesOf(node)) {
     if (!(inner.widgets || []).some(usable)) continue;
-    const g = buildWholeNodeCtrl(node, inner, "row", { x: 16, y });
-    controls.push(g);
-    y += g.h + 32;
+    const t = tabOf(groups.length ? ownerGroup(inner, groups) : null);
+    const ctl = buildWholeNodeCtrl(node, inner, "row", { x: 16, y: t.y });
+    t.zone.controls.push(ctl);
+    t.y += ctl.h + 32;
   }
+  for (const t of tabFor.values()) if (t.zone.controls.length || groups.length) node.properties[PROP].tabs.push(t.tab);
+  if (!node.properties[PROP].tabs.length) node.properties[PROP].tabs.push({ name: "Controls", sections: [{ header: "PARAMETERS", controls: [] }] });
   for (const t of base.tabs || []) if (t.name === "Output") node.properties[PROP].tabs.push(t);
   node.properties[PROP].subtitle = "Super Subgraph";
   node.properties[PROP].badge = `${innerNodesOf(node).length} nodes`;
@@ -10186,7 +10219,56 @@ function selectedNodes() {
   const c = app.canvas;
   const sel = c?.selectedItems ? [...c.selectedItems] : Object.values(c?.selected_nodes || {});
   const Node = liteGraph()?.LGraphNode;
-  return sel.filter((n) => (Node ? n instanceof Node : n && n.pos && n.type));
+  const Group = liteGraph()?.LGraphGroup;
+  const nodes = sel.filter((n) => (Node ? n instanceof Node : n && n.pos && n.type));
+  // Group selecionado leva junto os nós que estão dentro dele.
+  for (const g of sel.filter((x) => Group && x instanceof Group)) {
+    for (const n of c.graph?._nodes || c.graph?.nodes || []) {
+      if (nodeInGroup(n, g) && !nodes.includes(n)) nodes.push(n);
+    }
+  }
+  return nodes;
+}
+
+/* ── Groups do ComfyUI ─────────────────────────────────────────────────────
+ * Ao compactar, os groups que contêm nós da seleção vão junto para dentro
+ * do Super Subgraph (e voltam no Unpack), e cada um vira uma aba do cartão.
+ */
+function graphGroups(graph) {
+  return [...(graph?._groups || graph?.groups || [])];
+}
+
+function groupRect(g) {
+  const b = g?.serialize?.().bounding || g?._bounding || [g?.pos?.[0] || 0, g?.pos?.[1] || 0, g?.size?.[0] || 0, g?.size?.[1] || 0];
+  return [b[0], b[1], b[2], b[3]];
+}
+
+/** O centro do nó está dentro do group? */
+function nodeInGroup(n, g) {
+  if (!n?.pos) return false;
+  const [x, y, w, h] = groupRect(g);
+  const cx = n.pos[0] + (n.size?.[0] || 0) / 2;
+  const cy = n.pos[1] + (n.size?.[1] || 0) / 2;
+  return cx >= x && cx <= x + w && cy >= y && cy <= y + h;
+}
+
+/** Group "dono" do nó: o menor que o contém (groups podem estar um dentro do outro). */
+function ownerGroup(n, groups) {
+  let best = null, area = Infinity;
+  for (const g of groups) {
+    if (!nodeInGroup(n, g)) continue;
+    const [, , w, h] = groupRect(g);
+    if (w * h < area) { best = g; area = w * h; }
+  }
+  return best;
+}
+
+/** Groups em ordem de leitura (de cima para baixo, da esquerda para a direita). */
+function sortGroups(groups) {
+  return [...groups].sort((a, b) => {
+    const [ax, ay] = groupRect(a), [bx, by] = groupRect(b);
+    return (Math.round(ay / 80) - Math.round(by / 80)) || (ax - bx);
+  });
 }
 
 /**
@@ -10257,12 +10339,14 @@ function convertSelectionToSuper(nodes = selectedNodes()) {
     for (const o of d.outputs || []) if (Array.isArray(o.links)) o.links = o.links.filter((id) => internalIds.has(id));
     return d;
   });
+  // Groups do ComfyUI com nós da seleção vão para dentro (e viram abas).
+  const groups = sortGroups(graphGroups(graph).filter((g) => nodes.some((n) => nodeInGroup(n, g))));
   const data = {
     last_node_id: Math.max(0, ...nodes.map((n) => Number(n.id) || 0)),
     last_link_id: Math.max(0, ...internal.map((l) => Number(l.id) || 0)),
     nodes: sNodes,
     links: internal.map((l) => [l.id, l.origin_id, l.origin_slot, l.target_id, l.target_slot, l.type]),
-    groups: [],
+    groups: groups.map((g) => g.serialize()),
     config: {},
     extra: {},
     version: 0.4,
@@ -10272,8 +10356,14 @@ function convertSelectionToSuper(nodes = selectedNodes()) {
   const minX = Math.min(...nodes.map((n) => n.pos[0]));
   const minY = Math.min(...nodes.map((n) => n.pos[1]));
 
+  const tabGroups = groups.map((g) => ({ title: g.title, color: g.color }));
+  const looseNodes = nodes.some((n) => !ownerGroup(n, groups));
+
   graph.beforeChange?.();
   for (const n of nodes) graph.remove(n);
+  // Group que ficou vazio aqui fora (todos os nós foram para dentro) sai também.
+  const outside = graph._nodes || graph.nodes || [];
+  for (const g of groups) if (!outside.some((n) => nodeInGroup(n, g))) graph.remove(g);
 
   const sn = LG.createNode(SS_TYPE);
   if (!sn) {
@@ -10307,7 +10397,7 @@ function convertSelectionToSuper(nodes = selectedNodes()) {
     }
   });
 
-  emptySuperLayout(sn);
+  emptySuperLayout(sn, tabGroups, looseNodes);
   attach(sn);
   graph.afterChange?.();
   app.canvas?.selectItems?.([sn]);
@@ -10653,35 +10743,106 @@ function importLayoutFromFile(host) {
   input.click();
 }
 
-/** Submenu "Card Layout" de um nó com cartão. */
-function layoutMenuItems(node) {
+/**
+ * Opções do menu "SuperSubgraph" de um nó (botão direito e botão ⋯ do
+ * cartão). Os nomes dizem O QUE é salvo: o Super Subgraph inteiro (com os nós)
+ * ou só o layout do cartão.
+ */
+function superMenuOptions(node) {
+  const has = !!node.properties?.[PROP];
+  const isSS = isSuperNode(node);
+  const sub = [];
+  const sep = () => { if (sub.length && sub[sub.length - 1] !== null) sub.push(null); };
   refreshLayoutLibrary();   // para a próxima abertura do menu
-  const items = [
-    { content: "Save Layout…", callback: () => saveLayoutToLibrary(node) },
-  ];
-  if (SS_LAYOUTS.length) {
-    items.push({ content: "Load Layout", has_submenu: true, submenu: { options: SS_LAYOUTS.map((name) => ({ content: name, callback: () => loadLayoutFromLibrary(node, name) })) } });
+
+  const sel = selectedNodes();
+  if (sel.length && sel.includes(node) && !(sel.length === 1 && isSS)) {
+    sub.push({ content: `Convert Selection to SuperSubgraph (${sel.length})`, callback: () => convertSelectionToSuper(sel) });
   }
-  items.push(
-    { content: "Export Layout to File…", callback: () => exportLayoutToFile(node) },
-    { content: "Import Layout from File…", callback: () => importLayoutFromFile(node) },
-    null,
-    {
-      content: "Recreate Layout from Widgets",
+  if (isNativeSubgraphNode(node)) sub.push({ content: "Convert to SuperSubgraph", callback: () => convertNativeToSuper(node) });
+
+  const border = boundaryMenuItems(node);
+  if (border.length) { sep(); sub.push(...border); }
+
+  if (isSS) { sep(); sub.push({ content: "Open Inside", callback: () => enterSuper(node) }); }
+  if (has) {
+    sub.push({
+      content: node.__legoState?.edit ? "Finish Editing Card" : "Edit Card",
+      callback: () => {
+        const st = node.__legoState || attach(node);
+        st.edit = !st.edit;
+        if (!st.edit) leaveEditMode(st);
+        st.refresh();
+      },
+    });
+    sep();
+    sub.push({ content: "Save Card Layout…", callback: () => saveLayoutToLibrary(node) });
+    if (SS_LAYOUTS.length) {
+      sub.push({ content: "Load Card Layout", has_submenu: true, submenu: { options: SS_LAYOUTS.map((name) => ({ content: name, callback: () => loadLayoutFromLibrary(node, name) })) } });
+    }
+  } else if (!isNativeSubgraphNode(node)) {
+    sep();
+    sub.push({ content: "Add Card UI", callback: () => { node.properties = node.properties || {}; node.properties[PROP] = autoLayout(node); attach(node); } });
+  }
+  if (isSS) sub.push({ content: "Save SuperSubgraph to Library…", callback: () => saveSuperToLibrary(node) });
+
+  // Arquivos: para mandar para alguém / trazer de fora.
+  const files = [];
+  if (isSS) files.push({ content: "Export SuperSubgraph…", callback: () => exportSuperToFile(node) });
+  if (has) files.push({ content: "Export Card Layout…", callback: () => exportLayoutToFile(node) }, { content: "Import Card Layout…", callback: () => importLayoutFromFile(node) });
+  if (files.length) sub.push({ content: "Files", has_submenu: true, submenu: { options: files } });
+
+  // O que é mais raro ou desfaz coisas fica em "More".
+  const more = [];
+  if (has) {
+    more.push({
+      content: "Rebuild Card from Widgets",
       callback: () => {
         const keepEdit = node.__legoState?.edit;
         pushUndo(node);
-        node.properties[PROP] = isSuperNode(node) ? superAutoLayout(node) : autoLayout(node);
+        node.properties[PROP] = isSS ? superAutoLayout(node) : autoLayout(node);
         if (node.__legoState) { node.__legoState.edit = !!keepEdit; node.__legoState.refresh(); }
         else attach(node);
       },
-    },
-  );
-  if (SS_LAYOUTS.length) {
-    items.push({ content: "Delete Saved Layout", has_submenu: true, submenu: { options: SS_LAYOUTS.map((name) => ({ content: name, callback: () => deleteLayoutFromLibrary(name) })) } });
+    });
+    if (SS_LAYOUTS.length) more.push({ content: "Delete a Saved Card Layout", has_submenu: true, submenu: { options: SS_LAYOUTS.map((name) => ({ content: name, callback: () => deleteLayoutFromLibrary(name) })) } });
   }
-  if (!isSuperNode(node)) items.push(null, { content: "Remove Card UI", callback: () => detach(node) });
-  return items;
+  if (isSS) more.push({ content: "Unpack into Regular Nodes", callback: () => unpackSuper(node) });
+  else if (has) more.push({ content: "Remove Card UI", callback: () => detach(node) });
+  if (more.length) sub.push({ content: "More", has_submenu: true, submenu: { options: more } });
+
+  while (sub.length && sub[sub.length - 1] === null) sub.pop();
+  while (sub.length && sub[0] === null) sub.shift();
+  return sub;
+}
+
+/** Abre o menu "SuperSubgraph" do nó solto na tela (botão ⋯ do cartão). */
+function openSuperMenu(node, e) {
+  const LG = liteGraph();
+  if (!LG?.ContextMenu) return;
+  e.preventDefault();
+  e.stopPropagation();
+  new LG.ContextMenu(superMenuOptions(node), { event: e, title: "SuperSubgraph" });
+}
+
+/**
+ * Botão direito no cartão, fora de um componente: o menu do próprio nó (o do
+ * ComfyUI, com o "SuperSubgraph" dentro) — antes só abria clicando na borda.
+ */
+function openNodeMenuFromCard(node, e) {
+  const c = app.canvas;
+  e.preventDefault();
+  try {
+    if (typeof c?.processContextMenu === "function") {
+      const [cx, cy] = c.convertEventToCanvasOffset?.(e) || [0, 0];
+      Object.assign(e, { canvasX: cx, canvasY: cy });
+      c.processContextMenu(node, e);
+      return;
+    }
+  } catch (err) {
+    console.warn(LOG, "node menu", err);
+  }
+  openSuperMenu(node, e);
 }
 
 /** Desfaz o Super Subgraph: os nós de dentro voltam ao grafo, religados. */
@@ -10711,7 +10872,7 @@ function unpackSuper(sn) {
     links: graphLinks(inner).map((l) => (l.asSerialisable ? l.asSerialisable() : {
       id: l.id, origin_id: l.origin_id, origin_slot: l.origin_slot, target_id: l.target_id, target_slot: l.target_slot, type: l.type,
     })),
-    groups: [], reroutes: [], subgraphs: [],
+    groups: graphGroups(inner).map((g) => g.serialize()), reroutes: [], subgraphs: [],
   };
   const pos = [sn.pos[0], sn.pos[1]];
   graph.beforeChange?.();
@@ -11388,12 +11549,12 @@ app.registerExtension({
     const sel = selectedNodes();
     const pos = canvasDropPos();
     const sub = [];
-    if (sel.length) sub.push({ content: `Convert Selection (${sel.length})`, callback: () => convertSelectionToSuper(sel) }, null);
+    if (sel.length) sub.push({ content: `Convert Selection to SuperSubgraph (${sel.length})`, callback: () => convertSelectionToSuper(sel) }, null);
     refreshSuperLibrary();   // para a próxima abertura do menu
     if (SS_LIBRARY.length) {
       sub.push({ content: "Add from Library", has_submenu: true, submenu: { options: SS_LIBRARY.map((name) => ({ content: name, callback: () => addSuperFromLibrary(name, pos) })) } });
     }
-    sub.push({ content: "Import from File…", callback: () => importSuperFromFile(pos) });
+    sub.push({ content: "Import SuperSubgraph…", callback: () => importSuperFromFile(pos) });
     if (SS_LIBRARY.length) {
       sub.push({ content: "Delete from Library", has_submenu: true, submenu: { options: SS_LIBRARY.map((name) => ({ content: name, callback: () => deleteSuperFromLibrary(name) })) } });
     }
@@ -11402,51 +11563,7 @@ app.registerExtension({
 
   getNodeMenuItems(node) {
     if (!node) return [];
-    const has = !!node.properties?.[PROP];
-    const sub = [];
-    const sep = () => { if (sub.length && sub[sub.length - 1] !== null) sub.push(null); };
-
-    const sel = selectedNodes();
-    if (sel.length && sel.includes(node) && !(sel.length === 1 && isSuperNode(node))) sub.push({ content: `Convert Selection (${sel.length})`, callback: () => convertSelectionToSuper(sel) });
-    if (isNativeSubgraphNode(node)) sub.push({ content: "Convert This Subgraph", callback: () => convertNativeToSuper(node) });
-
-    if (isSuperNode(node)) {
-      sep();
-      sub.push(
-        { content: "Open", callback: () => enterSuper(node) },
-        { content: "Unpack", callback: () => unpackSuper(node) },
-        null,
-        { content: "Save to Library…", callback: () => saveSuperToLibrary(node) },
-        { content: "Export to File…", callback: () => exportSuperToFile(node) },
-      );
-    }
-
-    const border = boundaryMenuItems(node);
-    if (border.length) { sep(); sub.push(...border); }
-
-    sep();
-    if (has) {
-      sub.push({
-        content: node.__legoState?.edit ? "Finish Editing Card" : "Edit Card",
-        callback: () => {
-          const s = node.__legoState || attach(node);
-          s.edit = !s.edit;
-          if (!s.edit) leaveEditMode(s);
-          s.refresh();
-        },
-      });
-      sub.push({ content: "Card Layout", has_submenu: true, submenu: { options: layoutMenuItems(node) } });
-    } else {
-      sub.push({
-        content: "Add Card UI",
-        callback: () => {
-          node.properties = node.properties || {};
-          node.properties[PROP] = autoLayout(node);
-          attach(node);
-        },
-      });
-    }
-    while (sub.length && sub[sub.length - 1] === null) sub.pop();
+    const sub = superMenuOptions(node);
     return sub.length ? [null, { content: "SuperSubgraph", has_submenu: true, submenu: { options: sub } }] : [];
   },
 

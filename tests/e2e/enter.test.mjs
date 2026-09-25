@@ -41,7 +41,7 @@ const run = await E(async () => {
 });
 t("edit made inside is executed: " + JSON.stringify(run.types), run.ok && run.types.includes("ImageInvert"));
 // aninhado: entra, converte o ImageInvert em outro SuperSubgraph, entra nele
-await E((sid) => { const sn = window.app.graph.getNodeById(sid); window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(sn).find(i => i && /^Open$/.test(i.content)).callback(); }, sid);
+await E((sid) => { const sn = window.app.graph.getNodeById(sid); window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(sn).find(i => i && /^Open Inside$/.test(i.content)).callback(); }, sid);
 await pg.waitForTimeout(400);
 t("context menu 'Open SuperSubgraph' enters", await E(() => window.app.canvas.graph !== window.app.rootGraph));
 const nested = await E(async () => {
@@ -50,7 +50,7 @@ const nested = await E(async () => {
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
   const inner2 = g.nodes.find(n => n.type === "SuperSubgraph");
   inner2.title = "Nested SS";
-  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(inner2).find(i => i && /^Open$/.test(i.content)).callback();
+  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(inner2).find(i => i && /^Open Inside$/.test(i.content)).callback();
   await new Promise(r => setTimeout(r, 400));
   return { types: app.canvas.graph.nodes.map(n => n.type).join(), bar: document.querySelector(".lego-ss-nav")?.innerText };
 });

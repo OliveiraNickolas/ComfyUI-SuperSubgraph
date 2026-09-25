@@ -37,7 +37,7 @@ const conv = await E(async (ids) => {
   item.callback();
   const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
   // O cartão nasce vazio (nada promovido); o teste monta o layout pelo menu.
-  if (sn) ext.__flatNode(sn).find(i => i && /Recreate Layout/.test(i.content)).callback();
+  if (sn) ext.__flatNode(sn).find(i => i && /Rebuild Card/.test(i.content)).callback();
   return sn ? {
     id: sn.id, nodes: app.graph.nodes.map(n => n.type),
     ins: sn.inputs.filter(i => /^in_/.test(i.name)).map(i => [i.name, i.label, i.type, i.link != null]),

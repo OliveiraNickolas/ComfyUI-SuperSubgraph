@@ -56,7 +56,7 @@ const run = () => E(async () => {
 let io = await hostIO();
 t("start: in_1 (image) and out_1 linked " + io.ins + " / " + io.outs, /^in_1:image:true$/.test(io.ins) && /^out_1:IMAGE:1$/.test(io.outs));
 
-await E((id) => window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(window.app.rootGraph.getNodeById(id)).find(i => i && /^Open$/.test(i.content)).callback(), ids.sn);
+await E((id) => window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(window.app.rootGraph.getNodeById(id)).find(i => i && /^Open Inside$/.test(i.content)).callback(), ids.sn);
 await pg.waitForTimeout(500);
 let tags = await E(() => [...document.querySelectorAll(".lego-ss-io")].map(e => e.textContent).sort().join("|"));
 t("inside: boundary tags on the inner node: " + tags, tags === "in_1 →|→ out_1");
@@ -92,7 +92,7 @@ const r = await run();
 t("runs, and the outside number drives the inner width: " + JSON.stringify(r), r.ok && r.w === 24 && r.h === 16);
 
 // nó de dentro apagado: a saída exposta dele sai junto ao voltar
-await E((id) => window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(window.app.rootGraph.getNodeById(id)).find(i => i && /^Open$/.test(i.content)).callback(), ids.sn);
+await E((id) => window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(window.app.rootGraph.getNodeById(id)).find(i => i && /^Open Inside$/.test(i.content)).callback(), ids.sn);
 await pg.waitForTimeout(400);
 const invId = await E(() => { const g = window.app.canvas.graph; const inv = window.LiteGraph.createNode("ImageInvert"); inv.pos = [0, 400]; g.add(inv); return inv.id; });
 const exp = await E((invId) => { const app = window.app; const n = app.canvas.graph.getNodeById(invId);

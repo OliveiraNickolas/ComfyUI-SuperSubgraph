@@ -10,7 +10,7 @@ Custom node for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) providing a
 - **Workflow Parameter Binding**: Bind controls to node parameters in real-time with visual target selection.
 - **Native HiDPI**: Faithful node previews without scaling compression.
 - **Layout in the workflow**: Layout and state persist in `node.properties.ui_layout`, serializing natively with your workflow.
-- **Independent Super Subgraph node**: select nodes and use **Convert Selection to SuperSubgraph** (selection toolbar — the native subgraph icon with a purple "SS" badge, canvas or node right-click menu). The nodes move inside a `SuperSubgraph` node with its own engine — no native subgraph involved. Links crossing the selection become its inputs/outputs; the card starts empty (nothing is promoted automatically) and binds straight to the inner widgets you choose — **SuperSubgraph ▸ Card Layout ▸ Recreate Layout from Widgets** builds a default layout on demand. To explore or edit the nodes inside, click the **enter** button on the card (or right-click → **SuperSubgraph ▸ Open**); a bar at the top shows where you are and **Back** (or **Esc**) returns (nested SuperSubgraphs work too). **SuperSubgraph ▸ Unpack** (node right-click) puts the nodes back into the workflow. Already have a native subgraph? Right-click it → **SuperSubgraph ▸ Convert This Subgraph**: links, title and its card (if it had one) come along.
+- **Independent Super Subgraph node**: select nodes and use **Convert Selection to SuperSubgraph** (selection toolbar — the native subgraph icon with a purple "SS" badge, canvas or node right-click menu). The nodes move inside a `SuperSubgraph` node with its own engine — no native subgraph involved. Links crossing the selection become its inputs/outputs; the card starts empty (nothing is promoted automatically) and binds straight to the inner widgets you choose — **SuperSubgraph ▸ More ▸ Rebuild Card from Widgets** builds a default layout on demand. To explore or edit the nodes inside, click the **enter** button on the card (or right-click → **SuperSubgraph ▸ Open Inside**); a bar at the top shows where you are and **Back** (or **Esc**) returns (nested SuperSubgraphs work too). **SuperSubgraph ▸ More ▸ Unpack into Regular Nodes** puts the nodes back into the workflow. Already have a native subgraph? Right-click it → **SuperSubgraph ▸ Convert to SuperSubgraph**: links, title and its card (if it had one) come along.
 
 ## Promoting parameters
 
@@ -29,8 +29,8 @@ In edit mode, right-click a component for **Properties**, **Duplicate** (Ctrl+D)
 
 ## Reuse and share
 
-- **SuperSubgraph ▸ Save to Library…** (node right-click) keeps it in your ComfyUI user folder (`user/default/supersubgraph/`). Right-click the canvas → **SuperSubgraph ▸ Add from Library** to drop a copy into any workflow (**Delete from Library** removes one).
-- **SuperSubgraph ▸ Export to File…** downloads a `.supersubgraph.json` you can send to someone; they use **SuperSubgraph ▸ Import from File…** on the canvas menu.
+- **SuperSubgraph ▸ Save SuperSubgraph to Library…** keeps it in your ComfyUI user folder (`user/default/supersubgraph/`). Right-click the canvas → **SuperSubgraph ▸ Add from Library** to drop a copy into any workflow (**Delete from Library** removes one).
+- **SuperSubgraph ▸ Files ▸ Export SuperSubgraph…** downloads a `.supersubgraph.json` you can send to someone; they use **SuperSubgraph ▸ Import SuperSubgraph…** on the canvas menu.
 - Colors: in edit mode, the dot next to a zone title picks the zone color; right-click a component → **Color…** for components.
 
 ## While it runs
@@ -49,12 +49,18 @@ In edit mode, a group's action bar has a **flip** button (horizontal ↔ vertica
 
 ## Menus and card layouts
 
-Everything this extension adds to the right-click menus lives under one entry, **SuperSubgraph ▸** (on nodes and on the canvas).
-**SuperSubgraph ▸ Card Layout** saves and loads just the card (tabs, zones, components):
+Everything this extension adds is under one menu, **SuperSubgraph**. Open it by right-clicking anywhere on the node or card (except on a component, which has its own menu), or with the **⋯** button on the card.
 
-- **Save Layout…** / **Load Layout ▸** — your saved layouts (in `user/default/supersubgraph/layouts/`). Loading onto another SuperSubgraph re-links each component to the node of the same type inside it, so a layout can be reused on a similar SuperSubgraph.
-- **Export Layout to File…** / **Import Layout from File…** — a `.sslayout.json` to share.
-- **Recreate Layout from Widgets**, **Delete Saved Layout ▸**.
+- **Open Inside** / **Edit Card**
+- **Save Card Layout…** / **Load Card Layout ▸**: only the card (tabs, zones, components), kept in `user/default/supersubgraph/layouts/`. If you load a layout on a different SuperSubgraph, each component re-links to the node of the same type inside it.
+- **Save SuperSubgraph to Library…**: the whole SuperSubgraph, nodes included. Add it again with the canvas menu **SuperSubgraph ▸ Add from Library**.
+- **Files ▸**: **Export SuperSubgraph…**, **Export Card Layout…**, **Import Card Layout…** (files to share).
+- **More ▸**: **Rebuild Card from Widgets**, **Delete a Saved Card Layout**, **Unpack into Regular Nodes**.
+
+## ComfyUI groups
+
+When you convert, ComfyUI groups that contain selected nodes move inside the SuperSubgraph, and each group becomes a **tab** of the card, with the group's name and color. Nodes that are not in any group go to an **Other** tab.
+Selecting a group and converting takes all the nodes inside it. **Rebuild Card from Widgets** fills each group's tab with its nodes, and **Unpack** puts the groups back.
 
 ## Aligning components
 

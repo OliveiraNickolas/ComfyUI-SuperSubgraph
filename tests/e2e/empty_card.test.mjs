@@ -38,7 +38,7 @@ t("Esc cancels back to the workflow with no dialog left", await pg.evaluate(() =
 r.recreated = await pg.evaluate(() => {
   // layout automático só sob pedido
   const app = window.app; const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
-  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(sn).find(i => i && /Recreate Layout/.test(i.content)).callback();
+  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(sn).find(i => i && /Rebuild Card/.test(i.content)).callback();
   return sn.properties.ui_layout.tabs.flatMap(t => t.sections.flatMap(s => (s.controls || []).map(c => c.kind))).join();
 });
 console.log(JSON.stringify(r));

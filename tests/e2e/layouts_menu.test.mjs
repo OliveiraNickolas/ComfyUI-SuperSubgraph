@@ -45,7 +45,7 @@ const top = await E(() => [...document.querySelectorAll(".litecontextmenu .litem
 t("node menu has one 'SuperSubgraph' entry and no loose SS items: " + top.filter(x => /super/i.test(x)).join("|"), top.filter(x => /super/i.test(x)).join("|") === "SuperSubgraph");
 await pg.getByText("SuperSubgraph", { exact: true }).last().click(); await pg.waitForTimeout(400);
 const sub = await E(() => [...document.querySelectorAll(".litecontextmenu")].at(-1)?.innerText.split("\n").map(s => s.trim()).filter(Boolean));
-t("submenu groups the actions: " + sub.join("|"), !sub.some(x => /^Convert Selection/.test(x)) && ["Open", "Unpack", "Save to Library…", "Export to File…", "Edit Card", "Card Layout"].every(x => sub.includes(x)));
+t("submenu groups the actions: " + sub.join("|"), !sub.some(x => /^Convert Selection/.test(x)) && ["Open Inside", "Edit Card", "Save Card Layout…", "Save SuperSubgraph to Library…", "Files", "More"].every(x => sub.includes(x)));
 await pg.screenshot({ path: path.join(dir, "ss_menu.png") });
 await pg.keyboard.press("Escape"); await pg.mouse.click(1400, 950); await pg.waitForTimeout(200);
 
@@ -55,7 +55,7 @@ const run = (sid, label) => E(async ({ sid, label }) => {
   const it = ext.__flatNode(window.app.graph.getNodeById(sid)).find(i => i && i.content === label);
   if (!it) return "missing " + label; await it.callback(); return "ok";
 }, { sid, label });
-t("Save Layout…", (await run(ids.s1, "Save Layout…")) === "ok");
+t("Save Card Layout…", (await run(ids.s1, "Save Card Layout…")) === "ok");
 await pg.waitForTimeout(600);
 const lib = await E(async () => (await window.comfyAPI.api.api.listUserDataFullInfo("supersubgraph/layouts")).map(f => f.path));
 t("saved to supersubgraph/layouts: " + NAME, lib.includes(`${NAME}.json`));
@@ -63,7 +63,7 @@ await E(async () => { const ext = window.app.extensions.find(e => e.name === "Co
 const loaded = await E(async ({ ids, NAME }) => {
   const ext = window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph");
   const s2 = window.app.graph.getNodeById(ids.s2);
-  const it = ext.__flatNode(s2).find(i => i && i.content === "Load Layout");
+  const it = ext.__flatNode(s2).find(i => i && i.content === "Load Card Layout");
   const o = it?.submenu.options.find(x => x.content === NAME);
   if (!o) return { err: "not listed" };
   await o.callback(); await new Promise(r => setTimeout(r, 300));
@@ -72,16 +72,16 @@ const loaded = await E(async ({ ids, NAME }) => {
 }, { ids, NAME });
 t("layout loaded on the other SuperSubgraph, bind re-linked to its own ImageScale: " + JSON.stringify(loaded), loaded.header === "MY ZONE" && loaded.bind === `${ids.si2}/width` && loaded.color === "#22c55e" && loaded.row && !loaded.missing);
 // exportar e importar arquivo
-const [dl] = await Promise.all([pg.waitForEvent("download"), run(ids.s1, "Export Layout to File…")]);
+const [dl] = await Promise.all([pg.waitForEvent("download"), run(ids.s1, "Export Card Layout…")]);
 const file = path.join(dir, dl.suggestedFilename()); await dl.saveAs(file);
 t("layout exported: " + dl.suggestedFilename(), /\.sslayout\.json$/.test(dl.suggestedFilename()));
 await E((sid) => { const n = window.app.graph.getNodeById(sid); n.properties.ui_layout.tabs[0].sections[0].controls = []; n.__legoState.refresh(); }, ids.s2);
-const [fc] = await Promise.all([pg.waitForEvent("filechooser"), run(ids.s2, "Import Layout from File…")]);
+const [fc] = await Promise.all([pg.waitForEvent("filechooser"), run(ids.s2, "Import Card Layout…")]);
 await fc.setFiles(file); await pg.waitForTimeout(700);
 const imp = await E((sid) => window.app.graph.getNodeById(sid).properties.ui_layout.tabs[0].sections[0].controls.map(c => c.bind).join(), ids.s2);
 t("layout imported from file: " + imp, imp === `${ids.si2}/width`);
 // apaga
-await E(async ({ ids, NAME }) => { const ext = window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph"); await ext.__flatNode(window.app.graph.getNodeById(ids.s1)).find(i => i && i.content === "Delete Saved Layout").submenu.options.find(o => o.content === NAME).callback(); }, { ids, NAME });
+await E(async ({ ids, NAME }) => { const ext = window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph"); await ext.__flatNode(window.app.graph.getNodeById(ids.s1)).find(i => i && i.content === "Delete a Saved Card Layout").submenu.options.find(o => o.content === NAME).callback(); }, { ids, NAME });
 await pg.waitForTimeout(500);
 const lib2 = await E(async () => (await window.comfyAPI.api.api.listUserDataFullInfo("supersubgraph/layouts")).map(f => f.path));
 t("deleted saved layout", !lib2.includes(`${NAME}.json`));
