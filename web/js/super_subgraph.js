@@ -3121,6 +3121,10 @@ function applyLabelStyle(span, ctrl) {
   if (ctrl.italic) span.style.fontStyle = "italic";
   if (ctrl.fontSize) span.style.fontSize = `${ctrl.fontSize}px`;
   if (ctrl.align) span.style.justifyContent = ctrl.align === "center" ? "center" : ctrl.align === "right" ? "flex-end" : "flex-start";
+  const deco = [ctrl.underline && "underline", ctrl.strike && "line-through"].filter(Boolean).join(" ");
+  if (deco) span.style.textDecoration = deco;
+  if (ctrl.fontFamily) span.style.fontFamily = ctrl.fontFamily;
+  if (ctrl.fontColor) span.style.color = ctrl.fontColor;
 }
 function ghostControl(kind, ctrl) {
   const box = el("div", "lego-ghost");
@@ -8019,14 +8023,20 @@ function renderObjectInspector(host, state, force) {
     // Formatação do label
     const styleRow = el("div", "lego-oi-style-row");
     styleRow.style.cssText = "display:flex;align-items:center;gap:4px;flex-wrap:wrap";
-    const mkToggle = (label, title, key) => {
+    const mkToggle = (label, title, key, css) => {
       const btn = el("button", `lego-oi-style-btn${ctrl[key] ? " on" : ""}`);
-      btn.textContent = label;
+      btn.innerHTML = label;
+      if (css) btn.style.cssText += css;
       btn.title = title;
       btn.addEventListener("click", (e) => { e.stopPropagation(); ctrl[key] = !ctrl[key]; state.refresh(); });
       return btn;
     };
-    styleRow.append(mkToggle("B", "Bold", "bold"), mkToggle("I", "Italic", "italic"));
+    styleRow.append(
+      mkToggle("B", "Bold", "bold", "font-weight:700"),
+      mkToggle("I", "Italic", "italic", "font-style:italic"),
+      mkToggle("U", "Underline", "underline", "text-decoration:underline"),
+      mkToggle("S", "Strikethrough", "strike", "text-decoration:line-through"),
+    );
 
     const ALIGNS = [
       { id: "left", icon: "≡ʟ" },
@@ -8051,6 +8061,35 @@ function renderObjectInspector(host, state, force) {
     styleRow.append(sizeIn);
 
     props.append(propRow("Style", styleRow));
+
+    // Fonte
+    const FONTS = ["System", "Serif", "Monospace", "Cursive"];
+    const FONT_MAP = { System: "", Serif: "Georgia, 'Times New Roman', serif", Monospace: "ui-monospace, SFMono-Regular, monospace", Cursive: "'Segoe Script', 'Comic Sans MS', cursive" };
+    const curFont = FONTS.find((f) => FONT_MAP[f] === (ctrl.fontFamily || "")) || "System";
+    const fontBtn = el("button", "lego-oi-pick");
+    fontBtn.innerHTML = `<span>${curFont}</span>${glyph("chevron", 12)}`;
+    fontBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openDropdown(fontBtn, FONTS, curFont, (_v, idx) => {
+        const ff = FONT_MAP[FONTS[idx]];
+        if (ff) ctrl.fontFamily = ff; else delete ctrl.fontFamily;
+        state.refresh();
+      });
+    });
+    props.append(propRow("Font", fontBtn));
+
+    // Cor da fonte
+    const colorBtn = el("button", "lego-oi-style-btn");
+    colorBtn.textContent = "A";
+    colorBtn.title = "Font color";
+    colorBtn.style.cssText = `font-weight:700;min-width:28px;color:${ctrl.fontColor || "#e2e8f0"};border-bottom:3px solid ${ctrl.fontColor || "#e2e8f0"}`;
+    colorBtn.addEventListener("click", (e) => {
+      openColorMenu(e, ctrl.fontColor || null, (color) => {
+        if (color) ctrl.fontColor = color; else delete ctrl.fontColor;
+        state.refresh();
+      });
+    });
+    props.append(propRow("Font Color", colorBtn));
   } else if (!isDivider) {
     // Caption vazio cai no nome do widget vinculado — mostra o efetivo, não o vazio.
     const hitNow = ctrl.bind ? resolveBind(host, ctrl.bind) : null;
@@ -8093,10 +8132,6 @@ function renderObjectInspector(host, state, force) {
     props.append(propRow("Caption Position", posBtn));
   }
 
-  if (!parentGroup) {
-    props.append(propRow("Left", propNumber(ctrl.x, (v) => { ctrl.x = Math.max(0, v); state.refresh(); })));
-    props.append(propRow("Top", propNumber(ctrl.y, (v) => { ctrl.y = Math.max(0, v); state.refresh(); })));
-  }
   const isMediaCtrl = ctrl.kind === "media" || ctrl.kind === "video" || ctrl.kind === "audio";
   const isTextarea = ctrl.kind === "textarea";
   const { minW, minH } = getComponentMinDimensions(ctrl);
