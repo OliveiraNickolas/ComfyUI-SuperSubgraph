@@ -18,7 +18,7 @@ const r = await pg.evaluate(async () => {
   ext.__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
   const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   const L = sn.properties.ui_layout;
-  const count = L.tabs.reduce((a, t) => a + t.sections.reduce((b, s) => b + (s.controls || []).length, 0), 0);
+  const count = L.tabs.reduce((a, t) => a + t.sections.reduce((b, s) => b + (s.controls || []).length + (s.tabs || []).reduce((c, st) => c + (st.controls || []).length, 0), 0), 0);
   const res = { tabs: L.tabs.map(t => t.name), count, ins: sn.inputs.filter(i => i.link != null).length, outs: sn.outputs.filter(o => o.links?.length).length };
   // executa
   const p = await app.graphToPrompt(); const q = await window.comfyAPI.api.api.queuePrompt(0, p);
@@ -39,7 +39,7 @@ r.recreated = await pg.evaluate(() => {
   // layout automático só sob pedido
   const app = window.app; const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(sn).find(i => i && /Rebuild Card/.test(i.content)).callback();
-  return sn.properties.ui_layout.tabs.flatMap(t => t.sections.flatMap(s => (s.controls || []).map(c => c.kind))).join();
+  return sn.properties.ui_layout.tabs.flatMap(t => t.sections.flatMap(s => [...(s.controls || []), ...(s.tabs || []).flatMap(st => st.controls || [])].map(c => c.kind))).join();
 });
 console.log(JSON.stringify(r));
 t("card starts empty: only Controls tab, zero controls", r.tabs.join() === "Controls" && r.count === 0);

@@ -21,7 +21,7 @@ const sid = await E(() => {
   const si = sn.subgraph.nodes.find(n => n.type === "ImageScale").id;
   sn.pos = [100, 100];
   sn.setSize([600, 300]);
-  sn.properties.ui_layout.tabs[0].sections[0].controls.push(
+  sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls.push(
     { name: "Stepper1", kind: "number", label: "W", bind: `${si}/width`, x: 16, y: 16, w: 256, h: 48 },
     { name: "Stepper2", kind: "number", label: "H", bind: `${si}/height`, x: 720, y: 96, w: 288, h: 48 });
   sn.__legoState.refresh();
@@ -39,7 +39,7 @@ let r = await fit();
 t("node grew so the far component fits: " + JSON.stringify(r), r.nodeW > 600 && r.inside);
 await pg.screenshot({ path: path.join(dir, "fit_width.png") });
 // arrasta (via layout) mais para a direita: cresce de novo; e fica estável
-await E((sid) => { const sn = window.app.graph.getNodeById(sid); sn.properties.ui_layout.tabs[0].sections[0].controls[1].x = 1024; sn.__legoState.refresh(); }, sid);
+await E((sid) => { const sn = window.app.graph.getNodeById(sid); sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls[1].x = 1024; sn.__legoState.refresh(); }, sid);
 await pg.waitForTimeout(1500);
 r = await fit();
 const w1 = r.nodeW;

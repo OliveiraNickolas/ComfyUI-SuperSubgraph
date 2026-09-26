@@ -21,7 +21,7 @@ const ids = await E(() => {
   const inner = sn.subgraph.nodes;
   const li = inner.find(n => n.type === "LoadImage"), si = inner.find(n => n.type === "ImageScale"), ni = inner.find(n => n.type === "PrimitiveInt");
   ni.widgets.find(w => w.name === "value").value = 100;
-  sn.properties.ui_layout.tabs[0].sections[0].controls.push({ name: "Stepper1", kind: "number", label: "Seed", bind: `${ni.id}/value`, x: 16, y: 16, w: 288, h: 48 });
+  sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls.push({ name: "Stepper1", kind: "number", label: "Seed", bind: `${ni.id}/value`, x: 16, y: 16, w: 288, h: 48 });
   sn.pos = [300, 250]; sn.__legoState.refresh();
   app.canvas.ds.offset = [0, 0]; app.canvas.ds.scale = 1; app.canvas.setDirty(true, true);
   return { sn: sn.id, li: li.id, si: si.id, ni: ni.id };

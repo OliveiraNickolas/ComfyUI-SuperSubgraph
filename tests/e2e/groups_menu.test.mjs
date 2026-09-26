@@ -38,7 +38,7 @@ t("zone takes the group color: " + r.zoneColor, r.zoneColor === "#3f789e");
 const rb = await E((sid) => {
   const app = window.app; const sn = app.graph.getNodeById(sid);
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(sn).find(i => i && i.content === "Rebuild Card from Widgets").callback();
-  return sn.properties.ui_layout.tabs.map(t => t.name + ":" + t.sections[0].controls.map(c => c.header || c.kind).join("+")).join(" | ");
+  return sn.properties.ui_layout.tabs.map(t => t.name + ":" + t.sections[0].tabs[0].controls.map(c => c.header || c.kind).join("+")).join(" | ");
 }, r.sid);
 t("Rebuild fills each group tab with its nodes: " + rb, /Resize:Upscale Image/.test(rb) && /Effects:Blur Image/.test(rb));
 

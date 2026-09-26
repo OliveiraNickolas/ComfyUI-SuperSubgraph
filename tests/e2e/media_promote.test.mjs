@@ -27,7 +27,7 @@ const titlePos = (id) => E((id) => { const c = window.app.canvas; const n = c.gr
 for (const id of [ids.I, ids.A, ids.V, ids.M]) { const [x, y] = await titlePos(id); await pg.mouse.click(x, y); await pg.waitForTimeout(120); }
 t("4 whole nodes picked", /Promote \(4\)/.test(await pg.locator(".lego-picker-promote-btn").innerText()));
 await pg.locator(".lego-picker-promote-btn").click(); await pg.waitForTimeout(600);
-const res = await E((sid) => window.app.graph.getNodeById(sid).properties.ui_layout.tabs[0].sections[0].controls.map(c => ({ kind: c.kind, bind: c.bind, items: (c.items || []).map(i => `${i.kind}:${i.bind || i.text}`) })), ids.sn);
+const res = await E((sid) => window.app.graph.getNodeById(sid).properties.ui_layout.tabs[0].sections[0].tabs[0].controls.map(c => ({ kind: c.kind, bind: c.bind, items: (c.items || []).map(i => `${i.kind}:${i.bind || i.text}`) })), ids.sn);
 console.log(JSON.stringify(res));
 const byBind = (b) => res.find(c => c.bind === b);
 t("Load Image -> just an Image Upload component", byBind(`${ids.I}/image`)?.kind === "media");

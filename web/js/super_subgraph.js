@@ -874,7 +874,7 @@ function autoLayout(node) {
   }
 
   const tabs = [];
-  const sec = (header, controls) => ({ header, controls });
+  const sec = (header, controls) => makeZone(header, controls);
 
   // Uma seção com muitos controles de uma linha lê melhor em duas colunas
   const cols = (list) => (list.length > 6 ? 2 : undefined);
@@ -896,7 +896,7 @@ function autoLayout(node) {
 
   if (bins.prompts.length) tabs.push({ name: "Prompts", sections: [sec("PROMPTS & TEXT", bins.prompts)] });
   if (bins.media.length) {
-    tabs.push({ name: "Media", sections: [{ header: "REFERENCE GRID", grid: 3, controls: bins.media }] });
+    tabs.push({ name: "Media", sections: [makeZone("REFERENCE GRID", bins.media, { grid: 3 })] });
   }
   // Subgrafo com nó de saída (Preview/Save...) ganha a aba Output já montada,
   // em modo automático: mostra o último resultado de cada tipo.
@@ -914,7 +914,7 @@ function autoLayout(node) {
     const outs = ["outimage", "outvideo", "outaudio"].filter((k) => outKinds.has(k)).map((k) => ({
       kind: k, label: "", w: 288, h: k === "outaudio" ? 96 : 256,
     }));
-    tabs.push({ name: "Output", sections: [{ header: "OUTPUT", controls: outs }] });
+    tabs.push({ name: "Output", sections: [makeZone("OUTPUT", outs)] });
   }
 
   if (!tabs.length) tabs.push({ name: "Controls", sections: [sec("PARAMETERS", [])] });
@@ -8191,6 +8191,14 @@ function openComponentContextMenu(e, host, state, ctrl, list) {
 }
 
 /** Cria uma nova Zona (com sub-abas internas como padrão e largura 100%). */
+/**
+ * Zona nova, sempre com suporte a abas: nasce com a "Tab 1" (e o "+" para
+ * criar outras). `controls` vão para a Tab 1.
+ */
+function makeZone(header, controls = [], extra = {}) {
+  return { header, ...extra, activeTab: 0, tabs: [{ name: "Tab 1", controls }] };
+}
+
 function createNewZone({ host, curTab, state }) {
   if (!curTab) return;
   const count = (curTab.sections || []).length + 1;
@@ -8198,15 +8206,7 @@ function createNewZone({ host, curTab, state }) {
   if (name == null) return;
   const zoneName = (name.trim() || `ZONE ${count}`).toUpperCase();
   pushUndo(host);
-  const newSec = {
-    header: zoneName,
-    width: "100%",
-    activeTab: 0,
-    tabs: [
-      { name: "Tab 1", controls: [] },
-      { name: "Tab 2", controls: [] }
-    ]
-  };
+  const newSec = makeZone(zoneName, [], { width: "100%" });
   if (!curTab.sections) curTab.sections = [];
   curTab.sections.push(newSec);
   state.refresh();
@@ -8226,15 +8226,7 @@ function addZoneBelow({ host, curTab, section, state }) {
   pushUndo(host);
 
   const isCol = section.width && section.width !== "100%";
-  const newSec = {
-    header: zoneName,
-    width: isCol ? section.width : "100%",
-    activeTab: 0,
-    tabs: [
-      { name: "Tab 1", controls: [] },
-      { name: "Tab 2", controls: [] }
-    ]
-  };
+  const newSec = makeZone(zoneName, [], { width: isCol ? section.width : "100%" });
   if (isCol) {
     newSec.col = typeof section.col === "number" ? section.col : 0;
     newSec.row = section.row;  // herda o row do grupo
@@ -8259,14 +8251,7 @@ function addZoneBeside({ host, curTab, section, state }) {
   const zoneName = (name.trim() || `ZONE ${count}`).toUpperCase();
   pushUndo(host);
 
-  const newSec = {
-    header: zoneName,
-    activeTab: 0,
-    tabs: [
-      { name: "Tab 1", controls: [] },
-      { name: "Tab 2", controls: [] }
-    ]
-  };
+  const newSec = makeZone(zoneName);
 
   const isCol = section.width && section.width !== "100%";
   if (!isCol) {
@@ -9084,15 +9069,7 @@ function addTab(layout, tabs) {
   if (!v) return false;
   tabs.push({
     name: v,
-    sections: [{
-      header: v.toUpperCase(),
-      width: "100%",
-      activeTab: 0,
-      tabs: [
-        { name: "Tab 1", controls: [] },
-        { name: "Tab 2", controls: [] }
-      ]
-    }]
+    sections: [makeZone(v.toUpperCase(), [], { width: "100%" })]
   });
   layout.activeTab = tabs.length - 1;
   return true;
@@ -9895,7 +9872,7 @@ function buildCard(host, state) {
       // Alvo de arraste: soltar aqui leva o elemento para a 1ª zona desta aba.
       tab.__legoTabDrop = {
         list: () => {
-          if (!Array.isArray(t.sections) || !t.sections.length) t.sections = [{ header: String(t.name || "ZONE").toUpperCase(), controls: [] }];
+          if (!Array.isArray(t.sections) || !t.sections.length) t.sections = [makeZone(String(t.name || "ZONE").toUpperCase())];
           return visibleControlsOf(t.sections[0]);
         },
         activate: () => { layout.activeTab = i; },
@@ -11539,9 +11516,9 @@ function buildCard(host, state) {
           state.draggingComponent = null;
 
           const before = JSON.stringify(host.properties[PROP] || {});
-          const newSec = { header: toolByKind(d.kind).label.toUpperCase(), controls: [] };
+          const newSec = makeZone(toolByKind(d.kind).label.toUpperCase());
           sections.push(newSec);
-          dropArmedTool(host, state, newSec, 16, 16, false, d.kind);
+          dropArmedTool(host, state, newSec.tabs[0], 16, 16, false, d.kind);
           // O dropArmedTool gravou o Undo já com a zona vazia; um passo só
           // (zona + componente) deve voltar ao estado de antes do drop.
           const stack = host.__legoUndoStack;
@@ -12241,8 +12218,8 @@ function superAutoLayout(node) {
   const tabOf = (g) => {
     const key = g || null;
     if (!tabFor.has(key)) {
-      const zone = { header: g ? String(g.title || "GROUP").toUpperCase() : (groups.length ? "OTHER" : "PARAMETERS"), ...(g?.color ? { color: g.color } : {}), controls: [] };
-      tabFor.set(key, { tab: { name: g ? (g.title || "Group") : (groups.length ? "Other" : "Controls"), sections: [zone] }, zone, y: 16 });
+      const sec = makeZone(g ? String(g.title || "GROUP").toUpperCase() : (groups.length ? "OTHER" : "PARAMETERS"), [], g?.color ? { color: g.color } : {});
+      tabFor.set(key, { tab: { name: g ? (g.title || "Group") : (groups.length ? "Other" : "Controls"), sections: [sec] }, zone: sec.tabs[0], y: 16 });
     }
     return tabFor.get(key);
   };
@@ -12255,7 +12232,7 @@ function superAutoLayout(node) {
     t.y += ctl.h + 32;
   }
   for (const t of tabFor.values()) if (t.zone.controls.length || groups.length) node.properties[PROP].tabs.push(t.tab);
-  if (!node.properties[PROP].tabs.length) node.properties[PROP].tabs.push({ name: "Controls", sections: [{ header: "PARAMETERS", controls: [] }] });
+  if (!node.properties[PROP].tabs.length) node.properties[PROP].tabs.push({ name: "Controls", sections: [makeZone("PARAMETERS")] });
   for (const t of base.tabs || []) if (t.name === "Output") node.properties[PROP].tabs.push(t);
   node.properties[PROP].subtitle = "Super Subgraph";
   node.properties[PROP].badge = `${innerNodesOf(node).length} nodes`;
@@ -12367,10 +12344,10 @@ function emptySuperLayout(node, groups = [], loose = true) {
   // Um group do ComfyUI = uma aba (com o nome e a cor dele), ainda vazia.
   const tabs = groups.map((g) => ({
     name: g.title || "Group",
-    sections: [{ header: String(g.title || "GROUP").toUpperCase(), ...(g.color ? { color: g.color } : {}), controls: [] }],
+    sections: [makeZone(String(g.title || "GROUP").toUpperCase(), [], g.color ? { color: g.color } : {})],
   }));
-  if (!tabs.length) tabs.push({ name: "Controls", sections: [{ header: "PARAMETERS", controls: [] }] });
-  else if (loose) tabs.push({ name: "Other", sections: [{ header: "OTHER", controls: [] }] });
+  if (!tabs.length) tabs.push({ name: "Controls", sections: [makeZone("PARAMETERS")] });
+  else if (loose) tabs.push({ name: "Other", sections: [makeZone("OTHER")] });
   node.properties[PROP] = {
     schema: SCHEMA,
     title: (node.title || "Super Subgraph").toUpperCase(),

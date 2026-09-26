@@ -57,7 +57,7 @@ await pg.screenshot({ path: path.join(dir, "promote_picking.png") });
 await pg.locator(".lego-picker-promote-btn").click(); await pg.waitForTimeout(600);
 const res = await E((sid) => {
   const app = window.app; const sn = app.graph.getNodeById(sid);
-  const ctrls = sn.properties.ui_layout.tabs[0].sections[0].controls;
+  const ctrls = sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls;
   return { root: app.canvas.graph === app.rootGraph, dialog: !!document.querySelector(".lego-comfy-dialog"), ctrls: ctrls.map(c => ({ kind: c.kind, bind: c.bind, header: c.header, items: (c.items || []).filter(i => i.bind).map(i => i.bind) })), selected: [...sn.__legoState.selectedNames] };
 }, ids.sn);
 console.log("RESULT", JSON.stringify(res));
@@ -69,10 +69,10 @@ await pg.waitForTimeout(300);
 await pg.screenshot({ path: path.join(dir, "promote_result.png") });
 // undo desfaz tudo de uma vez
 await E(() => document.activeElement?.blur()); await pg.mouse.click(700, 850); await pg.keyboard.press("Escape");
-const before = await E((sid) => window.app.graph.getNodeById(sid).properties.ui_layout.tabs[0].sections[0].controls.length, ids.sn);
+const before = await E((sid) => window.app.graph.getNodeById(sid).properties.ui_layout.tabs[0].sections[0].tabs[0].controls.length, ids.sn);
 await E((sid) => { window.__snRef = window.app.graph.getNodeById(sid); }, ids.sn);
 await pg.keyboard.press("Control+z"); await pg.waitForTimeout(300);
-const after = await E((sid) => window.app.graph.getNodeById(sid).properties.ui_layout.tabs[0].sections[0].controls.length, ids.sn);
+const after = await E((sid) => window.app.graph.getNodeById(sid).properties.ui_layout.tabs[0].sections[0].tabs[0].controls.length, ids.sn);
 t("card undo does not also trigger ComfyUI's workflow undo (graph not reloaded)", await E((sid) => window.app.graph.getNodeById(sid) === window.__snRef, ids.sn));
 t(`one undo removes the whole promotion (${before} -> ${after})`, before === 2 && after === 0);
 t("no extension errors " + JSON.stringify(errs.slice(0, 4)), !errs.length);

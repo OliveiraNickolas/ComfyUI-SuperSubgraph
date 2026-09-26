@@ -315,8 +315,9 @@ if (groupRow) {
   const createdSec = curTab.sections[0];
   t("new zone header is upper case", createdSec.header === "CUSTOM ZONE");
   t("new zone defaults to 100% full width", createdSec.width === "100%");
-  t("new zone defaults to internal sub-tabs structure", Array.isArray(createdSec.tabs) && createdSec.tabs.length === 2);
-  t("new zone has Tab 1 and Tab 2", createdSec.tabs[0].name === "Tab 1" && createdSec.tabs[1].name === "Tab 2");
+  t("new zone defaults to internal sub-tabs structure", Array.isArray(createdSec.tabs) && createdSec.tabs.length === 1);
+  // Nasce só com a Tab 1 (o "+" cria as outras).
+  t("new zone has just Tab 1", createdSec.tabs.length === 1 && createdSec.tabs[0].name === "Tab 1");
   t("new zone has activeTab 0", createdSec.activeTab === 0);
 }
 

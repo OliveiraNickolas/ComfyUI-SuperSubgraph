@@ -19,7 +19,7 @@ const sid = await E(() => {
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert Selection/.test(i.content)).callback();
   const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   const ci = sn.subgraph.nodes.find(n => n.type === "CLIPLoader").id;
-  sn.properties.ui_layout.tabs[0].sections[0].controls.push({ name: "HGroup1", kind: "segment", header: "Load CLIP", x: 16, y: 16, w: 320, h: 64, items: [
+  sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls.push({ name: "HGroup1", kind: "segment", header: "Load CLIP", x: 16, y: 16, w: 320, h: 64, items: [
     { name: "Label1", kind: "label", text: "Clip Name", label: "Clip Name" }, { name: "Dropdown1", kind: "combo", bind: `${ci}/clip_name`, label: "Clip Name", w: 320 },
     { name: "Label2", kind: "label", text: "Type", label: "Type" }, { name: "Dropdown2", kind: "combo", bind: `${ci}/type`, label: "Type", w: 240 },
     { name: "Label3", kind: "label", text: "Device", label: "Device" }, { name: "Dropdown3", kind: "combo", bind: `${ci}/device`, label: "Device", w: 240 } ] });
@@ -30,7 +30,7 @@ const sid = await E(() => {
 await pg.waitForTimeout(1200);
 const g = () => E((sid) => {
   const sn = window.app.graph.getNodeById(sid);
-  const c = sn.properties.ui_layout.tabs[0].sections[0].controls[0];
+  const c = sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls[0];
   const row = [...sn.__legoHost.querySelectorAll(".lego-row")].find(r => r.dataset.name === c.name);
   const box = row.querySelector(".lego-segment-box");
   return { kind: c.kind, w: c.w, h: c.h, color: c.color, overW: box.scrollWidth - box.clientWidth, overH: box.scrollHeight - box.clientHeight, undo: (sn.__legoUndoStack || []).length };

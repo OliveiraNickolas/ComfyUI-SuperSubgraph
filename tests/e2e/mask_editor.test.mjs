@@ -20,7 +20,7 @@ const ids = await E(() => {
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
   const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   const li = sn.subgraph.nodes.find(n => n.type === "LoadImage");
-  sn.properties.ui_layout.tabs[0].sections[0].controls.push({ name: "Image1", kind: "media", label: "", bind: `${li.id}/image`, x: 16, y: 16, w: 288, h: 224 });
+  sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls.push({ name: "Image1", kind: "media", label: "", bind: `${li.id}/image`, x: 16, y: 16, w: 288, h: 224 });
   sn.pos = [200, 150]; sn.__legoState.refresh();
   app.canvas.ds.offset = [0, 0]; app.canvas.ds.scale = 1; app.canvas.setDirty(true, true);
   return { sn: sn.id, li: li.id };

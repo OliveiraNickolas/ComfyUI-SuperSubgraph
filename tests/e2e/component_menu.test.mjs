@@ -19,7 +19,7 @@ const sid = await E(async () => {
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
   const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   const si = sn.subgraph.nodes.find(n => n.type === "ImageScale").id;
-  sn.properties.ui_layout.tabs[0].sections[0].controls.push(
+  sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls.push(
     { name: "Stepper1", kind: "number", label: "Width", bind: `${si}/width`, x: 16, y: 16, w: 224, h: 48 },
     { name: "Stepper2", kind: "number", label: "Height", bind: `${si}/height`, x: 16, y: 80, w: 224, h: 48 });
   sn.pos = [300, 250];
@@ -39,7 +39,7 @@ await pg.keyboard.press("Escape"); await pg.mouse.click(1400, 900);
 await E((sid) => { const st = window.app.graph.getNodeById(sid).__legoState; st.selectedNames = new Set(["Stepper1", "Stepper2"]); st.selectedName = "Stepper2"; }, sid);
 const groupsBefore = await E(() => (window.app.graph.groups || window.app.graph._groups || []).length);
 await pg.keyboard.press("Control+g"); await pg.waitForTimeout(400);
-const r = await E((sid) => { const sn = window.app.graph.getNodeById(sid); const c = sn.properties.ui_layout.tabs[0].sections[0].controls; return { kinds: c.map(x => x.kind).join(), items: (c.find(x => x.kind === "segment")?.items || []).map(i => i.name).join(), groups: (window.app.graph.groups || window.app.graph._groups || []).length }; }, sid);
+const r = await E((sid) => { const sn = window.app.graph.getNodeById(sid); const c = sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls; return { kinds: c.map(x => x.kind).join(), items: (c.find(x => x.kind === "segment")?.items || []).map(i => i.name).join(), groups: (window.app.graph.groups || window.app.graph._groups || []).length }; }, sid);
 t("Ctrl+G grouped the two steppers: " + JSON.stringify(r), r.kinds === "segment" && r.items === "Stepper1,Stepper2");
 t("ComfyUI's own Ctrl+G did not create a canvas group", r.groups === groupsBefore);
 t("no extension errors " + JSON.stringify(errs.slice(0, 3)), !errs.length);

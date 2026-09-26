@@ -19,7 +19,7 @@ const sid = await E(() => {
   const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   sn.title = "MINIMAX H3 IMAGE EDIT"; sn.color = "#233"; sn.bgcolor = "#355";
   const si = sn.subgraph.nodes.find(n => n.type === "ImageScale").id;
-  sn.properties.ui_layout.tabs[0].sections[0].controls.push({ name: "Stepper1", kind: "number", label: "Width", bind: `${si}/width`, x: 16, y: 16, w: 256, h: 48 });
+  sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls.push({ name: "Stepper1", kind: "number", label: "Width", bind: `${si}/width`, x: 16, y: 16, w: 256, h: 48 });
   sn.pos = [150, 120]; sn.__legoState.refresh();
   app.canvas.deselectAll(); app.canvas.ds.offset = [0, 0]; app.canvas.ds.scale = 1; app.canvas.setDirty(true, true);
   return sn.id;

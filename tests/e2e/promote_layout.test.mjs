@@ -42,7 +42,7 @@ t("5 picks", /Promote \(5\)/.test(await E(() => document.querySelector(".lego-pi
 await pg.locator(".lego-picker-promote-btn").click(); await pg.waitForTimeout(1500);
 const r = await E((sid) => {
   const sn = window.app.graph.getNodeById(sid);
-  const ctrls = sn.properties.ui_layout.tabs[0].sections[0].controls;
+  const ctrls = sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls;
   const box = sn.__legoHost.querySelector(".lego-sec-controls");
   return { zoneW: box.clientWidth, c: ctrls.map(c => ({ n: c.name, k: c.kind, b: c.bind || (c.items || []).find(i => i.bind)?.bind || "", x: c.x, y: c.y, w: c.w, h: c.h })) };
 }, ids.sn);
@@ -63,7 +63,7 @@ if (hasDlg) {
   await pg.locator(".lego-comfy-target-picker-btn").click(); await pg.waitForTimeout(700);
   await click({ id: ids.S, widget: "crop" });
   await pg.locator(".lego-picker-promote-btn").click(); await pg.waitForTimeout(1200);
-  const r2 = await E((sid) => window.app.graph.getNodeById(sid).properties.ui_layout.tabs[0].sections[0].controls.map(c => ({ x: c.x, y: c.y, w: c.w, h: c.h })), ids.sn);
+  const r2 = await E((sid) => window.app.graph.getNodeById(sid).properties.ui_layout.tabs[0].sections[0].tabs[0].controls.map(c => ({ x: c.x, y: c.y, w: c.w, h: c.h })), ids.sn);
   const nw = r2[r2.length - 1];
   const ov = r2.slice(0, -1).some(o => nw.x < o.x + o.w && nw.x + nw.w > o.x && nw.y < o.y + o.h && nw.y + nw.h > o.y);
   t("a second promotion does not cover the existing ones", !ov);

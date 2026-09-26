@@ -29,7 +29,7 @@ globalThis.__app.graph._nodes.push(host);
 
 const lay = M.autoLayout(host);
 const outTab = lay.tabs.find((t) => t.name === "Output");
-t("autoLayout adds Output tab with image/video/audio", outTab && outTab.sections[0].controls.map(c => c.kind).join() === "outimage,outvideo,outaudio");
+t("autoLayout adds Output tab with image/video/audio", outTab && outTab.sections[0].tabs[0].controls.map(c => c.kind).join() === "outimage,outvideo,outaudio");
 host.properties.ui_layout = lay;
 lay.activeTab = lay.tabs.indexOf(outTab);
 const st = M.attach(host);
@@ -59,7 +59,7 @@ fire("10:5", { audio: [{ filename: "s2.flac", type: "output" }] });
 t("image untouched by unrelated update", q(".lego-out-box.is-image img") === before);
 
 // fonte explícita = nó do grafo 99
-const imgCtrl = outTab.sections[0].controls[0];
+const imgCtrl = outTab.sections[0].tabs[0].controls[0];
 imgCtrl.source = "99"; st.refresh();
 t("explicit source shows node 99", q(".lego-out-box.is-image img").getAttribute("src").includes("other.png"));
 
@@ -69,7 +69,7 @@ t("filename can't inject", host.__legoHost.querySelectorAll("img").length === 1)
 
 // paleta: soltar Image Output no modo edição
 st.edit = true; st.refresh();
-const sec = outTab.sections[0];
+const sec = outTab.sections[0].tabs[0];   // zonas nascem com abas: os componentes ficam na Tab 1
 M.dropArmedTool(host, st, sec, 400, 16, false, "outimage");
 const dropped = sec.controls[sec.controls.length - 1];
 t("palette drop creates outimage", dropped.kind === "outimage" && dropped.name.startsWith("ImageOut") && dropped.label === "");

@@ -26,7 +26,7 @@ const sid = await E(() => {
   const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   sn.title = "Scaler";
   const si = sn.subgraph.nodes.find(n => n.type === "ImageScale").id;
-  sn.properties.ui_layout.tabs[0].sections[0].controls.push({ name: "Stepper1", kind: "number", label: "Width", bind: `${si}/width`, x: 16, y: 16, w: 256, h: 48 });
+  sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls.push({ name: "Stepper1", kind: "number", label: "Width", bind: `${si}/width`, x: 16, y: 16, w: 256, h: 48 });
   sn.pos = [300, 250]; sn.__legoState.edit = true; sn.__legoState.refresh();
   app.canvas.ds.offset = [0, 0]; app.canvas.ds.scale = 1; app.canvas.setDirty(true, true);
   return sn.id;
@@ -40,7 +40,7 @@ await pg.locator('.lego-row[data-name="Stepper1"]').click({ button: "right", pos
 await pg.locator(".lego-ctx-item", { hasText: "Color…" }).click(); await pg.waitForTimeout(150);
 await pg.locator('.lego-color-swatch[title="Red"]').click(); await pg.waitForTimeout(200);
 const col = await E((sid) => { const sn = window.app.graph.getNodeById(sid); const sec = sn.properties.ui_layout.tabs[0].sections[0];
-  return { zone: sec.color, ctrl: sec.controls[0].color, secTinted: !!sn.__legoHost.querySelector(".lego-sec.tinted"), rowTinted: !!sn.__legoHost.querySelector('.lego-row.tinted[data-name="Stepper1"]') }; }, sid);
+  return { zone: sec.color, ctrl: sec.tabs[0].controls[0].color, secTinted: !!sn.__legoHost.querySelector(".lego-sec.tinted"), rowTinted: !!sn.__legoHost.querySelector('.lego-row.tinted[data-name="Stepper1"]') }; }, sid);
 t("zone and component colors set and shown: " + JSON.stringify(col), col.zone === "#3b82f6" && col.ctrl === "#ef4444" && col.secTinted && col.rowTinted);
 t("no extension errors " + JSON.stringify(errs.slice(0, 3)), !errs.length);
 console.log(`\n${ok} passed, ${fail} failed`);

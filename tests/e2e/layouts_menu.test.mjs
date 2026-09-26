@@ -29,7 +29,7 @@ const ids = await E(() => {
   };
   const s1 = make(0, false), s2 = make(600, true);
   const si1 = s1.subgraph.nodes.find(n => n.type === "ImageScale").id;
-  s1.properties.ui_layout.tabs[0].sections[0].controls.push({ name: "Stepper1", kind: "number", label: "Width", bind: `${si1}/width`, x: 16, y: 16, w: 256, h: 48, color: "#22c55e" });
+  s1.properties.ui_layout.tabs[0].sections[0].tabs[0].controls.push({ name: "Stepper1", kind: "number", label: "Width", bind: `${si1}/width`, x: 16, y: 16, w: 256, h: 48, color: "#22c55e" });
   s1.properties.ui_layout.tabs[0].sections[0].header = "MY ZONE";
   s1.__legoState.refresh();
   s1.pos = [200, 100]; s2.pos = [200, 450];
@@ -68,17 +68,17 @@ const loaded = await E(async ({ ids, NAME }) => {
   if (!o) return { err: "not listed" };
   await o.callback(); await new Promise(r => setTimeout(r, 300));
   const sec = s2.properties.ui_layout.tabs[0].sections[0];
-  return { header: sec.header, bind: sec.controls[0]?.bind, color: sec.controls[0]?.color, row: !!s2.__legoHost.querySelector('.lego-row[data-name="Stepper1"] input.lego-step-input'), missing: !!s2.__legoHost.querySelector(".lego-row.missing") };
+  return { header: sec.header, bind: sec.tabs[0].controls[0]?.bind, color: sec.tabs[0].controls[0]?.color, row: !!s2.__legoHost.querySelector('.lego-row[data-name="Stepper1"] input.lego-step-input'), missing: !!s2.__legoHost.querySelector(".lego-row.missing") };
 }, { ids, NAME });
 t("layout loaded on the other SuperSubgraph, bind re-linked to its own ImageScale: " + JSON.stringify(loaded), loaded.header === "MY ZONE" && loaded.bind === `${ids.si2}/width` && loaded.color === "#22c55e" && loaded.row && !loaded.missing);
 // exportar e importar arquivo
 const [dl] = await Promise.all([pg.waitForEvent("download"), run(ids.s1, "Export Card Layout…")]);
 const file = path.join(dir, dl.suggestedFilename()); await dl.saveAs(file);
 t("layout exported: " + dl.suggestedFilename(), /\.sslayout\.json$/.test(dl.suggestedFilename()));
-await E((sid) => { const n = window.app.graph.getNodeById(sid); n.properties.ui_layout.tabs[0].sections[0].controls = []; n.__legoState.refresh(); }, ids.s2);
+await E((sid) => { const n = window.app.graph.getNodeById(sid); n.properties.ui_layout.tabs[0].sections[0].tabs[0].controls = []; n.__legoState.refresh(); }, ids.s2);
 const [fc] = await Promise.all([pg.waitForEvent("filechooser"), run(ids.s2, "Import Card Layout…")]);
 await fc.setFiles(file); await pg.waitForTimeout(700);
-const imp = await E((sid) => window.app.graph.getNodeById(sid).properties.ui_layout.tabs[0].sections[0].controls.map(c => c.bind).join(), ids.s2);
+const imp = await E((sid) => window.app.graph.getNodeById(sid).properties.ui_layout.tabs[0].sections[0].tabs[0].controls.map(c => c.bind).join(), ids.s2);
 t("layout imported from file: " + imp, imp === `${ids.si2}/width`);
 // apaga
 await E(async ({ ids, NAME }) => { const ext = window.app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph"); await ext.__flatNode(window.app.graph.getNodeById(ids.s1)).find(i => i && i.content === "Delete a Saved Card Layout").submenu.options.find(o => o.content === NAME).callback(); }, { ids, NAME });
