@@ -24,15 +24,18 @@ const sid = await E(async () => {
 await pg.waitForTimeout(600);
 t("enter button in the card header", await pg.locator(".lego-ss-enter").count() === 1);
 await pg.locator(".lego-ss-enter").click(); await pg.waitForTimeout(600);
-let st = await E(() => ({ inside: window.app.canvas.graph !== window.app.rootGraph, types: (window.app.canvas.graph.nodes || []).map(n => n.type).sort().join(), bar: document.querySelector(".lego-ss-nav")?.innerText }));
+let st = await E(() => ({ inside: window.app.canvas.graph !== window.app.rootGraph, types: (window.app.canvas.graph.nodes || []).map(n => n.type).sort().join(), bar: document.querySelector(".subgraph-breadcrumb")?.innerText.replace(/\s+/g, " ") }));
 t("click enters: canvas shows the inner nodes " + st.types, st.inside && st.types === "ImageScale,PreviewImage");
-t("navigation bar with Back + breadcrumb: " + JSON.stringify(st.bar), /Back/.test(st.bar || "") && /Workflow/.test(st.bar || "") && /Super Subgraph/.test(st.bar || ""));
+// Navegação nativa: o breadcrumb do ComfyUI mostra "Workflow / Super Subgraph".
+t("native breadcrumb shows the Super Subgraph: " + JSON.stringify(st.bar), /Workflow/.test(st.bar || "") && /Super Subgraph/.test(st.bar || ""));
 await pg.screenshot({ path: path.join(dir, "enter_inside.png") });
 // edita lá dentro: adiciona ImageInvert entre Scale e Preview
 await E(() => { const g = window.app.canvas.graph; const LG = window.LiteGraph; const s = g.nodes.find(n => n.type === "ImageScale"); const p = g.nodes.find(n => n.type === "PreviewImage"); const inv = LG.createNode("ImageInvert"); inv.pos = [s.pos[0] + 60, s.pos[1] + 260]; g.add(inv); s.connect(0, inv, 0); inv.connect(0, p, 0); });
-await pg.locator(".lego-ss-nav-back").click(); await pg.waitForTimeout(500);
-st = await E(() => ({ root: window.app.canvas.graph === window.app.rootGraph, bar: !!document.querySelector(".lego-ss-nav") }));
-t("Back returns to the workflow and hides the bar", st.root && !st.bar);
+const crumbText = () => E(() => document.querySelector(".subgraph-breadcrumb")?.innerText.replace(/\s+/g, " ") || "");
+await pg.keyboard.press("Escape"); await pg.waitForTimeout(500);
+st = await E(() => ({ root: window.app.canvas.graph === window.app.rootGraph }));
+const c0 = await crumbText();
+t("Esc returns to the workflow and the breadcrumb drops the level: " + JSON.stringify(c0), st.root && !/Super Subgraph/.test(c0));
 // roda: o preview de dentro agora vem invertido
 const run = await E(async () => {
   const app = window.app; const p = await app.graphToPrompt(); const q = await window.comfyAPI.api.api.queuePrompt(0, p);
@@ -52,15 +55,16 @@ const nested = await E(async () => {
   inner2.title = "Nested SS";
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(inner2).find(i => i && /^Open Inside$/.test(i.content)).callback();
   await new Promise(r => setTimeout(r, 400));
-  return { types: app.canvas.graph.nodes.map(n => n.type).join(), bar: document.querySelector(".lego-ss-nav")?.innerText };
+  await new Promise(r => setTimeout(r, 400));
+  return { types: app.canvas.graph.nodes.map(n => n.type).join(), bar: document.querySelector(".subgraph-breadcrumb")?.innerText.replace(/\s+/g, " ") };
 });
-t("nested SuperSubgraph: 2-level breadcrumb " + JSON.stringify(nested.bar), nested.types === "ImageInvert" && /Nested SS/.test(nested.bar) && /Super Subgraph/.test(nested.bar));
+t("nested SuperSubgraph: 2-level native breadcrumb " + JSON.stringify(nested.bar), nested.types === "ImageInvert" && /Super Subgraph.*Nested SS/.test(nested.bar));
 await pg.screenshot({ path: path.join(dir, "enter_nested.png") });
 await pg.keyboard.press("Escape"); await pg.waitForTimeout(400);
-const esc = await E(() => ({ types: (window.app.canvas.graph.nodes || []).map(n => n.type).sort().join(), bar: document.querySelector(".lego-ss-nav")?.innerText || "" }));
-t("Esc goes up one level: " + esc.types, esc.types.includes("ImageScale") && /Esc/.test(esc.bar) && !/Nested SS/.test(esc.bar));
-await pg.locator(".lego-ss-nav-crumb", { hasText: "Workflow" }).click(); await pg.waitForTimeout(400);
-t("'Workflow' crumb jumps back to the root", await E(() => window.app.canvas.graph === window.app.rootGraph && !document.querySelector(".lego-ss-nav")));
+const esc = await E(() => ({ types: (window.app.canvas.graph.nodes || []).map(n => n.type).sort().join(), bar: document.querySelector(".subgraph-breadcrumb")?.innerText.replace(/\s+/g, " ") || "" }));
+t("Esc goes up one level: " + esc.types + " " + JSON.stringify(esc.bar), esc.types.includes("ImageScale") && /Super Subgraph/.test(esc.bar) && !/Nested SS/.test(esc.bar));
+await pg.locator(".subgraph-breadcrumb .p-breadcrumb-item-link").first().click(); await pg.waitForTimeout(1200);
+t("workflow crumb jumps back to the root", await E(() => window.app.canvas.graph === window.app.rootGraph && !/Super Subgraph/.test(document.querySelector(".subgraph-breadcrumb")?.innerText || "")));
 const run2 = await E(async () => {
   const app = window.app; const p = await app.graphToPrompt(); const q = await window.comfyAPI.api.api.queuePrompt(0, p);
   for (let i = 0; i < 60; i++) { const h = await (await fetch(`/history/${q.prompt_id}`)).json(); const e = h[q.prompt_id]; if (e?.status?.completed) return { ok: true, outs: Object.keys(e.outputs) }; if (e?.status?.status_str === "error") return { ok: false, msg: JSON.stringify(e.status.messages).slice(-600) }; await new Promise(r => setTimeout(r, 500)); }

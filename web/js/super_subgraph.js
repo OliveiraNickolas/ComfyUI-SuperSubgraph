@@ -13408,9 +13408,46 @@ function currentCanvasView() {
   return ds ? { offset: [ds.offset[0], ds.offset[1]], scale: ds.scale } : null;
 }
 
+/**
+ * Breadcrumb nativo do ComfyUI: ele lista o subgrafo que a loja de workflow
+ * diz estar ativo. Marcando o grafo de dentro como ativo, a navegação fica
+ * igual à de um subgrafo nativo ("Workflow › Super Subgraph", clique para voltar).
+ */
+function nativeWorkflowStore() {
+  const w = app.extensionManager?.workflow;
+  return w && "activeSubgraph" in w ? w : null;
+}
+function setNativeActiveGraph(graph) {
+  const w = nativeWorkflowStore();
+  if (!w) return false;
+  const target = graph && graph.__ssHostNode ? graph : undefined;
+  try {
+    if (w.activeSubgraph !== target) w.activeSubgraph = target;
+    // Aninhado: o frontend não acha o caminho (não são subgrafos nativos) e
+    // mostraria só o último nível — passa a pilha inteira para o breadcrumb.
+    const nav = nativeNavStore();
+    const ids = SS_NAV.filter((f) => f.inner?.id).map((f) => f.inner.id);
+    if (target && nav?.restoreState && ids.length > 1 && ids[ids.length - 1] === target.id) nav.restoreState(ids);
+  } catch (err) {
+    console.warn(LOG, "native breadcrumb", err);
+    return false;
+  }
+  return true;
+}
+
+/** Loja de navegação de subgrafos do frontend (pinia), se acessível. */
+function nativeNavStore() {
+  try {
+    const pinia = document.querySelector("#vue-app")?.__vue_app__?.config?.globalProperties?.$pinia;
+    return pinia?._s?.get?.("subgraphNavigation") || null;
+  } catch { return null; }
+}
+
 function renderSuperNavBar() {
   document.querySelector(".lego-ss-nav")?.remove();
   if (!SS_NAV.length) return;
+  // Com o breadcrumb nativo disponível, a barra própria não aparece.
+  if (nativeWorkflowStore()) return;
   const bar = el("div", "lego-ss-nav");
   const back = el("button", "lego-ss-nav-back");
   back.innerHTML = `${glyph("back", 14)}<span>Back</span><kbd class="lego-ss-nav-kbd">Esc</kbd>`;
@@ -13507,8 +13544,11 @@ function enterSuper(sn) {
     }
   } catch {}
   if (c.subgraph) delete c.subgraph;
+  // Nome mostrado no breadcrumb nativo = título atual do nó.
+  inner.name = sn.title || "SuperSubgraph";
   c.setGraph(inner);
   if (c.subgraph) delete c.subgraph;
+  setNativeActiveGraph(inner);
   renderSuperNavBar();
   // Volta onde parou da última vez; na primeira entrada, enquadra tudo.
   const saved = sn.properties?.[SS_PROP]?.view;
@@ -13525,11 +13565,32 @@ function enterSuper(sn) {
         // Saiu por fora (breadcrumb nativo): se foi para um grafo de onde se
         // entrou, volta para a vista que ele tinha.
         const g = app.canvas?.graph;
-        const frame = SS_NAV.find((f) => f.from === g);
-        SS_NAV.length = 0;
+        // Voltou para um nível desta pilha (breadcrumb do meio) ou saiu de vez.
+        const back = SS_NAV.findIndex((f) => f.from === g);
+        const frame = back >= 0 ? SS_NAV[back] : null;
+        const leaving = back >= 0 ? SS_NAV.slice(back) : [...SS_NAV];
+        // O que foi mudado lá dentro vai para o nó (como no Back), do mais
+        // interno para fora — o de dentro precisa estar salvo no nó que fica
+        // no grafo do de fora antes de este ser salvo.
+        for (const f of leaving.reverse()) {
+          if (!f.host?.properties?.[SS_PROP] || !f.inner?.serialize) continue;
+          try { f.host.properties[SS_PROP].graph = f.inner.serialize(); } catch (err) { console.warn(LOG, "serialize inner on native exit", err); }
+          pruneSuperBoundary(f.host);
+          f.host.__legoState?.refresh?.();
+        }
+        SS_NAV.length = back >= 0 ? back : 0;
+        setNativeActiveGraph(g);
         renderSuperNavBar();
         if (frame) applyCanvasView(g, frame.view);
         return;
+      }
+      // O frontend pode recalcular o ativo sozinho (canvas.subgraph vazio):
+      // mantém o breadcrumb mostrando o Super Subgraph.
+      setNativeActiveGraph(top.inner);
+      // Renomeado pelo breadcrumb (duplo clique no nome): o nó acompanha.
+      if (top.inner.name && top.host && top.inner.name !== top.host.title) {
+        top.host.title = top.inner.name;
+        top.host.setDirtyCanvas?.(true, true);
       }
       // Vista de dentro sempre em dia (qualquer que seja o jeito de sair).
       if (top.host?.properties?.[SS_PROP]) top.host.properties[SS_PROP].view = currentCanvasView();
@@ -13557,6 +13618,7 @@ function exitSuper(levels = 1) {
     }
   } catch {}
   c.setGraph(targetGraph);
+  setNativeActiveGraph(targetGraph);
   applyCanvasView(targetGraph, frame.view);
   renderSuperNavBar();
   // O de dentro pode ter mudado (nós novos, removidos): a borda e os cartões se refazem.
@@ -14465,6 +14527,7 @@ app.registerExtension({
         setTimeout(() => {
           if (app.canvas?.graph !== newGraph || SS_NAV[back] !== frame) return;
           SS_NAV.length = back;
+          setNativeActiveGraph(newGraph);
           renderSuperNavBar();
           applyCanvasView(newGraph, frame.view);
         }, 150);

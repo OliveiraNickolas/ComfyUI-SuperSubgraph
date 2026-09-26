@@ -41,7 +41,7 @@ try {
   }
   t("stepper still writes the inner widget: " + wv, typeof wv === "number" && wv > 512);
   await pg.locator(".lego-ss-enter").first().click(); await pg.waitForTimeout(600);
-  const inside = await E(() => window.app.canvas.graph !== window.app.rootGraph && !!document.querySelector(".lego-ss-nav"));
+  const inside = await E(() => window.app.canvas.graph !== window.app.rootGraph && /Super Subgraph/.test(document.querySelector(".subgraph-breadcrumb")?.innerText || ""));
   t("enter button opens the SuperSubgraph", inside);
   await pg.keyboard.press("Escape"); await pg.waitForTimeout(400);
   t("Esc returns", await E(() => window.app.canvas.graph === window.app.rootGraph));

@@ -27,6 +27,10 @@ await setView([300 - pos[0], 200 - pos[1]], 0.7); await pg.waitForTimeout(300);
 const out1 = await ds();
 await enter();
 t("first entry shows the inside graph", (await ds()).inner);
+// Navegação nativa: o breadcrumb do ComfyUI mostra o Super Subgraph, sem a barra "SS" própria.
+const crumb = await pg.evaluate(() => document.querySelector(".subgraph-breadcrumb")?.innerText.replace(/\s+/g, " ") || "");
+t(`native breadcrumb lists the Super Subgraph: "${crumb}"`, /Super Subgraph/.test(crumb));
+t("no custom SS nav bar", !(await pg.$(".lego-ss-nav")));
 await setView([-100, -50], 1.5); await pg.waitForTimeout(700);
 await pg.keyboard.press("Escape"); await pg.waitForTimeout(1500);
 const back1 = await ds();
@@ -39,13 +43,16 @@ await enter();
 const in2 = await ds();
 t(`second entry restores the last inside view ${JSON.stringify(in2)}`, same(in2, { o: [-100, -50], s: 1.5, inner: true }));
 
-// Saída "por fora" (como o breadcrumb nativo): também volta para a vista de fora.
+// Saída pelo breadcrumb nativo (clique no nome do workflow): volta para a vista de fora.
 await setView([-40, -20], 1.1); await pg.waitForTimeout(700);
-await pg.evaluate(() => window.app.canvas.setGraph(window.app.rootGraph));
+// Um nó novo criado lá dentro precisa sobreviver à saída pelo breadcrumb.
+await pg.evaluate(() => { const n = window.LiteGraph.createNode("ImageInvert"); n.pos = [100, 100]; window.app.canvas.graph.add(n); });
+await pg.locator(".subgraph-breadcrumb .p-breadcrumb-item-link").first().click();
 await pg.waitForTimeout(1500);
 const back2 = await ds();
-t(`native exit returns to the same outside view ${JSON.stringify(back2)}`, same(back2, out2));
-t("nav bar gone after the native exit", !(await pg.$(".lego-ss-nav")));
+t(`breadcrumb exit returns to the same outside view ${JSON.stringify(back2)}`, same(back2, out2));
+t("inside changes are saved on breadcrumb exit", await pg.evaluate(() => (window.app.graph.nodes.find((n) => n.type === "SuperSubgraph").properties.ss_inner.graph.nodes || []).some((n) => n.type === "ImageInvert")));
+t("breadcrumb no longer lists the Super Subgraph", !/Super Subgraph/.test(await pg.evaluate(() => document.querySelector(".subgraph-breadcrumb")?.innerText || "")));
 await enter();
 t(`inside view remembered after a native exit ${JSON.stringify(await ds())}`, same(await ds(), { o: [-40, -20], s: 1.1, inner: true }));
 
