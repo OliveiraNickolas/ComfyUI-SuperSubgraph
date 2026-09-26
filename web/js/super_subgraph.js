@@ -5402,7 +5402,14 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
   const ssGraph = ssInnerGraph(host);
   const savedView = canvas.ds ? { offset: [...canvas.ds.offset], scale: canvas.ds.scale } : null;
   if (ssGraph && canvas.graph !== ssGraph && typeof canvas.setGraph === "function") {
+    if (canvas.subgraph) delete canvas.subgraph;
+    try {
+      if (typeof window !== "undefined" && window.location && ssGraph.id) {
+        window.location.hash = "#" + ssGraph.id;
+      }
+    } catch {}
     canvas.setGraph(ssGraph);
+    if (canvas.subgraph) delete canvas.subgraph;
     isInsideSubgraph = true;
     // Enquadra os nós de dentro: sem isso eles podiam cair sob as barras do
     // ComfyUI, onde o clique não chega ao canvas.
@@ -5454,7 +5461,16 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
     // Retorna para o grafo principal se entrou no subgrafo
     if (isInsideSubgraph && ssGraph) {
       // Volta do grafo interno do Super Subgraph para onde estava, com a vista de antes.
-      if (originGraph && typeof canvas.setGraph === "function") canvas.setGraph(originGraph);
+      if (originGraph && typeof canvas.setGraph === "function") {
+        if (canvas.subgraph) delete canvas.subgraph;
+        try {
+          if (typeof window !== "undefined" && window.location) {
+            window.location.hash = originGraph.id ? "#" + originGraph.id : "";
+          }
+        } catch {}
+        canvas.setGraph(originGraph);
+        if (canvas.subgraph) delete canvas.subgraph;
+      }
       if (savedView && canvas.ds) { canvas.ds.offset = savedView.offset; canvas.ds.scale = savedView.scale; }
       canvas.setDirty?.(true, true);
     } else if (isInsideSubgraph) {
@@ -11706,7 +11722,7 @@ function ssInnerGraph(node) {
       const origAttach = inner.attachCanvas;
       inner.attachCanvas = function (canvas) {
         origAttach?.call(this, canvas);
-        canvas.subgraph = this;
+        if (canvas && canvas.subgraph === this) delete canvas.subgraph;
       };
     }
     node.__ssGraph = inner;
@@ -12881,11 +12897,9 @@ function enterSuper(sn) {
       window.location.hash = "#" + uuid;
     }
   } catch {}
-  if (typeof c.openSubgraph === "function") {
-    c.openSubgraph(inner, sn);
-  } else {
-    c.setGraph(inner);
-  }
+  if (c.subgraph) delete c.subgraph;
+  c.setGraph(inner);
+  if (c.subgraph) delete c.subgraph;
   renderSuperNavBar();
   fitCanvasTo(inner);
   c.setDirty?.(true, true);

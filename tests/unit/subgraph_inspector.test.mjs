@@ -767,21 +767,12 @@ const descKJ = M.describeWidget(kjWidget);
 t("describeWidget maps kj_preview to preview_override", descKJ.kind === "preview_override");
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-let openedSub = null;
-let openedHost = null;
-fakeCanvas.openSubgraph = function(sub, host) {
-  openedSub = sub;
-  openedHost = host;
-  this.subgraph = sub;
-  this.graph = sub;
-};
 
 M.enterSuper(sn);
-t("enterSuper calls openSubgraph when available", openedSub !== null && openedHost === sn);
-t("inner graph id is a valid UUID", UUID_RE.test(openedSub.id));
-t("canvas.subgraph is assigned the inner graph", fakeCanvas.subgraph === openedSub);
+t("enterSuper sets inner graph on canvas", fakeCanvas.graph === M.ssInnerGraph(sn));
+t("inner graph id is a valid UUID", UUID_RE.test(fakeCanvas.graph?.id));
+t("canvas.subgraph is kept undefined to prevent native arrange crash", fakeCanvas.subgraph === undefined);
 
-delete fakeCanvas.openSubgraph;
 M.exitSuper(1);
 
 console.log(`\n${ok} passed, ${fail} failed`);
