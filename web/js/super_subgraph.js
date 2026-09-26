@@ -3997,6 +3997,12 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   }
   else control = mkText(node, w, ctrl, state, false);
 
+  // Mídia promovida antes com o rótulo automático ("Image"): passa a usar o
+  // título dado ao nó ("Load Image 2").
+  if (isMediaKind(kind) && (!ctrl.label || ctrl.label === widgetLabel(w))) {
+    const better = promotedLabel(node, w, kind);
+    if (better !== ctrl.label) ctrl.label = better;
+  }
   // ── Estrutura Visual 100% IDENTICA em Modo Fixo e Modo Edição ──
   const lbl = el("div", "lego-lbl", ctrl.label || prettify(w.name));
   lbl.title = node === host ? w.name : `${node.title || node.type} #${node.id} → ${w.name}`;
@@ -4988,6 +4994,25 @@ function widgetLabel(w) {
   return (typeof w.label === "string" && w.label.trim() && w.label !== w.name) ? w.label.trim() : prettify(w.name);
 }
 
+/** Título que o usuário deu ao nó (null se ainda é o título padrão do tipo). */
+function customNodeTitle(node) {
+  const t = typeof node?.title === "string" ? node.title.trim() : "";
+  if (!t) return null;
+  const def = liteGraph()?.registered_node_types?.[node.type]?.title || node.constructor?.title || node.type;
+  return t !== def && t !== node.type ? t : null;
+}
+
+/**
+ * Rótulo do componente: o nome dado ao widget vale mais; senão, num nó de
+ * mídia (Load Image renomeado para "Load Image 2"), o título do nó — o nome
+ * do widget ("Image") se repetiria em todos.
+ */
+function promotedLabel(node, w, kind) {
+  const renamed = typeof w.label === "string" && w.label.trim() && w.label !== w.name;
+  if (!renamed && (isMediaKind(kind) || kind === "node_ui")) return customNodeTitle(node) || widgetLabel(w);
+  return widgetLabel(w);
+}
+
 /** Componente solto para um único parâmetro de um nó. */
 function singleCtrlFor(host, node, w) {
   const kind = detectMediaKind(w, describeWidget(w), node);
@@ -4995,7 +5020,7 @@ function singleCtrlFor(host, node, w) {
   const c = {
     kind,
     bind: bindKey(host, node, w),
-    label: widgetLabel(w),
+    label: promotedLabel(node, w, kind),
     w: kind === "preview_override" ? 320 : media ? 288 : kind === "textarea" ? 320 : 256,
     h: kind === "preview_override" ? 240 : media ? 144 : kind === "textarea" ? 96 : 32,
   };
@@ -5023,7 +5048,8 @@ function wholeNodeItems(host, node, onlyNames) {
     if (mp && !onlyNames && w !== mp.media && !mp.rest.includes(w)) continue;   // ajudantes do nó de mídia
     if (mp && w === mp.media) {
       // A mídia se identifica pelo arquivo: entra sem Label na frente.
-      items.push({ kind: detectMediaKind(w, describeWidget(w), node), bind: bindKey(host, node, w), label: widgetLabel(w), labelPos: "none", h: 120 });
+      const mk = detectMediaKind(w, describeWidget(w), node);
+      items.push({ kind: mk, bind: bindKey(host, node, w), label: promotedLabel(node, w, mk), labelPos: "none", h: 120 });
       continue;
     }
     let kind = detectMediaKind(w, describeWidget(w), node);
