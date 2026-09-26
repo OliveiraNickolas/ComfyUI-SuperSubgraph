@@ -12259,6 +12259,7 @@ function newInnerGraph(data) {
   const uuid = ensureUuid(data?.id || g.id);
   markAsSubgraph(g, null, uuid);
   if (data) g.configure(data);
+  repairInnerLinks(g);
   return g;
 }
 
@@ -12396,11 +12397,44 @@ function graphLinks(graph) {
   return l instanceof Map ? [...l.values()] : Object.values(l);
 }
 
+/**
+ * Conserta ligações quebradas do grafo de dentro: entrada apontando para uma
+ * ligação que não existe (ou cujo nó sumiu) e saídas listando ligações que
+ * não existem. O conversor do ComfyUI para a API trava nelas ("No link found
+ * in parent graph"). Devolve quantas consertou.
+ */
+function repairInnerLinks(g, host) {
+  if (!g) return 0;
+  const getLink = (id) => g.getLink?.(id) ?? g.links?.get?.(id) ?? g.links?.[id] ?? g._links?.get?.(id);
+  const nodeOf = (id) => g.getNodeById?.(id) ?? g.getNodeById?.(Number(id));
+  let fixed = 0;
+  const fixedNames = [];
+  for (const n of g._nodes || g.nodes || []) {
+    (n.inputs || []).forEach((inp, slot) => {
+      if (inp?.link == null) return;
+      const l = getLink(inp.link);
+      const ok = l && nodeOf(l.origin_id) && String(l.target_id) === String(n.id) && Number(l.target_slot) === slot;
+      if (ok) return;
+      inp.link = null;
+      fixed++;
+      fixedNames.push(`${n.title || n.type} #${n.id}.${inp.name}`);
+    });
+    for (const out of n.outputs || []) {
+      if (!Array.isArray(out?.links)) continue;
+      const keep = out.links.filter((id) => { const l = getLink(id); return l && nodeOf(l.target_id); });
+      if (keep.length !== out.links.length) { fixed += out.links.length - keep.length; out.links = keep; }
+    }
+  }
+  if (fixed) console.warn(LOG, `repaired ${fixed} broken link(s) inside "${host?.title || "Super Subgraph"}":`, fixedNames.join(", "));
+  return fixed;
+}
+
 /** JSON da API do grafo de dentro, no formato que o nó Python espera. */
 async function buildSuperApi(node) {
   const g = ssInnerGraph(node);
   const meta = node.properties?.[SS_PROP] || {};
   if (!g) return { nodes: {}, inputs: [], outputs: [] };
+  repairInnerLinks(g, node);
   const { output } = await app.graphToPrompt(g);
   return {
     nodes: output,

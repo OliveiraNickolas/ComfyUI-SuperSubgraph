@@ -854,6 +854,19 @@ t("hidden-type widgets are not promotable", !M.usable({ name: "x", type: "easyhi
 t("object widget without UI is not promotable", !M.usable({ name: "crop", type: "imagecrop", value: { x: 1 } }));
 t("numbers show the widget precision like native", M.fmtNum(8, M.numDecimals({ precision: 1 }, 0.1, false)) === "8.0" && M.fmtNum(1, M.numDecimals({}, 0.01, false)) === "1.00" && M.fmtNum(20.4, 0) === "20");
 
+// Ligação quebrada no grafo de dentro (entrada aponta para link inexistente)
+{
+  const g = { links: new Map([[5, { id: 5, origin_id: 1, origin_slot: 0, target_id: 2, target_slot: 0 }]]),
+    _nodes: [
+      { id: 1, outputs: [{ links: [5, 99] }] },
+      { id: 2, inputs: [{ name: "images", link: 5 }, { name: "mask", link: 20131 }] },
+    ] };
+  g.getNodeById = (id) => g._nodes.find((n) => String(n.id) === String(id));
+  const fixed = M.repairInnerLinks(g, { title: "T" });
+  t("repairInnerLinks drops dangling input/output links and keeps good ones",
+    fixed === 2 && g._nodes[1].inputs[1].link === null && g._nodes[1].inputs[0].link === 5 && g._nodes[0].outputs[0].links.join() === "5");
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 M.enterSuper(sn);
