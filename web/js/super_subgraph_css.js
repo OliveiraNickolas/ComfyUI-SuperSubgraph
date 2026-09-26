@@ -2783,6 +2783,13 @@ export const CSS_OUTPUT = `
   height: 100%;
   min-height: 120px;
 }
+/* Espelho de interface desenhada no canvas (botões do Allma, painel do Resolution Master) */
+.lego-canvas-mirror { position: relative; width: 100%; box-sizing: border-box; }
+.lego-canvas-mirror canvas { display: block; width: 100%; touch-action: none; cursor: default; }
+.lego-canvas-mirror.is-widget { min-height: 20px; }
+.lego-canvas-mirror.is-node { height: 100%; min-height: 120px; overflow: hidden; border-radius: 6px; }
+.lego-canvas-mirror.is-node canvas { position: absolute; top: 0; left: 0; }
+.lego-sec-controls.in-edit .lego-canvas-mirror canvas { pointer-events: none; }
 .lego-preview-override-box {
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid var(--lego-line);

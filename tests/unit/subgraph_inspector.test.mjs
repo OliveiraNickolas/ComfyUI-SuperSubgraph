@@ -817,6 +817,30 @@ t("preview_override renders .lego-preview-override-box", !!povBox);
 t("preview_override mounts w.element", povBox?.contains(kjRoot));
 t("preview_override does not render text input", !kjTestNode.domElement.querySelector(".lego-row.is-preview-override input.lego-in"));
 
+// Interface desenhada no canvas (botões do AllmaGenerate, painel do Resolution Master)
+const drawn = { name: "preset_actions", type: "allma_button_row", value: "", serialize: false, draw() {}, mouse() {}, computeSize: (w) => [w, 26] };
+const rmPanel = { name: "resolution_master_ui", type: "resolution_master_ui", value: null, serialize: false, draw() {} };
+t("describeWidget maps custom canvas widget to canvas_widget", M.describeWidget(drawn).kind === "canvas_widget");
+t("describeWidget maps resolution_master_ui to node_ui", M.describeWidget(rmPanel).kind === "node_ui");
+t("standard combo with draw() is not mirrored", M.describeWidget({ name: "c", type: "combo", value: "a", options: { values: ["a"] }, draw() {} }).kind === "combo");
+
+const mirrorNode = {
+  id: 303, title: "SuperSubgraph", type: "SuperSubgraph", size: [500, 700], flags: {},
+  properties: { ui_layout: { schema: 2, activeTab: 0, tabs: [{ sections: [{ header: "M", controls: [
+    // promoções antigas caíam em "text": o cartão deve migrar para o espelho
+    { name: "Btns", kind: "text", bind: "preset_actions", label: "preset", x: 16, y: 16, w: 320, h: 32 },
+    { name: "Panel", kind: "text", bind: "resolution_master_ui", label: "rm", x: 16, y: 64, w: 200, h: 32 },
+  ] }] }] } },
+  widgets: [drawn, rmPanel],
+  setSize() {},
+  addDOMWidget(name, type, el, opts) { this.domElement = el; const w = { name, type, element: el, ...opts }; this.widgets.push(w); return w; },
+};
+M.attach(mirrorNode).refresh();
+const mirrorCtrls = mirrorNode.properties.ui_layout.tabs[0].sections[0].controls;
+t("canvas widget renders as a mirror (no text input)", mirrorNode.domElement.querySelectorAll(".lego-canvas-mirror.is-widget canvas").length === 1 && !mirrorNode.domElement.querySelector("input.lego-in"));
+t("node panel renders as a node mirror", mirrorNode.domElement.querySelectorAll(".lego-canvas-mirror.is-node canvas").length === 1);
+t("old text promotions migrate to mirror kinds", mirrorCtrls[0].kind === "canvas_widget" && mirrorCtrls[1].kind === "node_ui" && mirrorCtrls[1].h >= 320);
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 M.enterSuper(sn);
