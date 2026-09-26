@@ -13281,6 +13281,40 @@ function fitCanvasTo(graph) {
   c.ds.offset = [(cw / scale - (x1 - x0)) / 2 - x0, (ch / scale - (y1 - y0)) / 2 - y0 + 20 / scale];
 }
 
+/** Última interação do usuário com o canvas (para não brigar com um pan dele). */
+let lastCanvasInput = 0;
+for (const t of ["pointerdown", "wheel", "keydown"]) window.addEventListener(t, () => { lastCanvasInput = performance.now(); }, true);
+
+/**
+ * Põe a vista (`{ offset, scale }`) no canvas e a reafirma nos quadros
+ * seguintes: ao trocar de grafo o frontend pode aplicar a vista que ele
+ * guardou, um instante depois, e jogar a tela num lugar vazio.
+ */
+function applyCanvasView(graph, view) {
+  const c = app.canvas;
+  if (!c?.ds || !view || !Array.isArray(view.offset)) return;
+  const set = () => {
+    c.ds.offset = [view.offset[0], view.offset[1]];
+    c.ds.scale = view.scale || 1;
+    c.setDirty?.(true, true);
+  };
+  set();
+  const t0 = performance.now();
+  const again = () => {
+    if (c.graph !== graph || lastCanvasInput > t0) return;   // saiu do grafo ou o usuário já mexeu
+    if (c.ds.scale !== view.scale || c.ds.offset[0] !== view.offset[0] || c.ds.offset[1] !== view.offset[1]) set();
+  };
+  requestAnimationFrame(again);
+  setTimeout(again, 120);
+  setTimeout(again, 400);
+}
+
+/** Vista atual do canvas, para guardar. */
+function currentCanvasView() {
+  const ds = app.canvas?.ds;
+  return ds ? { offset: [ds.offset[0], ds.offset[1]], scale: ds.scale } : null;
+}
+
 function renderSuperNavBar() {
   document.querySelector(".lego-ss-nav")?.remove();
   if (!SS_NAV.length) return;
@@ -13383,19 +13417,29 @@ function enterSuper(sn) {
   c.setGraph(inner);
   if (c.subgraph) delete c.subgraph;
   renderSuperNavBar();
-  fitCanvasTo(inner);
-  c.setDirty?.(true, true);
+  // Volta onde parou da última vez; na primeira entrada, enquadra tudo.
+  const saved = sn.properties?.[SS_PROP]?.view;
+  if (saved && Array.isArray(saved.offset)) applyCanvasView(inner, saved);
+  else { fitCanvasTo(inner); applyCanvasView(inner, currentCanvasView()); }
   watchSuperBoundary();
   // Se o workflow for trocado por fora (abrir outro, voltar pelo breadcrumb
   // nativo...), a pilha deixa de valer e a barra some.
   if (!ssNavWatch) {
     ssNavWatch = setInterval(() => {
       if (!SS_NAV.length) { clearInterval(ssNavWatch); ssNavWatch = null; return; }
-      if (app.canvas?.graph !== SS_NAV[SS_NAV.length - 1].inner) {
+      const top = SS_NAV[SS_NAV.length - 1];
+      if (app.canvas?.graph !== top.inner) {
+        // Saiu por fora (breadcrumb nativo): se foi para um grafo de onde se
+        // entrou, volta para a vista que ele tinha.
+        const g = app.canvas?.graph;
+        const frame = SS_NAV.find((f) => f.from === g);
         SS_NAV.length = 0;
         renderSuperNavBar();
+        if (frame) applyCanvasView(g, frame.view);
         return;
       }
+      // Vista de dentro sempre em dia (qualquer que seja o jeito de sair).
+      if (top.host?.properties?.[SS_PROP]) top.host.properties[SS_PROP].view = currentCanvasView();
       placeSuperNavBar();   // acompanha o seletor "Graph" se ele mudar de lugar
     }, 500);
   }
@@ -13407,6 +13451,8 @@ function exitSuper(levels = 1) {
   let frame = null;
   for (let i = 0; i < levels && SS_NAV.length; i++) frame = SS_NAV.pop();
   if (!frame || !c) { renderSuperNavBar(); return; }
+  // Guarda a vista de dentro (vai junto no workflow) para a próxima entrada.
+  if (c.graph === frame.inner && frame.host?.properties?.[SS_PROP]) frame.host.properties[SS_PROP].view = currentCanvasView();
   c.deselectAll?.();
   if (frame.host?.subgraph) delete frame.host.subgraph;
   if (c.subgraph) delete c.subgraph;
@@ -13418,8 +13464,7 @@ function exitSuper(levels = 1) {
     }
   } catch {}
   c.setGraph(targetGraph);
-  if (c.ds) { c.ds.offset = frame.view.offset; c.ds.scale = frame.view.scale; }
-  c.setDirty?.(true, true);
+  applyCanvasView(targetGraph, frame.view);
   renderSuperNavBar();
   // O de dentro pode ter mudado (nós novos, removidos): a borda e os cartões se refazem.
   for (const f of [frame, ...SS_NAV]) {
@@ -14315,6 +14360,21 @@ app.registerExtension({
       const curTop = SS_NAV[SS_NAV.length - 1];
       if (curTop && (newGraph === curTop.inner || app.canvas?.graph === curTop.inner)) {
         renderSuperNavBar();
+        return;
+      }
+      // Saiu por fora do nosso Back (breadcrumb nativo, botão do ComfyUI):
+      // volta para a vista que o grafo de fora tinha ao entrar.
+      // Espera um pouco: ao entrar, o frontend às vezes passa pelo grafo de
+      // fora e volta para dentro logo em seguida — isso não é uma saída.
+      const back = SS_NAV.findIndex((f) => f.from === newGraph);
+      if (back >= 0) {
+        const frame = SS_NAV[back];
+        setTimeout(() => {
+          if (app.canvas?.graph !== newGraph || SS_NAV[back] !== frame) return;
+          SS_NAV.length = back;
+          renderSuperNavBar();
+          applyCanvasView(newGraph, frame.view);
+        }, 150);
         return;
       }
       if (newGraph && (newGraph === app.rootGraph || newGraph.isRootGraph === true)) {
