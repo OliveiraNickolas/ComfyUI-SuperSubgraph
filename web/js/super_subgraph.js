@@ -513,6 +513,19 @@ function isIntWidget(o, step, w) {
   return Number.isInteger(step) && step >= 1;
 }
 
+/** Casas decimais que o ComfyUI mostra para o número (precision, ou as do passo). */
+function numDecimals(o, step, isInt) {
+  if (isInt) return 0;
+  if (Number.isFinite(o?.precision)) return Math.max(0, o.precision);
+  return Math.min(4, Math.max(0, (String(step).split(".")[1] || "").length));
+}
+
+/** Número como o nó nativo mostra ("8.0", "1.00"), sem resíduo de float. */
+function fmtNum(v, dec) {
+  const n = Number(v) || 0;
+  return dec > 0 ? n.toFixed(dec) : String(Math.round(n));
+}
+
 function valuesOf(w, node) {
   const v = w?.options?.values;
   if (Array.isArray(v)) return v;
@@ -543,6 +556,11 @@ function describeWidget(w) {
   if (t === "kj_preview" || (w?.name === "preview" && t.includes("preview"))) return { kind: "preview_override" };
   const mirror = mirrorModeFor(w);
   if (mirror) return { kind: mirror === "node" ? "node_ui" : "canvas_widget" };
+  if (t === "color" || t === "colorcode") return { kind: "color" };
+  // Widget DOM do próprio nó (editor, lista de LoRAs, player…): o elemento
+  // vivo é montado no cartão. Texto com elemento continua campo de texto.
+  if (w?.element && !isTextDomWidget(w)) return { kind: "dom_widget" };
+  if (w?.element && isTextDomWidget(w)) return { kind: "textarea" };   // prompt com autocompletar, nota
   if (t === "toggle" || typeof w?.value === "boolean") return { kind: "toggle" };
   if (t === "button") return { kind: "button" };
   if (t === "combo" || Array.isArray(o.values) || typeof o.values === "function" || t.includes("combo")) return { kind: "combo" };
@@ -574,14 +592,26 @@ function isHelperWidget(w) {
   return false;
 }
 
+/** Widget DOM que é só um campo de texto (textarea do ComfyUI, autocomplete, nota). */
+function isTextDomWidget(w) {
+  const t = String(w?.type || "").toLowerCase();
+  if (typeof w?.value !== "string" && w?.value != null) return false;
+  return t === "customtext" || t === "multiline" || t === "markdown" || t.startsWith("autocomplete");
+}
+
 /** Widgets que o cartão pode ligar (os demais ele nunca toca). */
 function usable(w) {
   if (!w || w.__lego || w.__ssInternal) return false;
   if (isHelperWidget(w)) return false;
   const t = String(w.type || "").toLowerCase();
-  if (t === "converted-widget" || t === "hidden") return false;
+  // Escondidos pelo próprio nó ("hidden", "easyhidden", "h3frhidden"…): o nó
+  // controla por outra interface, o cartão não oferece.
+  if (t === "converted-widget" || t === "dummy" || t.includes("hidden") || w.hidden === true) return false;
   if (t === "kj_preview") return true;
   if (t.startsWith("dom")) return false;
+  // Valor-objeto sem elemento nem desenho (widgets só do modo Vue): um campo
+  // de texto gravaria "[object Object]" no lugar e estragaria o workflow.
+  if (w.value !== null && typeof w.value === "object" && !w.element && typeof w.draw !== "function") return false;
   return typeof w.name === "string" && w.name.length > 0;
 }
 
@@ -1189,11 +1219,7 @@ function mkSlider(node, w, ctrl, state) {
     step = (max - min <= 1) ? 0.01 : ((max - min <= 10) ? 0.1 : 1);
   }
   const isInt = isIntWidget(o, step, w);
-  const dec = isInt
-    ? 0
-    : Number.isFinite(o.precision)
-      ? o.precision
-      : Math.min(4, Math.max(0, (String(step).split(".")[1] || "").length));
+  const dec = numDecimals(o, step, isInt);
 
   const wrap = el("div", "lego-slider");
   const track = el("div", "lego-track");
@@ -1219,7 +1245,7 @@ function mkSlider(node, w, ctrl, state) {
     const pct = max > min ? ((v - min) / (max - min)) * 100 : 0;
     fill.style.width = `${pct}%`;
     knob.style.left = `${pct}%`;
-    if (force === true || document.activeElement !== num) num.value = isInt ? String(Math.round(v)) : String(Number(v.toFixed(dec)));
+    if (force === true || document.activeElement !== num) num.value = fmtNum(v, dec);
   };
   paint();
 
@@ -1322,8 +1348,9 @@ function mkNumber(node, w, ctrl, state) {
   num.type = "text";
   wrap.append(num);
 
+  const dec = numDecimals(o, step, isInt);
   const paint = (force = false) => {
-    if (force === true || document.activeElement !== num) num.value = String(w.value ?? "");
+    if (force === true || document.activeElement !== num) num.value = typeof w.value === "number" ? fmtNum(w.value, dec) : String(w.value ?? "");
   };
   paint();
 
@@ -2111,8 +2138,7 @@ function mkStepNumber(node, w, ctrl, state) {
 
   const paint = (force = false) => {
     if (force === true || document.activeElement !== inp) {
-      const v = Number(w.value) || 0;
-      inp.value = isInt ? String(Math.round(v)) : String(v);
+      inp.value = fmtNum(w.value, numDecimals(o, step, isInt));
     }
   };
   paint();
@@ -2473,7 +2499,7 @@ function mkOutputView(host, ctrl, state) {
 
 function getComponentMinDimensions(ctrl) {
   const k = ctrl?.kind || "";
-  if (k === "preview_override" || k === "node_ui") return { minW: 180, minH: 120 };
+  if (isPanelKind(k)) return { minW: 180, minH: 120 };
   if (isOutputKind(k)) return { minW: 120, minH: k === "outaudio" ? 64 : 96 };
   if (k === "hdivider") return { minW: 16, minH: 16 };
   if (k === "vdivider") return { minW: 16, minH: 16 };
@@ -2542,7 +2568,7 @@ function domScale() {
 function isMediaKind(k) {
   return k === "media" || k === "video" || k === "audio";
 }
-const is2DKind = (k) => k === "textarea" || isMediaKind(k) || k === "preview_override" || k === "node_ui" || isOutputKind(k);
+const is2DKind = (k) => k === "textarea" || isMediaKind(k) || isPanelKind(k) || isOutputKind(k);
 
 /**
  * O navegador dispara um `click` logo depois de soltar um arraste; ele não
@@ -3145,15 +3171,17 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
           if (labelPos === "right") topBar.style.justifyContent = "flex-end";
           topBar.append(el("span", "lego-item-label", item.label || prettify(w.name)));
           itemWrap.append(topBar);
-        } else if (isVertical && item.kind !== "combo" && item.kind !== "slider" && item.kind !== "textarea") {
+        } else if (isVertical && item.kind !== "textarea" && !is2DKind(item.kind)
+          && ((item.kind !== "combo" && item.kind !== "slider") || item.labelPos === "left")) {
+          // Rótulo à esquerda, controle à direita: a linha de widget do nó nativo.
           itemWrap.append(el("span", "lego-item-label", item.label || prettify(w.name)));
+          itemWrap.classList.add("has-inline-label");
         }
       }
 
-      if (item.kind === "preview_override" || w?.type === "kj_preview") {
-        itemWrap.append(mkPreviewOverride(node, w, item, state));
-      } else if (mirrorModeFor(w)) {
-        itemWrap.append(mkCanvasMirror(node, w, item, state, mirrorModeFor(w)));
+      const special = mkSpecialControl(node, w, item, state);
+      if (special) {
+        itemWrap.append(special);
       } else if (item.kind === "toggle") {
         itemWrap.append(mkToggle(node, w, item, state));
       } else if (item.kind === "combo") {
@@ -3274,9 +3302,72 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
 }
 
 /** Tipos de controle que o componente escolhe e que o desenho respeita. */
-const CONTROL_KINDS = new Set(["toggle", "slider", "number", "combo", "text", "textarea", "button", "media", "video", "audio", "preview_override", "node_ui", "canvas_widget"]);
+const CONTROL_KINDS = new Set(["toggle", "slider", "number", "combo", "text", "textarea", "button", "media", "video", "audio", "preview_override", "node_ui", "canvas_widget", "dom_widget", "color"]);
 function controlKindFor(ctrl, w) {
   return CONTROL_KINDS.has(ctrl?.kind) ? ctrl.kind : null;
+}
+
+/**
+ * "Painéis": a interface do próprio nó dentro do cartão — elemento DOM montado
+ * (dom_widget, preview_override) ou desenho do canvas espelhado (node_ui).
+ * Grandes e 2D, sem rótulo na frente.
+ */
+const PANEL_KINDS = new Set(["preview_override", "dom_widget", "node_ui"]);
+const isPanelKind = (k) => PANEL_KINDS.has(k);
+
+/** Tamanho inicial de um componente solto, por tipo. Fonte única para os padrões. */
+function defaultSizeFor(kind) {
+  if (kind === "node_ui") return { w: 336, h: 320 };
+  if (isPanelKind(kind)) return { w: 320, h: 240 };
+  if (kind === "canvas_widget") return { w: 320, h: 32 };
+  if (isMediaKind(kind)) return { w: 288, h: 144 };
+  if (isOutputKind(kind)) return { w: 320, h: 240 };
+  if (kind === "textarea") return { w: 320, h: 96 };
+  return { w: 256, h: 32 };
+}
+
+/**
+ * Controle "especial" de um widget (painel, espelho, cor) ou null para os
+ * controles comuns. Um lugar só para cartão, grupo e buildBare.
+ */
+function mkSpecialControl(node, w, ctrl, state) {
+  const k = describeWidget(w).kind;
+  if (k === "preview_override") return mkPreviewOverride(node, w, ctrl, state);
+  if (k === "dom_widget") return mkDomMount(node, w);
+  const mirror = mirrorModeFor(w);
+  if (mirror) return mkCanvasMirror(node, w, ctrl, state, mirror);
+  if (k === "color") return mkColor(node, w, state);
+  return null;
+}
+
+/** Seletor de cor (widgets "color"/"colorcode"): amostra + código hex. */
+function mkColor(node, w, state) {
+  const wrap = el("div", "lego-color-ctrl");
+  const pick = el("input", "lego-color-pick");
+  pick.type = "color";
+  const txt = el("input", "lego-in");
+  txt.type = "text";
+  const toHex = (v) => {
+    const s = String(v ?? "").trim();
+    if (/^#[0-9a-f]{6}$/i.test(s)) return s;
+    if (/^#[0-9a-f]{3}$/i.test(s)) return "#" + s.slice(1).split("").map((c) => c + c).join("");
+    return "#000000";
+  };
+  const paint = () => {
+    if (document.activeElement !== txt) txt.value = w.value ?? "";
+    pick.value = toHex(w.value);
+  };
+  paint();
+  for (const x of [pick, txt]) {
+    x.addEventListener("pointerdown", eatPointer);
+    x.addEventListener("keydown", (e) => e.stopPropagation());
+  }
+  pick.addEventListener("input", () => { txt.value = pick.value; });
+  pick.addEventListener("change", () => writeWidget(node, w, pick.value));
+  txt.addEventListener("change", () => { if (txt.value !== String(w.value ?? "")) writeWidget(node, w, txt.value); paint(); });
+  wrap.append(pick, txt);
+  state.watch(w, paint);
+  return wrap;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -3307,8 +3398,16 @@ function isCanvasWidget(w) {
 /** Como espelhar o widget: "node" (painel do nó inteiro), "widget" (só ele) ou null (widget comum). */
 function mirrorModeFor(w) {
   if (!w) return null;
-  if (NODE_UI_WIDGET_TYPES.has(String(w.type || "").toLowerCase())) return "node";
-  return isCanvasWidget(w) ? "widget" : null;
+  const t = String(w.type || "").toLowerCase();
+  if (NODE_UI_WIDGET_TYPES.has(t)) return "node";
+  if (!isCanvasWidget(w)) return null;
+  // Valor simples que o cartão já sabe editar (número do VHS, caminho, cor):
+  // controle nativo do cartão, no mesmo estilo dos outros.
+  if (typeof w.value === "number" || typeof w.value === "boolean") return null;
+  if (t === "color" || t === "colorcode") return null;
+  // Texto com desenho próprio do VHS (caminho com autocompletar): campo de texto.
+  if (typeof w.value === "string" && t.startsWith("vhs.")) return null;
+  return "widget";
 }
 
 /** Espelhos vivos: um laço só redesenha todos, e cada um some quando sai da página. */
@@ -3443,25 +3542,47 @@ function mkCanvasMirror(node, w, ctrl, state, mode) {
   return box;
 }
 
-function mkPreviewOverride(node, w, ctrl, state) {
-  const box = el("div", "lego-preview-override-box");
-  box.style.cssText = "width:100%;height:100%;min-height:120px;display:flex;flex-direction:column;position:relative;overflow:hidden;border-radius:6px;";
+/**
+ * Monta o elemento DOM vivo do widget (w.element) no cartão. O elemento é um
+ * só: `__origParent` guarda a casa dele no canvas para o enterSuper devolvê-lo
+ * enquanto se navega dentro do Super Subgraph.
+ */
+function mkDomMount(node, w, cls = "lego-dom-mount", placeholder = "Loading…") {
+  const box = el("div", `lego-panel-box ${cls}`);
   const mount = () => {
     const cur = w.element.parentElement;
     // "Casa" original = o container do nó no canvas, nunca o cartão de um
-    // desenho anterior (senão o enterSuper devolveria o preview para lá).
-    if (!w.__origParent && cur && !cur.closest(".lego-card")) w.__origParent = cur;
+    // desenho anterior (senão o enterSuper devolveria o elemento para lá).
+    if (cur && !cur.closest(".lego-card")) w.__origParent = cur;
     box.prepend(w.element);
     w.element.style.width = "100%";
     w.element.style.height = "100%";
-    w.element.style.minHeight = "120px";
+    w.element.style.minHeight = "0";
+    // Posição/tamanho vindos do layout do canvas não valem no cartão.
+    w.element.style.position = "relative";
+    w.element.style.left = w.element.style.top = "";
+    w.element.style.transform = "";
+    w.element.style.display = "";
+    w.element.hidden = false;
   };
+  // O frontend (camada de DOM widgets, Vue) pode pegar o elemento de volta
+  // para o container dele logo depois. Enquanto o cartão estiver na página e o
+  // nó não estiver aberto no canvas, o cartão o recoloca aqui.
+  let born = 0;
+  const guard = setInterval(() => {
+    born++;
+    if (!box.isConnected) { if (born > 20) clearInterval(guard); return; }
+    const el0 = w?.element;
+    if (!el0 || box.contains(el0)) return;
+    if (app.canvas?.graph && app.canvas.graph === node.graph) return;   // navegando dentro: é dele
+    mount();
+  }, 300);
   if (w?.element) {
     mount();
   } else {
-    // O kjnodes cria o elemento depois: espera um pouco, mas para se este
+    // Alguns nós criam o elemento depois: espera um pouco, mas para se este
     // cartão já foi redesenhado (a caixa saiu da página).
-    const ph = el("div", "lego-empty", "Preview Override (KJ)");
+    const ph = el("div", "lego-empty", placeholder);
     box.append(ph);
     let tries = 0;
     const checkTimer = setInterval(() => {
@@ -3473,6 +3594,11 @@ function mkPreviewOverride(node, w, ctrl, state) {
       mount();
     }, 100);
   }
+  return box;
+}
+
+function mkPreviewOverride(node, w, ctrl, state) {
+  const box = mkDomMount(node, w, "lego-preview-override-box", "Preview Override (KJ)");
   if (ctrl?.hidePreview) {
     box.classList.add("is-censored");
     const overlay = el("div", "lego-media-censor-overlay");
@@ -3501,8 +3627,8 @@ function buildBare(host, ctrl, state) {
   const kind = (ctrl.kind === "video" || ctrl.kind === "audio" || ctrl.kind === "media")
     ? ctrl.kind
     : (isVideoCombo(w) ? "video" : isAudioCombo(w) ? "audio" : isImageCombo(w) ? "media" : describeWidget(w).kind);
-  if (kind === "preview_override" || w?.type === "kj_preview") return mkPreviewOverride(node, w, ctrl, state);
-  if (mirrorModeFor(w)) return mkCanvasMirror(node, w, ctrl, state, mirrorModeFor(w));
+  const special = mkSpecialControl(node, w, ctrl, state);
+  if (special) return special;
   if (kind === "toggle") return mkToggle(node, w, ctrl, state);
   if (kind === "slider") return mkSlider(node, w, ctrl, state);
   if (kind === "number") return mkNumber(node, w, ctrl, state);
@@ -3744,8 +3870,8 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   const isGroup = ctrl.kind === "group" || isSegmentLike;
   const isOutput = isOutputKind(ctrl.kind);
   const hit = (isGroup || isCosmetic || isOutput) ? null : resolveBind(host, ctrl.bind);
-  const isMediaLike = (k) => isMediaKind(k) || k === "preview_override" || k === "node_ui";
-  const isHitMedia = isImageCombo(hit?.widget) || isVideoCombo(hit?.widget) || isAudioCombo(hit?.widget) || hit?.widget?.type === "kj_preview" || mirrorModeFor(hit?.widget) === "node";
+  const isMediaLike = (k) => isMediaKind(k) || isPanelKind(k);
+  const isHitMedia = isImageCombo(hit?.widget) || isVideoCombo(hit?.widget) || isAudioCombo(hit?.widget) || (hit && isPanelKind(describeWidget(hit.widget).kind));
   const isMedia = isMediaLike(ctrl.kind) || isHitMedia;
   const wide = !isGroup && !isCosmetic && (ctrl.kind === "textarea" || isMedia);
   let row;
@@ -3962,19 +4088,19 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   const kind = controlKindFor(ctrl, w) || (isVideo ? "video" : isAudio ? "audio" : isMedia ? "media" : describeWidget(w).kind);
 
   let control;
-  const mirror = mirrorModeFor(w);
-  if (mirror && ctrl.kind !== (mirror === "node" ? "node_ui" : "canvas_widget")) {
-    // Promovido antes de o cartão saber espelhar (caía num campo de texto):
-    // passa a ser o espelho, sem rótulo — a própria interface do nó já diz o que é.
-    ctrl.kind = mirror === "node" ? "node_ui" : "canvas_widget";
-    ctrl.labelPos = "none";
-    if (mirror === "node") { ctrl.w = Math.max(ctrl.w || 0, 330); ctrl.h = Math.max(ctrl.h || 0, 320); }
+  const natural = describeWidget(w).kind;
+  const specialKind = isPanelKind(natural) || natural === "canvas_widget" || natural === "color";
+  if (specialKind && ctrl.kind !== natural) {
+    // Promovido antes de o cartão saber desenhar este widget (caía num campo
+    // de texto): passa a ser o controle certo; painel e espelho sem rótulo.
+    ctrl.kind = natural;
+    if (natural !== "color") ctrl.labelPos = "none";
+    const d = defaultSizeFor(natural);
+    if (isPanelKind(natural)) { ctrl.w = Math.max(ctrl.w || 0, d.w); ctrl.h = Math.max(ctrl.h || 0, d.h); }
   }
-  if (kind === "preview_override" || w?.type === "kj_preview") {
-    control = mkPreviewOverride(node, w, ctrl, state);
-  }
-  else if (mirror) {
-    control = mkCanvasMirror(node, w, ctrl, state, mirror);
+  const special = specialKind ? mkSpecialControl(node, w, ctrl, state) : null;
+  if (special) {
+    control = special;
   }
   else if (isMediaKind(kind)) {
     control = mkMediaControl(node, w, ctrl, state, row, kind);
@@ -4087,7 +4213,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   if (isSlider) {
     row.classList.add("is-slider");
     applySliderResponsiveLayout(ctrl.w, ctrl.h);
-  } else if (kind === "preview_override" || w?.type === "kj_preview" || mirror === "node") {
+  } else if (isPanelKind(natural)) {
     row.classList.add("is-preview-override");
     row.replaceChildren();
     if (ctrl.label && labelPos !== "none") {
@@ -5016,14 +5142,8 @@ function promotedLabel(node, w, kind) {
 /** Componente solto para um único parâmetro de um nó. */
 function singleCtrlFor(host, node, w) {
   const kind = detectMediaKind(w, describeWidget(w), node);
-  const media = isMediaKind(kind) || kind === "preview_override";
-  const c = {
-    kind,
-    bind: bindKey(host, node, w),
-    label: promotedLabel(node, w, kind),
-    w: kind === "preview_override" ? 320 : media ? 288 : kind === "textarea" ? 320 : 256,
-    h: kind === "preview_override" ? 240 : media ? 144 : kind === "textarea" ? 96 : 32,
-  };
+  const c = { kind, bind: bindKey(host, node, w), label: promotedLabel(node, w, kind), ...defaultSizeFor(kind) };
+  if (isPanelKind(kind)) c.labelPos = "none";
   if (kind === "node_ui") {
     // O painel do nó no tamanho dele (arredondado à grade).
     c.w = Math.ceil(Math.max(330, node.size?.[0] || 330) / GRID) * GRID;
@@ -5053,11 +5173,7 @@ function wholeNodeItems(host, node, onlyNames) {
       continue;
     }
     let kind = detectMediaKind(w, describeWidget(w), node);
-    if (kind === "preview_override") {
-      items.push({ kind, bind: bindKey(host, node, w), label: widgetLabel(w), labelPos: "none", w: 320, h: 240 });
-      continue;
-    }
-    if (kind === "canvas_widget" || kind === "node_ui") {
+    if (isPanelKind(kind) || kind === "canvas_widget") {
       // Interface desenhada pelo nó: entra espelhada, sem Label na frente.
       const { w: cw, h: ch } = singleCtrlFor(host, node, w);
       items.push({ kind, bind: bindKey(host, node, w), label: widgetLabel(w), labelPos: "none", w: cw, h: ch });
@@ -5112,7 +5228,7 @@ function buildWholeNodeCtrl(host, node, orientation, pos) {
     return renameClone(layout, c);
   }
   const items = wholeNodeItems(host, node);
-  const vertical = orientation === "column";
+  let vertical = orientation === "column";
   const has2D = items.some((it) => is2DKind(it.kind));
   // Largura do cartão (nunca menor que o mínimo que ele assume ao ser montado).
   const avail = Math.max(320, Math.round(Math.max(MIN_W, host.size?.[0] || 0) - 80));
@@ -5134,13 +5250,34 @@ function buildWholeNodeCtrl(host, node, orientation, pos) {
       + ctrlsRow.reduce((a, it) => a + (FIXED[it.kind] || 0), 0);
     const each = flex.length ? Math.min(320, snap((avail - used) / flex.length)) : 0;
     if (!flex.length || each >= 120) {
-      for (const it of ctrlsRow) it.w = FIXED[it.kind] || each;
-      w = Math.max(320, snap(used + each * flex.length));
-    } else {
-      // Não cabe em linha nesta zona: tudo flexível, dentro da largura dela.
-      for (const it of ctrlsRow) delete it.w;
+      for (const it of ctrlsRow) it.w = FIXED[it.kind] || (isPanelKind(it.kind) ? Math.max(each, it.w || 0) : each);
+      w = Math.max(320, snap(used + ctrlsRow.reduce((a, it) => a + (FIXED[it.kind] ? 0 : it.w), 0)));
+    } else if (used - ctrlsRow.reduce((a, it) => a + (FIXED[it.kind] || 0), 0) + ctrlsRow.length * 72 <= avail) {
+      // Apertado: tudo flexível, dentro da largura da zona.
+      for (const it of ctrlsRow) if (!isPanelKind(it.kind)) delete it.w;
       w = avail;
+    } else {
+      // Não cabe nem apertado: empilha, como o próprio nó no canvas (antes a
+      // linha passava da borda do cartão).
+      vertical = true;
+      for (const it of items) if (it.kind === "label") delete it.w;
     }
+  }
+  if (vertical) {
+    // Empilhado como o nó no canvas: uma linha por parâmetro, rótulo à
+    // esquerda e controle à direita (textos longos, mídia e painéis mantêm o
+    // rótulo em cima, como no nó).
+    const inline = (it) => it.kind !== "label" && it.kind !== "button" && it.kind !== "textarea" && !is2DKind(it.kind) && it.kind !== "canvas_widget";
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (inline(it)) {
+        it.labelPos = "left";
+        const prev = items[i - 1];
+        if (prev?.kind === "label") { items.splice(i - 1, 1); i--; }
+      }
+    }
+    for (const it of items) if (it.kind !== "label" && !isPanelKind(it.kind)) delete it.w;
+    w = Math.min(avail, Math.max(288, ...items.filter((it) => isPanelKind(it.kind)).map((it) => it.w || 0)));
   }
   const group = {
     kind: vertical ? "vsegment" : "segment",
@@ -5150,10 +5287,10 @@ function buildWholeNodeCtrl(host, node, orientation, pos) {
     x: Math.max(16, Math.min(pos?.x ?? 16, avail - w)),
     y: pos?.y ?? 16,
     w,
-    // +16 para o cabeçalho com o nome do nó.
+    // +16 para o cabeçalho com o nome do nó; em linha, a altura do item mais alto.
     h: 16 + (vertical
-      ? snap(items.reduce((a, it) => a + (it.kind === "label" ? 20 : (it.h || 36)) + 8, 16))
-      : (has2D ? 160 : 48)),
+      ? snap(items.reduce((a, it) => a + (it.kind === "label" ? 18 : (it.h || 28)) + 6, 16))
+      : (has2D ? snap(Math.max(160, ...items.map((it) => (it.h || 36) + 32))) : 48)),
     items,
   };
   return renameClone(layout, group);
@@ -5377,8 +5514,7 @@ function sectionRequiredWidth(s) {
     if (!w) {
       if (c.kind === "vdivider") w = 16;
       else if (c.kind === "label") w = 160;
-      else if (c.kind === "preview_override" || c.kind === "canvas_widget") w = 320;
-      else if (c.kind === "node_ui") w = 336;
+      else if (isPanelKind(c.kind) || c.kind === "canvas_widget") w = defaultSizeFor(c.kind).w;
       else if (isMediaKind(c.kind)) w = 288;
       else if (typeof isOutputKind === "function" && isOutputKind(c.kind)) w = 320;
       else w = 256;
@@ -5401,8 +5537,7 @@ function sectionRequiredHeight(s) {
   const checkItem = (c) => {
     if (!c) return;
     const y = typeof c.y === "number" ? c.y : 16;
-    const isM = (isMediaKind(c.kind) || c.kind === "preview_override");
-    let h = typeof c.h === "number" ? c.h : (c.kind === "preview_override" ? 240 : c.kind === "node_ui" ? 320 : isM ? 144 : (c.kind === "textarea" ? 96 : 46));
+    let h = typeof c.h === "number" ? c.h : (isPanelKind(c.kind) || isMediaKind(c.kind) || c.kind === "textarea" ? defaultSizeFor(c.kind).h : 46);
     maxY = Math.max(maxY, y + h);
   };
   if (Array.isArray(s.controls)) s.controls.forEach(checkItem);
@@ -8341,6 +8476,8 @@ function buildToolPalette(host, curTab, state) {
 
       chip.addEventListener("dragstart", (e) => {
         e.stopPropagation();
+        // Firefox só começa o arraste com algum dado no dataTransfer.
+        try { e.dataTransfer?.setData("text/plain", t.kind); } catch {}
         state.draggingComponent = { kind: t.kind };
       });
       chip.addEventListener("dragend", () => { state.draggingComponent = null; });
@@ -9128,7 +9265,7 @@ function renderObjectInspector(host, state, force) {
     }
   }
 
-  const isMediaCtrl = isMediaKind(ctrl.kind) || ctrl.kind === "preview_override" || ctrl.kind === "node_ui";
+  const isMediaCtrl = isMediaKind(ctrl.kind) || isPanelKind(ctrl.kind);
   const isVisualMedia = ctrl.kind === "media" || ctrl.kind === "video" || ctrl.kind === "outimage" || ctrl.kind === "outvideo" || ctrl.kind === "preview_override";
   if (isVisualMedia) {
     props.append(propRow("Hide Preview", propToggle(!!ctrl.hidePreview, (v) => {
@@ -9139,8 +9276,8 @@ function renderObjectInspector(host, state, force) {
   }
   const isTextarea = ctrl.kind === "textarea";
   const { minW, minH } = getComponentMinDimensions(ctrl);
-  const defW = ctrl.w || (parentGroup ? (isTextarea ? 160 : (isDivider ? (ctrl.kind === "vdivider" ? 16 : 192) : 100)) : (isDivider ? (ctrl.kind === "vdivider" ? 16 : 256) : ctrl.kind === "preview_override" || ctrl.kind === "canvas_widget" ? 320 : ctrl.kind === "node_ui" ? 336 : 256));
-  const defH = ctrl.h || (parentGroup ? (isTextarea ? 80 : (isMediaCtrl ? (ctrl.kind === "preview_override" ? 180 : 96) : (isDivider ? 16 : 32))) : (isTextarea ? 96 : (isDivider ? 16 : ctrl.kind === "preview_override" ? 240 : ctrl.kind === "node_ui" ? 320 : 32)));
+  const defW = ctrl.w || (parentGroup ? (isTextarea ? 160 : (isDivider ? (ctrl.kind === "vdivider" ? 16 : 192) : 100)) : (isDivider ? (ctrl.kind === "vdivider" ? 16 : 256) : defaultSizeFor(ctrl.kind).w));
+  const defH = ctrl.h || (parentGroup ? (isTextarea ? 80 : (isMediaCtrl ? (isPanelKind(ctrl.kind) ? 180 : 96) : (isDivider ? 16 : 32))) : (isTextarea ? 96 : (isDivider ? 16 : isPanelKind(ctrl.kind) ? defaultSizeFor(ctrl.kind).h : 32)));
   props.append(propRow("Width", propNumber(defW, (v) => { ctrl.w = Math.max(minW, v); state.refresh(); })));
   props.append(propRow("Height", propNumber(defH, (v) => { ctrl.h = Math.max(minH, v); state.refresh(); })));
 
@@ -9834,6 +9971,7 @@ function buildCard(host, state) {
         h.style.cursor = "grab";
         h.addEventListener("dragstart", (e) => {
           e.stopPropagation();
+          try { e.dataTransfer?.setData("text/plain", String(s.header || "zone")); } catch {}
           state.draggingSection = { sec: s, fromIndex: sIdx };
           sec.classList.add("dragging");
         });
@@ -14014,6 +14152,21 @@ app.registerExtension({
 
   __flatNode(node) { return this.__flatMenu(this.getNodeMenuItems(node)); },
   __flatCanvas() { return this.__flatMenu(this.getCanvasMenuItems()); },
+  /** Para testes e scripts: como o cartão trata um widget (tests/tools/scan_widgets.mjs). */
+  __classify(w) {
+    return { usable: usable(w), kind: describeWidget(w).kind, mirror: mirrorModeFor(w) };
+  },
+  /** Para testes e scripts: promove o nó de dentro inteiro (como o Target Picker) na 1ª zona. */
+  __promoteWhole(host, node, orientation = "row") {
+    const layout = host.properties[PROP];
+    const sec = layout.tabs[layout.activeTab || 0].sections[0];
+    const list = sec.tabs ? (sec.tabs[sec.activeTab || 0].controls ||= []) : (sec.controls ||= []);
+    const y = Math.max(16, ...list.map((c) => (c.y || 0) + (c.h || 46) + GRID));
+    const ctrl = buildWholeNodeCtrl(host, node, orientation, { x: 16, y });
+    list.push(ctrl);
+    host.__legoState?.refresh();
+    return ctrl;
+  },
   /** Para testes e scripts: todos os itens do menu, com os de submenus, numa lista só. */
   __flatMenu(items) {
     const out = [];

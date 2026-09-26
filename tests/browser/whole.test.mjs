@@ -27,7 +27,8 @@ t("dialog closed", !(await pg.$(".lego-comfy-dialog")));
 await addWhole("column", "clip_name");
 c = await L();
 const v = c[1];
-t("column: vertical group with 3 labels + 3 dropdowns", v && v.kind === "vsegment" && v.items.map(i => i.kind).join() === "label,combo,label,combo,label,combo");
+// Empilhado como o nó nativo: uma linha por parâmetro, rótulo à esquerda do controle.
+t("column: vertical group with 3 dropdowns labelled inline", v && v.kind === "vsegment" && v.items.map(i => i.kind).join() === "combo,combo,combo" && v.items.every(i => i.labelPos === "left" && i.label));
 t("no overlap between the two groups", !(v.y < g.y + g.h && v.y + v.h > g.y && v.x < g.x + g.w && v.x + v.w > g.x));
 // o widget criado controla o nó de verdade
 await pg.evaluate(() => { __st.edit = false; __st.refresh(); }); await pg.waitForTimeout(150);

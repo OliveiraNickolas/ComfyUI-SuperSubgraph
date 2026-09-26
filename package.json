@@ -6,7 +6,8 @@
     "test": "node tests/run.mjs unit browser",
     "test:unit": "node tests/run.mjs unit",
     "test:browser": "node tests/run.mjs browser",
-    "test:e2e": "node tests/run.mjs e2e"
+    "test:e2e": "node tests/run.mjs e2e",
+    "scan:widgets": "node tests/tools/scan_widgets.mjs"
   },
   "devDependencies": {
     "jsdom": "^24.1.3",

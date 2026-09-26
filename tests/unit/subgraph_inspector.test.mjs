@@ -841,6 +841,16 @@ t("canvas widget renders as a mirror (no text input)", mirrorNode.domElement.que
 t("node panel renders as a node mirror", mirrorNode.domElement.querySelectorAll(".lego-canvas-mirror.is-node canvas").length === 1);
 t("old text promotions migrate to mirror kinds", mirrorCtrls[0].kind === "canvas_widget" && mirrorCtrls[1].kind === "node_ui" && mirrorCtrls[1].h >= 320);
 
+// Classificação de widgets de extensões (varredura de todos os nós instalados)
+const domEl = dom.window.document.createElement("div");
+t("DOM widget panel maps to dom_widget", M.describeWidget({ name: "loras", type: "custom", value: [], element: domEl, draw() {} }).kind === "dom_widget");
+t("DOM textarea stays textarea", M.describeWidget({ name: "text", type: "customtext", value: "", element: dom.window.document.createElement("textarea"), draw() {} }).kind === "textarea");
+t("colorcode maps to color", M.describeWidget({ name: "c", type: "COLORCODE", value: "#fff", draw() {}, mouse() {} }).kind === "color");
+t("VHS annotated number stays a number (not mirrored)", ["number", "slider"].includes(M.describeWidget({ name: "n", type: "VHS.ANNOTATED", value: 3, options: {}, draw() {}, mouse() {} }).kind));
+t("hidden-type widgets are not promotable", !M.usable({ name: "x", type: "easyhidden", value: 1 }) && !M.usable({ name: "y", type: "h3frhidden", value: 1 }) && !M.usable({ name: "z", type: "number", value: 1, hidden: true }));
+t("object widget without UI is not promotable", !M.usable({ name: "crop", type: "imagecrop", value: { x: 1 } }));
+t("numbers show the widget precision like native", M.fmtNum(8, M.numDecimals({ precision: 1 }, 0.1, false)) === "8.0" && M.fmtNum(1, M.numDecimals({}, 0.01, false)) === "1.00" && M.fmtNum(20.4, 0) === "20");
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 M.enterSuper(sn);
