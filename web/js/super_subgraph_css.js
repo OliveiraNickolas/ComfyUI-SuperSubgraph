@@ -1134,7 +1134,9 @@ export const CSS = `
 .lego-col-divider{
   position: relative;
   width: 12px;
-  margin: 0 -6px;
+  /* Ocupa exatamente o vão entre as colunas (gap de 12px): as zonas têm a
+     mesma largura na edição e fora dela (antes a edição ficava 12px menor). */
+  margin: 0 -12px;
   flex: 0 0 12px;
   cursor: col-resize;
   z-index: 35;
