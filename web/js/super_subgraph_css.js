@@ -1500,6 +1500,43 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   box-sizing: border-box;
   transition: border-color .15s, background .15s;
 }
+/* Seletor de arquivo com setas, num elemento só (como o combo nativo) */
+.lego-media-picker{
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  height: 18px;
+  border: 1px solid var(--lego-line);
+  border-radius: 6px;
+  background: var(--lego-well,rgba(0,0,0,0.34));
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.lego-media-picker:hover{ border-color: var(--lego-accent); }
+.lego-media-picker .lego-media-select{
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  height: 100%;
+  min-height: 0;
+  padding: 0 4px;
+}
+.lego-media-picker .lego-combo-chevron{ display: none; }
+.lego-media-picker .lego-media-select{ justify-content: center; }
+.lego-media-picker .lego-combo-label{ flex: 1; text-align: center; }
+.lego-media-arrow{
+  flex: none;
+  width: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--lego-dim, #94a3b8);
+  font-size: 8px;
+  line-height: 1;
+  cursor: pointer;
+}
+.lego-media-arrow:hover{ color: var(--lego-text); background: rgba(255,255,255,0.08); }
 .lego-media-select .lego-combo-label{
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1570,6 +1607,7 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 }
 .lego-row.grp.grp-media .lego-media-bar{flex:none;display:flex;flex-direction:row;align-items:center;gap:6px;width:100%}
 .lego-row.grp.grp-media .lego-media-select{flex:1;min-width:0;width:auto}
+.lego-row.grp.grp-media .lego-media-picker{flex:1;min-width:0}
 
 /* ── Audio Player com Timeline, Equalizador e Design Coeso ── */
 .lego-audio-player{

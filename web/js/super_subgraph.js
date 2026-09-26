@@ -1993,6 +1993,28 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
 
   populateOptions();
 
+  // Setas ◀ ▶ em volta do nome, como o combo nativo do Load Image: trocam
+  // para o arquivo anterior/seguinte da lista (dando a volta nas pontas).
+  const picker = el("div", "lego-media-picker");
+  const stepFile = (dir) => {
+    const vals = valuesOf(w, node).map((v) => (v && typeof v === "object" && "value" in v ? v.value : v));
+    if (!w || !vals.length) return;
+    const i = vals.findIndex((v) => String(v) === String(w.value));
+    const next = vals[((i < 0 ? (dir > 0 ? -1 : 0) : i) + dir + vals.length) % vals.length];
+    writeWidget(node, w, next);
+    populateOptions();
+    updateThumb();
+  };
+  const arrow = (dir) => {
+    const b = el("button", `lego-media-arrow ${dir < 0 ? "prev" : "next"}`, dir < 0 ? "\u25C0" : "\u25B6");
+    b.type = "button";
+    b.title = dir < 0 ? `Previous ${mediaTypeName}` : `Next ${mediaTypeName}`;
+    b.addEventListener("pointerdown", eatPointer);
+    b.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); stepFile(dir); });
+    return b;
+  };
+  picker.append(arrow(-1), sel, arrow(1));
+
   // 3. Input Oculto de Arquivo e Botão Estilizado de Selecionar
   const fileInput = el("input");
   fileInput.type = "file";
@@ -2068,7 +2090,7 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
 
   // 4. Barra de Controles Inferior
   const bar = el("div", "lego-media-bar");
-  bar.append(sel, uploadBtn);
+  bar.append(picker, uploadBtn);
 
   // Imagem: botão do Mask Editor (pintar a máscara direto do cartão).
   if (!isVideo && !isAudio && w) {
