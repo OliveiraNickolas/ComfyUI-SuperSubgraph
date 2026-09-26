@@ -1795,7 +1795,8 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   cursor: pointer;
   position: relative;
   border-radius: 5px;
-  padding: 2px 4px;
+  /* Sem folga vertical: editar não pode deixar o grupo mais alto que o modo normal. */
+  padding: 0 4px;
   transition: all .12s ease;
   overflow: visible !important;
 }
@@ -1995,8 +1996,8 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-segment-box.vertical{
   flex-direction: column;
   align-items: stretch;
-  gap: 5px;
-  padding: 5px 8px;
+  gap: 3px;
+  padding: 4px 8px;
   overflow-y: auto;
 }
 .lego-segment-box.vertical .lego-segment-item{

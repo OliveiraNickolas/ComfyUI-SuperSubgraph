@@ -3036,15 +3036,30 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
         if (e.target.closest(".lego-item-actions, .lego-resizer-corner")) return;
         e.stopPropagation();
         e.preventDefault();
+        // Seleciona já no pointerdown: o clique em cima do controle (dropdown,
+        // stepper) não chega ao item. Ctrl/Shift/Cmd somam à seleção; sem
+        // tecla, um item que já faz parte da seleção a mantém.
+        const isMulti = e.ctrlKey || e.metaKey || e.shiftKey;
+        if (isMulti) selectComponent(host, state, item, ctrl.items, false, true);
+        else if (!state.selectedNames?.has(item.name)) selectComponent(host, state, item, ctrl.items, false, false);
         startGroupItemDrag(e, { host, state, item, fromList: ctrl.items, itemEl: itemWrap });
       });
       itemWrap.ondragstart = (e) => e.preventDefault();
+      // Ctrl/Shift+clique é só para selecionar: não abre o dropdown nem mexe
+      // no controle que estiver embaixo do ponteiro.
+      itemWrap.addEventListener("click", (e) => {
+        if ((e.ctrlKey || e.metaKey || e.shiftKey) && !e.target.closest(".lego-item-actions, .lego-resizer-corner")) {
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      }, true);
 
       itemWrap.addEventListener("click", (e) => {
         if (e.target.closest(".lego-item-del-btn") || e.target.closest(".lego-item-link-btn") || e.target.closest(".lego-resizer-corner")) return;
         e.stopPropagation();
+        // Clique simples num item de uma seleção múltipla: fica só ele.
         const isMulti = e.ctrlKey || e.metaKey || e.shiftKey;
-        selectComponent(host, state, item, ctrl.items, false, isMulti);
+        if (!isMulti && state.selectedNames?.size > 1) selectComponent(host, state, item, ctrl.items, false, false);
       });
 
       itemWrap.addEventListener("contextmenu", (e) => {
@@ -3129,7 +3144,9 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
         itemWrap.classList.add("resizing");
 
         const undoSnapshot = JSON.stringify(host.properties[PROP] || {});
-        selectComponent(host, state, item, ctrl.items, false);
+        // Item de uma seleção múltipla: redimensiona todos os selecionados
+        // deste grupo juntos (mesma variação), como os componentes soltos.
+        if (!state.selectedNames?.has(item.name)) selectComponent(host, state, item, ctrl.items, false);
         // Altura só é redimensionável em grupo vertical ou item 2D (mídia, texto longo, output…).
         const resizesH = isVertical || is2DKind(item.kind) || item.kind === "vdivider";
 
@@ -3144,20 +3161,68 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
         const minW = itemMinW;
         const minH = itemMinH;
 
+        const itemEls = [...box.children].filter((c) => c.classList?.contains("lego-segment-item"));
+        const elOf = (it) => itemEls.find((c) => c.dataset.name === it.name) || null;
+        const others = (state.selectedNames?.size > 1)
+          ? ctrl.items.filter((it) => it !== item && state.selectedNames.has(it.name)).map((it) => {
+            const oel = elOf(it);
+            return oel && { it, el: oel, w0: oel.offsetWidth, h0: oel.offsetHeight, min: getComponentMinDimensions(it) };
+          }).filter(Boolean)
+          : [];
+        // Guias: bordas e tamanhos dos outros itens do grupo (coordenadas do box).
+        const x0 = itemWrap.offsetLeft, y0 = itemWrap.offsetTop;
+        const sibs = itemEls.filter((c) => c !== itemWrap && !others.some((o) => o.el === c))
+          .map((c) => ({ l: c.offsetLeft, t: c.offsetTop, w: c.offsetWidth, h: c.offsetHeight }));
+        let guides = [];
+        const clearItemGuides = () => { guides.forEach((g) => g.remove()); guides = []; };
+        const SNAP = 6;
+        const snapAxis = (raw, start, key0, keyS) => {
+          // Borda final alinhada com a de outro item, ou mesmo tamanho que ele.
+          let best = null, diff = SNAP + 1;
+          for (const sb of sibs) {
+            const edge = sb[key0] + sb[keyS] - start;
+            for (const cand of [edge, sb[keyS]]) {
+              const d = Math.abs(cand - raw);
+              if (d < diff) { diff = d; best = cand; }
+            }
+          }
+          return best;
+        };
+        const guide = (vertical, pos) => {
+          const g = el("div", `lego-align-guide ${vertical ? "v" : "h"}`);
+          if (vertical) { g.style.left = `${pos}px`; g.style.top = "0"; g.style.height = "100%"; }
+          else { g.style.top = `${pos}px`; g.style.left = "0"; g.style.width = "100%"; }
+          box.append(g);
+          guides.push(g);
+        };
+
         const onMove = (ev) => {
           ev.stopPropagation();
           const deltaX = (ev.clientX - startClientX) / curScale;
           const deltaY = (ev.clientY - startClientY) / curScale;
+          clearItemGuides();
 
-          finalW = Math.max(minW, Math.round((origW + deltaX) / 16) * 16);
+          const rawW = origW + deltaX;
+          const snapW = ev.shiftKey ? null : snapAxis(rawW, x0, "l", "w");
+          finalW = Math.max(minW, snapW != null ? Math.round(snapW) : Math.round(rawW / GRID) * GRID);
+          if (snapW != null) guide(true, x0 + finalW);
           itemWrap.style.flex = "none";
           itemWrap.style.width = `${finalW}px`;
           itemWrap.classList.add("has-custom-w");
 
           if (resizesH) {
-            finalH = Math.max(minH, Math.round((origH + deltaY) / 16) * 16);
+            const rawH = origH + deltaY;
+            const snapH = ev.shiftKey ? null : snapAxis(rawH, y0, "t", "h");
+            finalH = Math.max(minH, snapH != null ? Math.round(snapH) : Math.round(rawH / GRID) * GRID);
+            if (snapH != null) guide(false, y0 + finalH);
             itemWrap.style.height = `${finalH}px`;
             itemWrap.classList.add("has-custom-h");
+          }
+          for (const o of others) {
+            o.nw = Math.max(o.min.minW, o.w0 + finalW - origW);
+            o.el.style.flex = "none";
+            o.el.style.width = `${o.nw}px`;
+            if (resizesH) { o.nh = Math.max(o.min.minH, o.h0 + finalH - origH); o.el.style.height = `${o.nh}px`; }
           }
         };
 
@@ -3172,10 +3237,15 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
           window.removeEventListener("mousemove", onMove, true);
           window.removeEventListener("mouseup", onUp, true);
 
+          clearItemGuides();
           // Clique sem arrastar não fixa o tamanho (o item segue flexível).
           if (finalW === origW && finalH === origH) { state.refresh(); return; }
           item.w = finalW;
           if (resizesH) item.h = finalH;
+          for (const o of others) {
+            if (o.nw != null) o.it.w = o.nw;
+            if (resizesH && o.nh != null) o.it.h = o.nh;
+          }
           pushUndoSnapshot(host, undoSnapshot);
           state.refresh();
         };
@@ -7966,7 +8036,9 @@ function fitGroupToContent(host, ctrl, row, onChange) {
   const w0 = typeof ctrl.w === "number" ? ctrl.w : row.offsetWidth;
   const h0 = typeof ctrl.h === "number" ? ctrl.h : row.offsetHeight;
   if (overW > 1) ctrl.w = Math.ceil((w0 + overW + 4) / GRID) * GRID;
-  if (overH > 1) ctrl.h = Math.ceil((h0 + overH + 4) / GRID) * GRID;
+  // Altura exata do conteúdo (sem arredondar para a grade): o grupo pode
+  // ficar tão baixo quanto os itens permitem.
+  if (overH > 1) ctrl.h = Math.ceil(h0 + overH + 1);
   row.style.width = `${ctrl.w}px`;
   row.style.height = `${ctrl.h}px`;
   // O ajuste não é uma edição do usuário: não vira entrada de Undo.
