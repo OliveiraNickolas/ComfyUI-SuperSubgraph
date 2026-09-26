@@ -5999,6 +5999,7 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
     hud.remove();
     document.querySelector(".lego-node-picker-popup")?.remove();
     window.removeEventListener("pointerdown", onCanvasPointerDown, true);
+    window.removeEventListener("pointermove", onPickHover, true);
     window.removeEventListener("keydown", onPickKey, true);
     cancelAnimationFrame(overlayRaf);
     overlay?.remove();
@@ -6078,6 +6079,11 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
       b.style.height = `${h * ds.scale}px`;
       overlay.append(b);
     };
+    if (!multi && hoverPick && hoverPick.node.graph === canvas.graph && !hoverPick.node.flags?.collapsed) {
+      const n = hoverPick.node, w = hoverPick.widget;
+      const h = w.computedHeight ?? w.computeSize?.(n.size[0])?.[1] ?? liteGraph()?.NODE_WIDGET_HEIGHT ?? 20;
+      box(n.pos[0] + 6, n.pos[1] + (w.y ?? w.last_y ?? 0), n.size[0] - 12, h, "widget");
+    }
     for (const p of picks.values()) {
       const n = p.node;
       if (n.graph !== canvas.graph) continue;
@@ -6094,7 +6100,9 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
       }
     }
   };
-  if (multi) {
+  // Destaque também ao escolher o alvo de um componente só: o parâmetro sob o
+  // ponteiro acende em verde e o clique já o escolhe (sem janela de lista).
+  if (multi || !pickNode) {
     overlay = el("div", "lego-pick-overlay");
     document.body.append(overlay);
     overlayRaf = requestAnimationFrame(drawPicks);
@@ -6116,17 +6124,28 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
     return w && usable(w) ? w : null;
   };
 
+  /** Ponto do evento em coordenadas do canvas. */
+  const canvasPos = (e) => {
+    if (typeof canvas.convertEventToCanvasOffset === "function") return canvas.convertEventToCanvasOffset(e);
+    const r = canvas.canvas.getBoundingClientRect();
+    return [(e.clientX - r.left) / canvas.ds.scale - canvas.ds.offset[0], (e.clientY - r.top) / canvas.ds.scale - canvas.ds.offset[1]];
+  };
+  /** Parâmetro sob o ponteiro (modo de um alvo só), para o destaque verde. */
+  let hoverPick = null;
+  function onPickHover(e) {
+    if (multi || pickNode) return;
+    const node = e.target === canvas.canvas ? getNodeAtEvent(canvas, e) : null;
+    const [cx, cy] = node ? canvasPos(e) : [0, 0];
+    const w = node && !node.flags?.collapsed ? widgetAt(node, cx, cy) : null;
+    hoverPick = w ? { node, widget: w } : null;
+  }
+  window.addEventListener("pointermove", onPickHover, true);
+
   /** Marca/desmarca: nó inteiro (título/área sem parâmetro) ou só o parâmetro. */
   const togglePick = (node, e) => {
     const key = String(node.id);
     const usableNames = (node.widgets || []).filter(usable).map((w) => w.name);
-    let cx = 0, cy = 0;
-    if (typeof canvas.convertEventToCanvasOffset === "function") [cx, cy] = canvas.convertEventToCanvasOffset(e);
-    else {
-      const r = canvas.canvas.getBoundingClientRect();
-      cx = (e.clientX - r.left) / canvas.ds.scale - canvas.ds.offset[0];
-      cy = (e.clientY - r.top) / canvas.ds.scale - canvas.ds.offset[1];
-    }
+    const [cx, cy] = canvasPos(e);
     const w = node.flags?.collapsed ? null : widgetAt(node, cx, cy);
     const cur = picks.get(key);
     if (!w) {
@@ -6145,6 +6164,22 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
       else picks.delete(key);
     }
     updateHud();
+  };
+
+  /** Alvo (para onSelect) de um parâmetro de um nó. */
+  const widgetTarget = (node, w) => {
+    const desc = describeWidget(w);
+    return {
+      bind: bindKey(host, node, w),
+      label: `${node.title || node.type || `Node #${node.id}`} - ${prettify(w.name)}`,
+      kind: detectMediaKind(w, desc, node),
+      min: w.options?.min,
+      max: w.options?.max,
+      step: w.options?.step,
+      seed: desc.isSeed || w.name.toLowerCase().includes("seed"),
+      node,
+      widget: w,
+    };
   };
 
   const openNodeWidgetPopup = (hitNode, clientX, clientY) => {
@@ -6225,17 +6260,7 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
 
         btn.addEventListener("click", (e) => {
           e.stopPropagation();
-          onSelect({
-            bind: (hitNode === host) ? w.name : `${hitNode.id}/${w.name}`,
-            label: `${nTitle} - ${prettify(w.name)}`,
-            kind,
-            min: w.options?.min,
-            max: w.options?.max,
-            step: w.options?.step,
-            seed: desc.isSeed || w.name.toLowerCase().includes("seed"),
-            node: hitNode,
-            widget: w
-          });
+          onSelect(widgetTarget(hitNode, w));
           cleanup();
         });
 
@@ -6267,6 +6292,15 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
         label: hitNode.title || hitNode.type,
         node: hitNode,
       });
+      cleanup();
+      return;
+    }
+    // Clique direto num parâmetro: escolhe na hora. No título ou em área sem
+    // parâmetro, abre a lista do nó (inclui "nó inteiro").
+    const [cx, cy] = canvasPos(e);
+    const w = hitNode.flags?.collapsed ? null : widgetAt(hitNode, cx, cy);
+    if (w) {
+      onSelect(widgetTarget(hitNode, w));
       cleanup();
       return;
     }
