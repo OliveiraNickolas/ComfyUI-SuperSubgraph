@@ -17,11 +17,53 @@ Formato de `ss_graph` (JSON, gerado pelo frontend na hora de enfileirar):
 """
 
 import json
+import logging
 
 import nodes as comfy_nodes
 from comfy_execution.graph_utils import GraphBuilder, is_link
 
 MAX_IO = 32
+
+
+def _required_inputs(class_type):
+    """Nomes das entradas obrigatórias do tipo de nó (vazio se não der para saber)."""
+    cls = comfy_nodes.NODE_CLASS_MAPPINGS.get(class_type)
+    try:
+        spec = cls.INPUT_TYPES() if cls is not None else {}
+        return set((spec or {}).get("required", {}) or {})
+    except Exception:
+        return set()
+
+
+def _prune_incomplete(inner, fed_from_outside, host_id):
+    """
+    Tira os nós de dentro que ficaram com uma entrada obrigatória sem nada
+    ligado (e, em cascata, os que dependiam deles) — como o ComfyUI faz com um
+    nó incompleto num workflow comum: ele fica de fora e o resto roda, em vez
+    de a execução inteira falhar.
+    """
+    alive = dict(inner)
+    changed = True
+    while changed:
+        changed = False
+        for nid, info in list(alive.items()):
+            inputs = info.get("inputs") or {}
+            missing = []
+            for name in _required_inputs(info.get("class_type")):
+                value = inputs.get(name)
+                if (nid, name) in fed_from_outside:
+                    continue
+                if value is None or (is_link(value) and str(value[0]) not in alive):
+                    missing.append(name)
+            if missing:
+                title = (info.get("_meta") or {}).get("title") or info.get("class_type")
+                logging.warning(
+                    "SuperSubgraph #%s: skipping '%s' (#%s) inside it: required input %s not connected",
+                    host_id, title, nid, ", ".join(f"'{m}'" for m in missing),
+                )
+                del alive[nid]
+                changed = True
+    return alive
 
 
 class SuperSubgraph:
@@ -68,6 +110,17 @@ class SuperSubgraph:
             if ct not in comfy_nodes.NODE_CLASS_MAPPINGS:
                 title = (info.get("_meta") or {}).get("title") or ct
                 raise ValueError(f"SuperSubgraph: node type '{ct}' ({title}, #{nid}) is not installed")
+
+        # Entradas ligadas de fora (in_N com fio) contam como ligadas.
+        fed = set()
+        for i, targets in enumerate(data.get("inputs") or []):
+            if kwargs.get(f"in_{i + 1}") is None:
+                continue
+            for target in targets or []:
+                fed.add((str(target[0]), target[1]))
+        inner = _prune_incomplete({str(k): v for k, v in inner.items()}, fed, unique_id)
+        if not inner:
+            return empty
 
         # Prefixo fixo por nó: ids efêmeros previsíveis ("<este>.<id de dentro>"),
         # que o frontend usa para achar o output de um nó de dentro específico.

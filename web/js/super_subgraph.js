@@ -12429,6 +12429,29 @@ function repairInnerLinks(g, host) {
   return fixed;
 }
 
+/**
+ * Avisa (sem travar a execução) quais nós de dentro vão ficar de fora por ter
+ * uma entrada obrigatória sem nada ligado — o nó Python os pula, como o
+ * ComfyUI faz num workflow comum.
+ */
+function warnIncompleteInner(node, output, meta) {
+  const fed = new Set();
+  (meta.inputs || []).forEach((io, k) => {
+    const slot = hostInputIndex(node, k);
+    if (slot >= 0 && node.inputs?.[slot]?.link != null) for (const [id, name] of io.targets || []) fed.add(`${id}:${name}`);
+  });
+  const skipped = [];
+  for (const [id, info] of Object.entries(output || {})) {
+    const req = liteGraph()?.registered_node_types?.[info.class_type]?.nodeData?.input?.required || {};
+    const missing = Object.keys(req).filter((name) => info.inputs?.[name] === undefined && !fed.has(`${id}:${name}`));
+    if (missing.length) skipped.push(`${info._meta?.title || info.class_type} (${missing.join(", ")})`);
+  }
+  if (skipped.length) {
+    showLegoToast(`${node.title || "Super Subgraph"}: not connected inside, skipped — ${skipped.slice(0, 3).join("; ")}${skipped.length > 3 ? "…" : ""}`);
+    console.warn(LOG, `${node.title || "Super Subgraph"} #${node.id}: inner nodes skipped (required input not connected):`, skipped.join("; "));
+  }
+}
+
 /** JSON da API do grafo de dentro, no formato que o nó Python espera. */
 async function buildSuperApi(node) {
   const g = ssInnerGraph(node);
@@ -12436,6 +12459,7 @@ async function buildSuperApi(node) {
   if (!g) return { nodes: {}, inputs: [], outputs: [] };
   repairInnerLinks(g, node);
   const { output } = await app.graphToPrompt(g);
+  warnIncompleteInner(node, output, meta);
   return {
     nodes: output,
     inputs: (meta.inputs || []).map((i) => i.targets || []),
