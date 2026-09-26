@@ -1,6 +1,6 @@
 import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
-import { CSS, CSS_FORM, CSS_OUTPUT, CSS_DRAG } from "./super_subgraph_css.js";
+import { CSS, CSS_FORM, CSS_OUTPUT, CSS_DRAG, CSS_CAPTION_ALIGN } from "./super_subgraph_css.js";
 
 /**
  * ComfyUI Super-Subgraph — "UI Lego"  v2
@@ -467,7 +467,7 @@ function injectCSS() {
   if (document.getElementById("lego-style")) return;
   const s = document.createElement("style");
   s.id = "lego-style";
-  s.textContent = CSS + CSS_FORM + CSS_OUTPUT + CSS_DRAG;
+  s.textContent = CSS + CSS_FORM + CSS_OUTPUT + CSS_DRAG + CSS_CAPTION_ALIGN;
   document.head.appendChild(s);
 }
 
@@ -2994,6 +2994,7 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
     );
     itemWrap.dataset.itemName = item.name;
     itemWrap.dataset.name = item.name;
+    if (item.labelAlign === "center" || item.labelAlign === "right") itemWrap.classList.add(`lbl-align-${item.labelAlign}`);
     if (item.color) {
       itemWrap.classList.add(item.color === "#000000" ? "tinted-solid" : "tinted");
       itemWrap.style.setProperty("--lego-c", item.color);
@@ -4316,6 +4317,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   // ── Estrutura Visual 100% IDENTICA em Modo Fixo e Modo Edição ──
   const lbl = el("div", "lego-lbl", ctrl.label || prettify(w.name));
   lbl.title = node === host ? w.name : `${node.title || node.type} #${node.id} → ${w.name}`;
+  if (ctrl.labelAlign === "center" || ctrl.labelAlign === "right") row.classList.add(`lbl-align-${ctrl.labelAlign}`);
   if (typeof ctrl.labelW === "number" && ctrl.labelW > 0) {
     lbl.style.flex = "0 0 auto";
     lbl.style.width = `${ctrl.labelW}px`;
@@ -9421,6 +9423,28 @@ function renderObjectInspector(host, state, force) {
       });
       props.append(propRow("Caption Position", posBtn));
 
+      // Alinhamento do texto do caption (esquerda, centro, direita).
+      const ALINHA = [
+        { id: "left", label: "Left" },
+        { id: "center", label: "Center" },
+        { id: "right", label: "Right" },
+      ];
+      const alAtual = ALINHA.find((o) => o.id === (ctrl.labelAlign || "left")) || ALINHA[0];
+      const alBtn = el("button", "lego-oi-pick");
+      alBtn.innerHTML = `<span>${alAtual.label}</span>${glyph("chevron", 12)}`;
+      alBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openDropdown(alBtn, ALINHA.map((o) => o.label), alAtual.label, (_v, idx) => {
+          const opt = ALINHA[idx];
+          if (!opt) return;
+          pushUndo(host);
+          if (opt.id === "left") delete ctrl.labelAlign;
+          else ctrl.labelAlign = opt.id;
+          state.refresh();
+        });
+      });
+      props.append(propRow("Caption Align", alBtn));
+
       // Largura da caixa do caption (0 = automático conforme o texto)
       props.append(propRow("Caption Width", propNumber(ctrl.labelW || 0, (v) => {
         if (v > 0) ctrl.labelW = v;
@@ -12208,6 +12232,42 @@ function hookGraphAdd() {
   };
 }
 
+/** Atualiza a lista de um combo pela definição nova do nó (mesma regra do ComfyUI). */
+function refreshNodeCombos(node, defs) {
+  node.refreshComboInNode?.(defs);
+  const input = defs?.[node.type]?.input;
+  if (!input) return;
+  for (const w of node.widgets || []) {
+    if (w.type !== "combo") continue;
+    const spec = input.required?.[w.name] ?? input.optional?.[w.name];
+    if (!Array.isArray(spec)) continue;
+    // Formato novo ["COMBO", { options: [...] }] ou antigo [[...valores]].
+    if (spec[0] === "COMBO" && Array.isArray(spec[1]?.options)) w.options.values = spec[1].options;
+    else if (Array.isArray(spec[0])) w.options.values = spec[0];
+  }
+}
+
+/** Todos os Super Subgraphs (também os aninhados e os de dentro de subgrafos nativos). */
+function refreshSuperCombos(defs) {
+  const root = app.rootGraph || app.graph;
+  if (!root) return;
+  const graphs = [root, ...(root.subgraphs?.values?.() || [])];
+  const seen = new Set();
+  const walk = (g) => {
+    if (!g || seen.has(g)) return;
+    seen.add(g);
+    for (const n of g._nodes || g.nodes || []) {
+      if (!isSuperNode(n)) continue;
+      const inner = ssInnerGraph(n);
+      if (!inner || seen.has(inner)) continue;
+      for (const m of inner._nodes || inner.nodes || []) refreshNodeCombos(m, defs);
+      walk(inner);
+    }
+  };
+  graphs.forEach(walk);
+  for (const n of ATTACHED) n.__legoState?.refresh();
+}
+
 /** Nós de dentro do host: do Super Subgraph ou do subgrafo nativo. */
 function innerNodesOf(host) {
   const g = ssInnerGraph(host);
@@ -14350,6 +14410,19 @@ app.registerExtension({
 
   __flatNode(node) { return this.__flatMenu(this.getNodeMenuItems(node)); },
   __flatCanvas() { return this.__flatMenu(this.getCanvasMenuItems()); },
+  /**
+   * Tecla R / "Refresh Node Definitions": o ComfyUI atualiza as listas dos
+   * combos só nos nós que ele enxerga (grafo raiz e subgrafos nativos). Os
+   * nós de dentro de um Super Subgraph ficam num grafo próprio: atualiza aqui.
+   */
+  async refreshComboInNodes(defs) {
+    try {
+      refreshSuperCombos(defs);
+    } catch (err) {
+      console.warn(LOG, "refresh combos", err);
+    }
+  },
+
   /** Para testes e scripts: como o cartão trata um widget (tests/tools/scan_widgets.mjs). */
   __classify(w) {
     return { usable: usable(w), kind: describeWidget(w).kind, mirror: mirrorModeFor(w) };

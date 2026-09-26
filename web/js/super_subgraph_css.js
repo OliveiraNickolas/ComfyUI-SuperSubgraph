@@ -2968,3 +2968,20 @@ button.lego-ss-nav-crumb:hover{color:#fff;background:rgba(255,255,255,0.08)}
 .lego-subtab.drop-after{box-shadow:inset -3px 0 0 var(--lego-accent,#3b82f6)}
 .lego-subtabs.drop-into,.lego-sec-h.drop-into{outline:2px dashed var(--lego-accent,#3b82f6);outline-offset:2px;border-radius:6px}
 `;
+
+export const CSS_CAPTION_ALIGN = `
+/* Caption Align (Inspetor): centro/direita. À esquerda do controle, o caption
+   ocupa a coluna dele e o texto se alinha dentro dela. */
+.lego-row.lbl-align-center .lego-lbl{text-align:center}
+.lego-row.lbl-align-right .lego-lbl{text-align:right}
+.lego-row.lbl-align-center > .lego-lbl,
+.lego-row.lbl-align-right > .lego-lbl{flex:1 1 0;min-width:0}
+.lego-row.lbl-align-center > .lego-row-top{justify-content:center}
+.lego-row.lbl-align-right > .lego-row-top{justify-content:flex-end}
+.lego-segment-item.lbl-align-center .lego-item-label{text-align:center;flex:1 1 0;min-width:0}
+.lego-segment-item.lbl-align-right .lego-item-label{text-align:right;flex:1 1 0;min-width:0}
+.lego-segment-box.vertical > .lego-segment-item.has-inline-label.lbl-align-center > .lego-item-label,
+.lego-segment-box.vertical > .lego-segment-item.has-inline-label.lbl-align-right > .lego-item-label{flex:1 1 0}
+.lego-segment-item.lbl-align-center > .lego-item-top{justify-content:center}
+.lego-segment-item.lbl-align-right > .lego-item-top{justify-content:flex-end}
+`;
