@@ -25,6 +25,13 @@ f = await typeIn("Stepper2", "12.7");
 t(`integer widget rounds: "12.7" -> field ${f}`, f === "13" && (await wv("steps")) === 13);
 f = await typeIn("Stepper1", "abc");
 t(`invalid text restores the value: -> field ${f}`, f === "1.00");
+// Clicar seleciona o valor inteiro: digitar direto substitui (sem Ctrl+A).
+for (const row of ["Stepper2", "Slider1"]) {
+  const inp = pg.locator(`.lego-row[data-name="${row}"] input[type=text]`).first();
+  await inp.click(); await pg.keyboard.type("7"); await pg.keyboard.press("Enter"); await pg.waitForTimeout(120);
+  const v = await inp.inputValue();
+  t(`${row}: click + type replaces the value -> field ${v}`, parseFloat(v) === 7);
+}
 t("no page errors " + JSON.stringify(errs), !errs.length);
 console.log(`\n${ok} passed, ${fail} failed`);
 await b.close(); srv.close();

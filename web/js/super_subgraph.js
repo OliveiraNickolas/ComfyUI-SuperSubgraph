@@ -1164,6 +1164,23 @@ function glyphTextBtn(cls, name, text, size = 14) {
   return b;
 }
 
+/**
+ * Ao entrar no campo (clique ou Tab) o valor inteiro fica selecionado: digitar
+ * já substitui, sem apagar antes. O mouseup logo depois do foco desfaria a
+ * seleção no Chrome/Safari, então ele é ignorado uma vez.
+ */
+function selectOnFocus(inp) {
+  let justFocused = false;
+  inp.addEventListener("focus", () => {
+    justFocused = true;
+    inp.select();
+    setTimeout(() => { justFocused = false; }, 250);
+  });
+  inp.addEventListener("mouseup", (e) => {
+    if (justFocused) { e.preventDefault(); justFocused = false; }
+  });
+}
+
 /** Impede que o clique no controle vire arrasto do nó no canvas. */
 function eatPointer(e) {
   const hostSec = e.target.closest(".lego-sec-controls");
@@ -1227,6 +1244,7 @@ function mkSlider(node, w, ctrl, state) {
   const knob = el("div", "lego-knob");
   track.append(fill, knob);
   const num = el("input", "lego-in lego-num");
+  selectOnFocus(num);
   num.type = "text";
   wrap.append(track, num);
 
@@ -1345,6 +1363,7 @@ function mkNumber(node, w, ctrl, state) {
 
   const wrap = el("div", "lego-slider");
   const num = el("input", "lego-in");
+  selectOnFocus(num);
   num.type = "text";
   wrap.append(num);
 
@@ -2224,6 +2243,7 @@ function mkStepNumber(node, w, ctrl, state) {
   const btnDec = el("button", "lego-step-btn", "−");
   btnDec.title = "Decrease (-" + step + ")";
   const inp = el("input", "lego-step-input");
+  selectOnFocus(inp);
   inp.type = "text";
   const btnInc = el("button", "lego-step-btn", "+");
   btnInc.title = "Increase (+" + step + ")";
