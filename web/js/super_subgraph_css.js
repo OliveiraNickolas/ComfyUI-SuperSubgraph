@@ -830,26 +830,6 @@ export const CSS = `
   border:1px solid var(--lego-line);font-size:11px;line-height:1;padding:0;transition:all .15s ease}
 .lego-iconbtn:hover{color:var(--lego-text);background:rgba(255,255,255,0.08);border-color:var(--lego-accent)}
 .lego-iconbtn.on{color:#fff;background:var(--lego-accent);border-color:var(--lego-accent)}
-.lego-scale-btn{
-  font-size: 11px !important;
-  font-weight: 700 !important;
-  padding: 2px 7px !important;
-  width: auto !important;
-  min-width: 38px !important;
-  height: 20px !important;
-  border-radius: 6px !important;
-  background: rgba(255, 255, 255, 0.08) !important;
-  border: 1px solid var(--lego-line) !important;
-  color: var(--lego-text) !important;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  user-select: none;
-}
-.lego-scale-btn:hover{
-  background: var(--lego-accent) !important;
-  color: #fff !important;
-  border-color: var(--lego-accent) !important;
-}
 
 .lego-tabs{display:flex;gap:4px;border-bottom:2px solid var(--lego-line);overflow-x:auto;
   scrollbar-width:none;margin:2px 0 4px 0}

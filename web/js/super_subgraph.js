@@ -566,6 +566,9 @@ function isHelperWidget(w) {
   if (name.startsWith("$$")) return true;
   if (type === "audioui" || type === "imageupload" || type === "image_upload") return true;
   if (type === "button" && /upload/i.test(name)) return true;
+  // Prévia de exibição do próprio nó (ex.: "video-preview" do Load Video): não
+  // é salva nem vai para a execução. O preview do KJ é tratado à parte.
+  if (type !== "kj_preview" && w?.serialize === false && /preview/i.test(name)) return true;
   return false;
 }
 
@@ -2528,12 +2531,9 @@ function addItemToSegment(host, state, segmentCtrl, itemDef) {
    procurar no layout.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/**
- * Pixels de tela por pixel do cartão: zoom do canvas × escala da UI do cartão
- * (o root usa `zoom = layout.scale`). Converte clientX/Y em x/y do layout.
- */
-function domScale(host) {
-  return (app?.canvas?.ds?.scale || 1) * (host?.properties?.[PROP]?.scale || 1);
+/** Pixels de tela por pixel do cartão (zoom do canvas): converte clientX/Y em x/y do layout. */
+function domScale() {
+  return app?.canvas?.ds?.scale || 1;
 }
 
 /** Componente de mídia de ENTRADA (imagem, vídeo ou áudio carregado). */
@@ -2995,7 +2995,7 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
         const startClientY = e.clientY;
         const origW = itemWrap.offsetWidth;
         const origH = itemWrap.offsetHeight;
-        const curScale = domScale(host);
+        const curScale = domScale();
 
         let finalW = origW;
         let finalH = origH;
@@ -4179,7 +4179,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       const undoSnapshot = JSON.stringify(host.properties[PROP] || {});
       const startClientX = e.clientX;
       const startClientY = e.clientY;
-      const curScale = domScale(host);
+      const curScale = domScale();
       let isDragging = false;
       wasDragged = false;
 
@@ -4573,7 +4573,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       const origH = typeof ctrl.h === "number" ? ctrl.h : (row.offsetHeight || 46);
       const ctrlX = typeof ctrl.x === "number" ? ctrl.x : 0;
       const ctrlY = typeof ctrl.y === "number" ? ctrl.y : 0;
-      const curScale = domScale(host);
+      const curScale = domScale();
 
       // Alvos para alinhamento inteligente (todos os outros elementos do canvas)
       const targetCtrls = (sectionCtrls || []).filter((c) => {
@@ -5295,8 +5295,7 @@ function requiredNodeWidth(node, host) {
       }
     }
   }
-  const scale = host?.firstElementChild?.style?.zoom ? parseFloat(host.firstElementChild.style.zoom) : (layout?.scale || 1);
-  return Math.ceil(Math.max(MIN_W, layoutW) * (scale || 1));
+  return Math.ceil(Math.max(MIN_W, layoutW));
 }
 
 /** Determina a direção de drop 4-Way (top, bottom, left, right) com base na posição do cursor. */
@@ -6913,7 +6912,11 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
       const reserved = new Set();
       for (const c of ctrls) renameClone(layout, c, reserved);
       const zoneEl = [...(host.__legoHost?.querySelectorAll(".lego-sec-controls") || [])].find((b) => b.__legoList === zoneList);
-      const availW = Math.max(320, (zoneEl?.clientWidth || (host.size?.[0] || MIN_W) - 72) - GRID);
+      // O cartão fica escondido durante o Target Picker (clientWidth 0) e o nó
+      // vai alargar para caber o componente mais largo de qualquer jeito:
+      // os demais se arrumam lado a lado dentro dessa largura.
+      const widest = Math.max(0, ...ctrls.map((c) => Math.ceil((c.w || 256) / GRID) * GRID));
+      const availW = Math.max(320, widest, (zoneEl?.clientWidth || (host.size?.[0] || MIN_W) - 72) - GRID);
       const block = packInRows(ctrls, availW, GRID);
       // Começa onde o seletor foi aberto; se isso cobrir o que já existe na
       // zona, o bloco inteiro vai para baixo do conteúdo atual.
@@ -7347,48 +7350,6 @@ function openLegoContextMenu(e, entries) {
     document.addEventListener("pointerdown", closeMenu);
   }, 10);
   return menu;
-}
-
-/** Menu de escala da interface do cartão (90% - 200% ou valor livre). */
-function openScaleMenu(e, layout, state) {
-  const curScale = layout.scale || 1;
-  const scales = [
-    { label: "90% (Compact)", val: 0.9 },
-    { label: "100% (Default)", val: 1.0 },
-    { label: "115% (Comfortable)", val: 1.15 },
-    { label: "130% (Large)", val: 1.3 },
-    { label: "150% (Extra Large)", val: 1.5 },
-    { label: "175% (Huge)", val: 1.75 },
-    { label: "200% (Maximum)", val: 2.0 },
-  ];
-  const entries = scales.map((s) => {
-    const isSel = Math.abs(curScale - s.val) < 0.04;
-    return {
-      icon: isSel ? "check" : "blank",
-      label: s.label,
-      action: () => {
-        layout.scale = s.val;
-        state.refresh();
-      },
-    };
-  });
-  entries.push(null);
-  entries.push({
-    icon: "pencil",
-    label: "Custom Scale…",
-    hint: `${Math.round(curScale * 100)}%`,
-    action: () => {
-      const v = prompt("UI Scale percentage (50% - 300%):", `${Math.round(curScale * 100)}%`);
-      if (v != null) {
-        const parsed = parseFloat(v.replace("%", "").trim());
-        if (!isNaN(parsed) && parsed >= 50 && parsed <= 300) {
-          layout.scale = Math.round(parsed) / 100;
-          state.refresh();
-        }
-      }
-    },
-  });
-  return openLegoContextMenu(e, entries);
 }
 
 const isGroupKind = (k) => k === "segment" || k === "vsegment" || k === "group";
@@ -9188,12 +9149,6 @@ function renderObjectInspector(host, state, force) {
 function buildCard(host, state) {
   const layout = host.properties[PROP];
   const root = el("div", `lego-card${state.edit ? " editing" : ""}`);
-  // Aplica escala visual da UI do cartão se configurada
-  const cardScale = layout.scale || 1;
-  if (cardScale !== 1) {
-    root.style.zoom = cardScale;
-    root.style.setProperty("--lego-ui-scale", cardScale);
-  }
   // Botão direito no cartão (fora de um componente, que tem menu próprio, e
   // fora de campos de texto, que ficam com o menu do navegador): menu do nó.
   root.addEventListener("contextmenu", (e) => {
@@ -9270,27 +9225,6 @@ function buildCard(host, state) {
     state.refresh();
   });
   head.append(pencil);
-
-  // Botão de Escala da UI (100%, 115%, 130%, 150%, 90% etc.)
-  const SCALE_STEPS = [1, 1.15, 1.3, 1.5, 0.9];
-  const scalePct = Math.round((layout.scale || 1) * 100);
-  const scaleBtn = el("button", "lego-iconbtn lego-scale-btn", `${scalePct}%`);
-  scaleBtn.type = "button";
-  scaleBtn.title = `UI Scale: ${scalePct}% (click to cycle, right-click for menu)`;
-  scaleBtn.addEventListener("pointerdown", eatPointer);
-  scaleBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const curIdx = SCALE_STEPS.findIndex((s) => Math.abs(s - (layout.scale || 1)) < 0.05);
-    const nextIdx = (curIdx + 1) % SCALE_STEPS.length;
-    layout.scale = SCALE_STEPS[nextIdx];
-    state.refresh();
-  });
-  scaleBtn.addEventListener("contextmenu", (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    openScaleMenu(e, layout, state);
-  });
-  head.append(scaleBtn);
 
   root.append(head);
 
@@ -9485,8 +9419,7 @@ function buildCard(host, state) {
 
           // Linhas de nível em tempo real no manejo de zonas
           const bodyRect = body.getBoundingClientRect();
-          const cardScale = layout?.scale || 1;
-          const curScale = (app?.canvas?.ds?.scale || 1) * cardScale;
+          const curScale = domScale();
           const zoneTitle = s.header || "Zona";
           if (dir === "top") {
             renderZoneGuides(body, {
@@ -9864,8 +9797,7 @@ function buildCard(host, state) {
 
           const startClientX = e.clientX;
           const bodyRect = body.getBoundingClientRect();
-          const cardScale = layout?.scale || 1;
-          const curScale = (app?.canvas?.ds?.scale || 1) * cardScale;
+          const curScale = domScale();
           const bodyW = bodyRect.width || 800;
 
           // Se estiver dentro de uma coluna, redimensiona a coluna e a vizinha em tempo real
@@ -10117,8 +10049,7 @@ function buildCard(host, state) {
 
           const startClientY = e.clientY;
           const origH = sec.getBoundingClientRect().height;
-          const cardScale = layout?.scale || 1;
-          const curScale = (app?.canvas?.ds?.scale || 1) * cardScale;
+          const curScale = domScale();
           const bodyRect = body.getBoundingClientRect();
           const secRect = sec.getBoundingClientRect();
           const secTopY = (secRect.top - bodyRect.top) / curScale;
@@ -10495,7 +10426,7 @@ function buildCard(host, state) {
           e.stopPropagation();
           e.preventDefault();
           const boxRect = ctrlsBox.getBoundingClientRect();
-          const curScale = domScale(host);
+          const curScale = domScale();
           const dropX = Math.max(16, Math.round(((e.clientX - boxRect.left) / curScale) / GRID) * GRID);
           const dropY = Math.max(16, Math.round(((e.clientY - boxRect.top) / curScale) / GRID) * GRID);
           state.edit = true;
@@ -10525,7 +10456,7 @@ function buildCard(host, state) {
         ctrlsBox.addEventListener("drop", (e) => {
           ctrlsBox.classList.remove("over");
           const boxRect = ctrlsBox.getBoundingClientRect();
-          const curScale = domScale(host);
+          const curScale = domScale();
           const dropX = Math.max(16, Math.round(((e.clientX - boxRect.left) / curScale) / GRID) * GRID);
           const dropY = Math.max(16, Math.round(((e.clientY - boxRect.top) / curScale) / GRID) * GRID);
 
@@ -10546,7 +10477,7 @@ function buildCard(host, state) {
           e.preventDefault();
 
           const boxRect = ctrlsBox.getBoundingClientRect();
-          const curScale = domScale(host);
+          const curScale = domScale();
           const dropX = Math.max(16, Math.round(((e.clientX - boxRect.left) / curScale) / GRID) * GRID);
           const dropY = Math.max(16, Math.round(((e.clientY - boxRect.top) / curScale) / GRID) * GRID);
 
@@ -10581,7 +10512,7 @@ function buildCard(host, state) {
           }
 
           const boxRect = ctrlsBox.getBoundingClientRect();
-          const curScale = domScale(host);
+          const curScale = domScale();
           const startX = (e.clientX - boxRect.left) / curScale;
           const startY = (e.clientY - boxRect.top) / curScale;
 
@@ -10673,7 +10604,7 @@ function buildCard(host, state) {
             e.preventDefault();
             e.stopPropagation();
             const boxRect = ctrlsBox.getBoundingClientRect();
-            const sc = domScale(host);
+            const sc = domScale();
             const px = Math.max(0, Math.round(((e.clientX - boxRect.left) / sc) / GRID) * GRID);
             const py = Math.max(0, Math.round(((e.clientY - boxRect.top) / sc) / GRID) * GRID);
             dropArmedTool(host, state, activeTarget, px, py, e.shiftKey);
@@ -10735,8 +10666,7 @@ function buildCard(host, state) {
 
               const startClientX = e.clientX;
               const bodyRect = body.getBoundingClientRect();
-              const cardScale = layout?.scale || 1;
-              const curScale = (app?.canvas?.ds?.scale || 1) * cardScale;
+              const curScale = domScale();
               const bodyW = bodyRect.width || 800;
 
               const colARect = colAEl.getBoundingClientRect();
@@ -10887,8 +10817,7 @@ function buildCard(host, state) {
           e.preventDefault();
           if (!e.target.closest(".lego-sec")) {
             const bodyRect = body.getBoundingClientRect();
-            const cardScale = layout?.scale || 1;
-            const curScale = (app?.canvas?.ds?.scale || 1) * cardScale;
+            const curScale = domScale();
             renderZoneGuides(body, {
               hLine: {
                 y: (bodyRect.bottom - bodyRect.top) / curScale - 6,
@@ -11409,6 +11338,8 @@ function attach(node) {
   if (!isLayoutValid(node.properties[PROP])) {
     node.properties[PROP] = autoLayout(node);
   }
+  // A escala da UI do cartão foi removida: workflows antigos ainda a trazem.
+  delete node.properties[PROP].scale;
 
   const host = el("div");
   host.style.width = "100%";
@@ -12571,16 +12502,6 @@ function superMenuOptions(node) {
         st.refresh();
       },
     });
-    const curSc = Math.round((node.properties[PROP]?.scale || 1) * 100);
-    const scaleOpts = [90, 100, 115, 130, 150, 175, 200].map((pct) => ({
-      content: `${pct}%${curSc === pct ? " ✓" : ""}`,
-      callback: () => {
-        pushUndo(node);
-        node.properties[PROP].scale = pct / 100;
-        node.__legoState?.refresh();
-      }
-    }));
-    sub.push({ content: "UI Scale", has_submenu: true, submenu: { options: scaleOpts } });
     sep();
     sub.push({ content: "Save Card Layout…", callback: () => saveLayoutToLibrary(node) });
     if (SS_LAYOUTS.length) {
@@ -13605,9 +13526,7 @@ function cardHeight(host) {
   if (!host) return 260;
   const card = host.firstElementChild;
   if (!card) return 260;
-  const scale = card.style?.zoom ? parseFloat(card.style.zoom) : 1;
-  const rawH = Math.max(card.scrollHeight || 0, card.offsetHeight || 0) || 260;
-  const h = rawH * (scale || 1);
+  const h = Math.max(card.scrollHeight || 0, card.offsetHeight || 0);
   return Math.ceil(h || 260);
 }
 

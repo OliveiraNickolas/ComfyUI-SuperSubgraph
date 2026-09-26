@@ -521,17 +521,6 @@ const testSt = M.attach(testNode);
 testNode.onResize([400, 300]);
 t("onResize clamps node width to requiredNodeWidth (prevents crushing zones)", testNode.size[0] >= 704);
 
-// ── 12. TEST CARD UI SCALE (layout.scale) ──
-testNode.properties.ui_layout.scale = 1.3;
-testSt.refresh();
-const cardEl = testNode.__legoHost.querySelector(".lego-card");
-t("card applies layout.scale via CSS zoom", String(cardEl.style.zoom) === "1.3" || parseFloat(cardEl.style.zoom) === 1.3);
-t("card applies layout.scale via CSS variable --lego-ui-scale", cardEl.style.getPropertyValue("--lego-ui-scale") === "1.3");
-const scaledReqW = M.requiredNodeWidth(testNode, testNode.__legoHost);
-t("requiredNodeWidth scales proportionally with layout.scale", scaledReqW === Math.ceil(704 * 1.3));
-const scaleBtnEl = testNode.__legoHost.querySelector(".lego-scale-btn");
-t("header contains UI Scale button showing 130%", scaleBtnEl && scaleBtnEl.textContent === "130%");
-
 // ── 13. TEST TOP PIVOT, COLUMN GROUPING & STACKING ──
 const complexSections = [
   { header: "MEDIA PIVOT", width: "100%", controls: [{ name: "P", x: 20, w: 500 }] },
