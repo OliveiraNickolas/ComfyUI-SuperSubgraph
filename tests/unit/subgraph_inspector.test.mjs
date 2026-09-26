@@ -464,8 +464,8 @@ const secWithControls = {
     { name: "C2", x: 50, w: 320, y: 60, h: 40 }
   ]
 };
-// Max extent is 50 + 320 = 370 + 32 = 402px
-t("sectionRequiredWidth calculates based on child control maxX + 32", M.sectionRequiredWidth(secWithControls) === 402);
+// Max extent 50 + 320 = 370; right margin = left margin (minX 20) + 8 = 398px
+t("sectionRequiredWidth uses a right margin equal to the left one", M.sectionRequiredWidth(secWithControls) === 398);
 
 const secWithSubTabs = {
   header: "SUBTABS",
@@ -474,8 +474,8 @@ const secWithSubTabs = {
     { name: "T2", controls: [{ name: "S2", x: 30, w: 400 }] }
   ]
 };
-// Subtab T2 has 30 + 400 = 430 + 32 = 462px
-t("sectionRequiredWidth checks sub-tabs controls", M.sectionRequiredWidth(secWithSubTabs) === 462);
+// Subtab T2 has 30 + 400 = 430, + minX 10 + 8 = 448px
+t("sectionRequiredWidth checks sub-tabs controls", M.sectionRequiredWidth(secWithSubTabs) === 448);
 
 // Check top pivot and adaptive containment
 node.properties.ui_layout.tabs[0].sections = [
@@ -483,7 +483,7 @@ node.properties.ui_layout.tabs[0].sections = [
   { header: "SUB", width: "50%", controls: [{ name: "S1", x: 10, w: 50 }] }
 ];
 st.refresh();
-t("top pivot sets requiredNodeWidth baseline", M.requiredNodeWidth(node, node) >= 402);
+t("top pivot sets requiredNodeWidth baseline", M.requiredNodeWidth(node, node) >= 398);
 const renderedCtrlsBox = node.__legoHost.querySelector(".lego-sec-controls");
 t("controls box has safe containment without rigid minWidth", renderedCtrlsBox.style.minWidth === "0px" || renderedCtrlsBox.style.minWidth === "0");
 
@@ -503,9 +503,9 @@ const testNode = {
     }
   }
 };
-// 304 + 352 + 12 (gap) + 36 (card pad) = 704
+// 296 + 344 + 12 (gap) + 36 (card pad) = 688
 const reqW = M.requiredNodeWidth(testNode, null);
-t("requiredNodeWidth sums side-by-side zones in row plus gaps and card padding", reqW === 704);
+t("requiredNodeWidth sums side-by-side zones in row plus gaps and card padding", reqW === 688);
 
 // Test LiteGraph onResize clamping
 testNode.widgets = [];
@@ -568,7 +568,7 @@ const pivotOnlyNode = {
   }
 };
 const pReqW = M.requiredNodeWidth(pivotOnlyNode, null);
-t("requiredNodeWidth pivots strictly on first row without sub-row inflation", pReqW === 702 + 36);
+t("requiredNodeWidth pivots strictly on first row without sub-row inflation", pReqW === 698 + 36);
 
 // Test sameUrl normalization
 const urlA = "/api/view?filename=nothing.png&type=input&subfolder=";

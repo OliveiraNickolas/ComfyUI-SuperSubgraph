@@ -5529,6 +5529,7 @@ function clearZoneGuides(body) {
 function sectionRequiredWidth(s) {
   if (!s) return 200;
   let maxX = 0;
+  let minX = Infinity;
   const checkItem = (c) => {
     if (!c) return;
     const x = typeof c.x === "number" ? c.x : 16;
@@ -5542,6 +5543,7 @@ function sectionRequiredWidth(s) {
       else w = 256;
     }
     maxX = Math.max(maxX, x + w);
+    minX = Math.min(minX, x);
   };
   if (Array.isArray(s.controls)) s.controls.forEach(checkItem);
   if (Array.isArray(s.tabs)) {
@@ -5549,7 +5551,9 @@ function sectionRequiredWidth(s) {
       if (Array.isArray(t.controls)) t.controls.forEach(checkItem);
     });
   }
-  return maxX > 0 ? Math.max(200, maxX + 32) : 200;
+  // Margem direita = a esquerda (x do item mais à esquerda), mais as bordas e
+  // o respiro da zona (8px): o conteúdo fica centrado na linha pontilhada.
+  return maxX > 0 ? Math.max(200, maxX + Math.min(minX, 32) + 8) : 200;
 }
 
 /** Altura mínima necessária para uma seção conter todos os seus controles internos. */
