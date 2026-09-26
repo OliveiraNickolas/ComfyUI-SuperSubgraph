@@ -4155,7 +4155,9 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   ctrl.x = Math.max(0, Math.round(curX / GRID) * GRID);
   ctrl.y = Math.max(0, Math.round(curY / GRID) * GRID);
   ctrl.w = Math.max(ctrlMinW, Math.round(curW / GRID) * GRID);
-  ctrl.h = Math.max(ctrlMinH, Math.round(curH / GRID) * GRID);
+  // Grupo tem a altura exata do conteúdo (fitGroupToContent): arredondar para
+  // a grade aqui o engordava um pouco a cada redesenho (57 → 64…).
+  ctrl.h = isGroup ? Math.max(ctrlMinH, Math.round(curH)) : Math.max(ctrlMinH, Math.round(curH / GRID) * GRID);
 
   ensureComponentName(host.properties[PROP], ctrl);
   row.dataset.name = ctrl.name;
@@ -8032,15 +8034,36 @@ function toggleGroupOrientation(host, state, ctrl) {
 function fitGroupToContent(host, ctrl, row, onChange) {
   const box = row?.querySelector(".lego-segment-box");
   if (!box || !box.isConnected) return false;
+  const px = (v) => parseFloat(v) || 0;
+  // Altura que o conteúdo precisa, somada peça por peça (itens, respiros e
+  // cabeçalho). Medir o "estouro" pelo scroll dava resultados diferentes na
+  // edição e fora dela, e o grupo engordava um pouco a cada troca de modo.
+  const bs = getComputedStyle(box);
+  const vertical = bs.flexDirection === "column";
+  const items = [...box.children].filter((c) => c.classList?.contains("lego-segment-item") && getComputedStyle(c).position !== "absolute");
+  const outerH = (c) => { const cs = getComputedStyle(c); return c.offsetHeight + px(cs.marginTop) + px(cs.marginBottom); };
+  const gap = px(bs.rowGap || bs.gap);
+  const content = vertical
+    ? items.reduce((a, c) => a + outerH(c), 0) + gap * Math.max(0, items.length - 1)
+    : Math.max(0, ...items.map(outerH));
+  const boxNeed = content + px(bs.paddingTop) + px(bs.paddingBottom) + px(bs.borderTopWidth) + px(bs.borderBottomWidth);
+  const rs = getComputedStyle(row);
+  const flow = [...row.children].filter((c) => getComputedStyle(c).position !== "absolute" && getComputedStyle(c).display !== "none");
+  const rowGap = px(rs.rowGap || rs.gap);
+  const needH = Math.ceil(flow.reduce((a, c) => a + (c === box ? boxNeed : outerH(c)), 0)
+    + rowGap * Math.max(0, flow.length - 1)
+    + px(rs.paddingTop) + px(rs.paddingBottom) + px(rs.borderTopWidth) + px(rs.borderBottomWidth));
   const overW = box.scrollWidth - box.clientWidth;
-  const overH = box.scrollHeight - box.clientHeight;
-  if (overW <= 1 && overH <= 1) return false;
   const w0 = typeof ctrl.w === "number" ? ctrl.w : row.offsetWidth;
   const h0 = typeof ctrl.h === "number" ? ctrl.h : row.offsetHeight;
+  // Grupo de uma linha só (horizontal, sem mídia/texto longo): altura sempre
+  // a do conteúdo — sobra ali é só espaço vazio (e desfaz grupos que
+  // engordaram com o arredondamento antigo). Os demais só crescem.
+  const oneLine = !vertical && !items.some((c) => c.classList.contains("has-custom-h"));
+  const growH = needH > h0 || (oneLine && needH < h0);
+  if (overW <= 1 && !growH) return false;
   if (overW > 1) ctrl.w = Math.ceil((w0 + overW + 4) / GRID) * GRID;
-  // Altura exata do conteúdo (sem arredondar para a grade): o grupo pode
-  // ficar tão baixo quanto os itens permitem.
-  if (overH > 1) ctrl.h = Math.ceil(h0 + overH + 1);
+  if (growH) ctrl.h = needH;
   row.style.width = `${ctrl.w}px`;
   row.style.height = `${ctrl.h}px`;
   // O ajuste não é uma edição do usuário: não vira entrada de Undo.
@@ -10986,7 +11009,8 @@ function buildCard(host, state) {
           if (!c.w) c.w = autoCols > 1 ? autoColW : (hasMedia(c) ? 288 : 256);
           c.w = Math.max(hasMedia(c) ? 160 : 80, Math.round(c.w / GRID) * GRID);
           if (!c.h) c.h = hasMedia(c) ? 144 : (c.kind === "textarea" ? 96 : 46);
-          c.h = Math.max(hasMedia(c) ? 64 : 36, Math.round(c.h / GRID) * GRID);
+          // Grupos guardam a altura exata do conteúdo (sem grade), ver buildControl.
+          if (!isGroupKind(c.kind)) c.h = Math.max(hasMedia(c) ? 64 : 36, Math.round(c.h / GRID) * GRID);
         });
 
         // Renderiza cada controle no Canvas 2D

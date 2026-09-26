@@ -72,6 +72,23 @@ await pg.waitForTimeout(200);
 const ws2 = await E(() => window.__sn.properties.ui_layout.tabs[0].sections[0].controls[0].items.filter(i => i.kind === "combo").map(i => i.w));
 t(`selected items resize together: ${ws2}`, ws2[0] === ws2[1] && ws2[0] < 240);
 
+// 5. Altura estável entre edição e modo normal (antes engordava a cada troca),
+//    e grupo de uma linha que já tinha engordado volta à altura do conteúdo.
+const hs = await E(async () => {
+  const sn = window.__sn; const id = sn.__ssGraph._nodes[0].id;
+  const list = sn.properties.ui_layout.tabs[0].sections[0].controls;
+  list.push({ kind: "segment", name: "H1", header: "Row", label: "Row", x: 16, y: 300, w: 420, h: 96, items: [
+    { kind: "combo", name: "HC", bind: `${id}/type`, labelPos: "none", w: 200 }, { kind: "label", name: "HL", text: "Device", label: "Device" } ] });
+  const out = [];
+  for (const edit of [true, false, true, false]) {
+    sn.__legoState.edit = edit; sn.__legoState.refresh();
+    await new Promise((r) => setTimeout(r, 250));
+    out.push(list.find((c) => c.name === "H1").h);
+  }
+  return out;
+});
+t(`one-row group keeps the same compact height in both modes: ${hs}`, hs.every((h) => h === hs[0]) && hs[0] < 96);
+
 t("no page errors " + JSON.stringify(errs), !errs.length);
 console.log(`\n${ok} passed, ${fail} failed`);
 await b.close();
