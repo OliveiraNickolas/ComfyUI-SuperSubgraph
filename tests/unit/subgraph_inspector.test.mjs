@@ -285,7 +285,8 @@ if (groupRow) {
   const colB = colEls[1];
   t("col A has width calc with gap offset", colA.style.width.includes("calc(50%"));
   t("col A flex basis matches calc", colA.style.flex.includes("calc(50%"));
-  t("col B has width calc with gap offset", colB.style.width.includes("calc(50%"));
+  // A última coluna preenche o resto da linha (bordas direitas alinhadas).
+  t("last column fills the rest of the row", colB.style.flex.startsWith("1 1") && !colB.style.width);
   t("zones inside columns have 100% width", secEls[0].style.width === "100%" && secEls[1].style.width === "100%");
 
   // Stacking: 2 zones in left column, 1 zone in right column

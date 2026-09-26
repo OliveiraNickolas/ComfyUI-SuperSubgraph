@@ -11012,16 +11012,24 @@ function buildCard(host, state) {
         const numCols = g.columns.length;
         const colElements = [];
 
-        g.columns.forEach((col) => {
+        g.columns.forEach((col, cIdx) => {
           const colEl = el("div", "lego-col");
           colEl.__colEntries = col.entries;
           colEl.__col = col;
           const defaultW = widthForCount(numCols);
           const colW = col.width || defaultW;
           const cssW = widthToCss(colW);
-          colEl.style.width = cssW;
-          colEl.style.flex = `0 0 ${cssW}`;
-          colEl.style.maxWidth = cssW;
+          if (cIdx === numCols - 1) {
+            // A última coluna ocupa o que sobra: a borda direita da linha
+            // sempre bate com a das zonas de largura total (as porcentagens
+            // somadas nem sempre dão 100% e deixavam um vão à direita).
+            colEl.classList.add("is-last");
+            colEl.style.flex = "1 1 0";
+          } else {
+            colEl.style.width = cssW;
+            colEl.style.flex = `0 0 ${cssW}`;
+            colEl.style.maxWidth = cssW;
+          }
           colEl.style.minWidth = "0";
           colEl.style.boxSizing = "border-box";
 
