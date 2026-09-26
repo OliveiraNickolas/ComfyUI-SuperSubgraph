@@ -17,7 +17,7 @@ jobs:
       - name: Syntax
         run: |
           for f in web/js/*.js; do node --check "$f"; done
-          python3 -m py_compile super_subgraph_node.py __init__.py
+          python3 -m py_compile __init__.py
           for f in locales/*/commands.json; do python3 -m json.tool "$f" > /dev/null; done
       - run: npm ci
       - name: Unit (jsdom) + browser (Chrome) tests

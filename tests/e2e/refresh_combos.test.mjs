@@ -12,10 +12,10 @@ const before = await pg.evaluate(async () => {
   app.canvas.deselectAll?.(); app.canvas.select(n);
   const ext = app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph");
   ext.__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
-  const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
+  const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   const sec = sn.properties.ui_layout.tabs[0].sections[0]; if (sec.tabs) { delete sec.tabs; delete sec.activeTab; } sec.controls = [];
-  ext.__promoteWhole(sn, sn.__ssGraph._nodes[0], "column");
-  const w = sn.__ssGraph._nodes[0].widgets[0];
+  ext.__promoteWhole(sn, sn.subgraph._nodes[0], "column");
+  const w = sn.subgraph._nodes[0].widgets[0];
   const real = w.options.values.length;
   w.options.values = ["stale.safetensors"];   // lista "velha", como antes de um arquivo novo aparecer
   window.__w = w;

@@ -1,11 +1,17 @@
 # ComfyUI-SuperSubgraph
 
-ComfyUI extension. UI logic lives in `web/js/super_subgraph.js`, its CSS in
-`web/js/super_subgraph_css.js` (code comments are in Portuguese; match that).
-ComfyUI loads every `.js` under `web/` as an extension, so extra modules there
-must only export (no side effects). The `SuperSubgraph` backend node (its own
-subgraph engine, via ComfyUI node expansion) lives in `super_subgraph_node.py`
-and is exported by `__init__.py` together with `WEB_DIRECTORY`.
+ComfyUI extension, **frontend only**. UI logic lives in `web/js/super_subgraph.js`,
+its CSS in `web/js/super_subgraph_css.js` (code comments are in Portuguese;
+match that). ComfyUI loads every `.js` under `web/` as an extension, so extra
+modules there must only export (no side effects). `__init__.py` only exports
+`WEB_DIRECTORY` (no Python nodes).
+
+**A Super Subgraph is a NATIVE ComfyUI subgraph with a card on top.** It has
+no execution engine of its own: execution, entering/breadcrumb/Esc, inputs and
+outputs, undo and unpacking are ComfyUI's. Classic subgraphs stay classic and
+live side by side with Super ones. Never reintroduce an own node type or
+execution engine — an earlier version did (removed on 2026-09-26) and it broke
+workflows (dangling links, whole runs failing, odd navigation).
 
 Goal of the project: the Super Subgraph must feel like a **native ComfyUI
 feature** — same scale, same look as a node's widgets, works with any
@@ -17,7 +23,7 @@ installed node, any browser, any OS.
   (no branch or PR needed; the owner asked for this).
 - Before pushing, always run all of these and make them pass:
   - `node --check web/js/super_subgraph.js && node --check web/js/super_subgraph_css.js`
-  - `python3 -m py_compile super_subgraph_node.py __init__.py`
+  - `python3 -m py_compile __init__.py`
   - `npm test` (jsdom unit + Chromium browser suites; `npm ci` first if
     `node_modules` is missing)
   - `npm run test:e2e` (needs a real ComfyUI at `COMFY_URL`, default
@@ -26,8 +32,8 @@ installed node, any browser, any OS.
   (`git stash`, rerun, `git stash pop`) before blaming your change. Only
   change a test's expectation when the new behaviour is intentional, and
   say so in a comment next to the assertion.
-- This checkout is the owner's live install: no `git pull` is needed. Python
-  changes need a ComfyUI restart; JS/CSS-only changes need Ctrl+F5.
+- This checkout is the owner's live install: no `git pull` is needed. JS/CSS
+  changes need Ctrl+F5 (a ComfyUI restart only if `__init__.py` changes).
 - The owner is a beginner: explain results in simple Portuguese.
 
 ## Map of `super_subgraph.js`
@@ -47,7 +53,7 @@ Find sections by their banner comment (`grep -n "^/\* ═" -A1`):
 | Nó inteiro como widget | `singleCtrlFor`, `wholeNodeItems`, `buildWholeNodeCtrl`, sizing (`sectionRequiredWidth`, `requiredNodeWidth`), component search dialog / Target Picker (`openInspector`) |
 | FORM MODE | palette, Object Inspector (`renderObjectInspector`), `buildCard`, zones, tabs, resizers |
 | Ciclo de vida | `attach`/`detach`, `state.refresh`, color hooks, `cardHeight` |
-| Super Subgraph independente | inner graph engine: `ssInnerGraph`, `convertSelectionToSuper`, `enterSuper`/`exitSuper`, boundary slots (`removeSuperInputAt`…), Quick Out, libraries |
+| Super Subgraph = subgrafo nativo + cartão | `isSuperNode`, `enterSuper` (native `openSubgraph`), `convertSelectionToSuper` (native `convertToSubgraph` + card), `copyAsSuper` (independent copy of a classic subgraph), `superAutoLayout`, card layout library, node menu (`superMenuOptions`), run feedback (`onRunEvent`) |
 | Extensão | `app.registerExtension`: menus, events, test hooks |
 
 ## How a widget becomes a control
@@ -79,8 +85,15 @@ against a live ComfyUI: it lists widgets that still fall back to a text box.
   zoom. Use `offsetWidth/offsetHeight/scrollHeight`. To convert pointer
   coordinates to card coordinates divide by `domScale()`.
 - A layout object lives in `node.properties.ui_layout`; binds are
-  `"widget"` (host) or `"<nodeId>/<widget>"`. The inner graph of a Super
-  Subgraph is serialized in `node.properties.ss_inner.graph`.
+  `"widget"` (host) or `"<nodeId>/<widget>"` (a node inside `host.subgraph`).
+- ComfyUI auto-promotes some inner widgets to the subgraph node; a promoted
+  widget has its own value per instance and is what runs. `resolveBind`
+  returns the host's promoted widget for such binds (`promotedHostWidget`) —
+  always read/write through `resolveBind`, never the inner widget directly.
+- Execution ids of nodes inside a subgraph are `"<hostId>:<innerId>"`.
+- Native subgraph definitions are shared between instances. To make an
+  independent copy, clone the definition with new node ids (`copyAsSuper`);
+  unpacking a second instance breaks the shared definition (ComfyUI bug).
 - Every layout change ends in `state.refresh()`, which also records undo.
   Call `pushUndo(host)` *before* mutating when you need an exact undo step.
 - Listeners on `window`/`document` created while rendering a control leak on
@@ -90,8 +103,8 @@ against a live ComfyUI: it lists widgets that still fall back to a text box.
   `document.querySelectorAll` — several cards can have components with the
   same name.
 - Never write a string into a widget whose value is an object.
-- DOM elements moved into the card keep `w.__origParent`; `enterSuper` puts
-  them back so the inner node works while navigating inside.
+- DOM elements moved into the card keep `w.__origParent`; while the canvas
+  shows the subgraph they go back to their node (see `mkDomMount`).
 - HTML5 drags need `e.dataTransfer.setData(...)` in `dragstart` (Firefox).
   Prefix `backdrop-filter` with `-webkit-` (Safari). Avoid CSS `zoom`.
 - Keep the look native: numbers use the widget's precision (`fmtNum`),

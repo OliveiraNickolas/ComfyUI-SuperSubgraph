@@ -17,8 +17,8 @@ const sid = await E(() => {
   C.connect(0, T, 0);
   app.canvas.deselectAll(); for (const n of [C, T]) app.canvas.select(n);
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert Selection/.test(i.content)).callback();
-  const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
-  const ci = sn.__ssGraph.nodes.find(n => n.type === "CLIPLoader").id;
+  const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
+  const ci = sn.subgraph.nodes.find(n => n.type === "CLIPLoader").id;
   sn.properties.ui_layout.tabs[0].sections[0].controls.push({ name: "HGroup1", kind: "segment", header: "Load CLIP", x: 16, y: 16, w: 320, h: 64, items: [
     { name: "Label1", kind: "label", text: "Clip Name", label: "Clip Name" }, { name: "Dropdown1", kind: "combo", bind: `${ci}/clip_name`, label: "Clip Name", w: 320 },
     { name: "Label2", kind: "label", text: "Type", label: "Type" }, { name: "Dropdown2", kind: "combo", bind: `${ci}/type`, label: "Type", w: 240 },

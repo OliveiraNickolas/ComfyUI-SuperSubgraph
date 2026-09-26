@@ -16,10 +16,10 @@ const r = await pg.evaluate(async () => {
   app.canvas.deselectAll?.(); app.canvas.select(S); app.canvas.select(P);
   const ext = app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph");
   ext.__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
-  const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
+  const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   const L = sn.properties.ui_layout;
   const count = L.tabs.reduce((a, t) => a + t.sections.reduce((b, s) => b + (s.controls || []).length, 0), 0);
-  const res = { tabs: L.tabs.map(t => t.name), count, ins: sn.inputs.filter(i => /^in_/.test(i.name) && i.link != null).length, outs: sn.outputs.filter(o => o.links?.length).length };
+  const res = { tabs: L.tabs.map(t => t.name), count, ins: sn.inputs.filter(i => i.link != null).length, outs: sn.outputs.filter(o => o.links?.length).length };
   // executa
   const p = await app.graphToPrompt(); const q = await window.comfyAPI.api.api.queuePrompt(0, p);
   let done = false;
@@ -37,7 +37,7 @@ await pg.keyboard.press("Escape"); await pg.waitForTimeout(400);
 t("Esc cancels back to the workflow with no dialog left", await pg.evaluate(() => window.app.canvas.graph === window.app.rootGraph && !document.querySelector(".lego-picker-hud, .lego-comfy-backdrop")));
 r.recreated = await pg.evaluate(() => {
   // layout automático só sob pedido
-  const app = window.app; const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
+  const app = window.app; const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(sn).find(i => i && /Rebuild Card/.test(i.content)).callback();
   return sn.properties.ui_layout.tabs.flatMap(t => t.sections.flatMap(s => (s.controls || []).map(c => c.kind))).join();
 });

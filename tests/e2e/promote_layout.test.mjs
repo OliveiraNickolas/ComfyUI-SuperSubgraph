@@ -17,7 +17,7 @@ const ids = await E(() => {
   A.connect(0, S, 0); S.connect(0, B, 0); B.connect(0, H, 0); H.connect(0, P, 0);
   app.canvas.deselectAll(); for (const n of [S, B, H, P]) app.canvas.select(n);
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert Selection/.test(i.content)).callback();
-  const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
+  const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   sn.pos = [60, 100]; app.canvas.deselectAll();
   app.canvas.ds.offset = [0, 0]; app.canvas.ds.scale = 1; app.canvas.setDirty(true, true);
   return { sn: sn.id, S: S.id, B: B.id, H: H.id };

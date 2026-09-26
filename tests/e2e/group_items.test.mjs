@@ -16,11 +16,11 @@ await E(async () => {
   app.canvas.deselectAll?.(); app.canvas.select(n);
   const ext = app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph");
   ext.__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
-  const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
+  const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   window.__sn = sn;
   const sec = sn.properties.ui_layout.tabs[0].sections[0];
   if (sec.tabs) { delete sec.tabs; delete sec.activeTab; }
-  const id = sn.__ssGraph._nodes[0].id;
+  const id = sn.subgraph._nodes[0].id;
   // Grupo vertical no estilo "Label + controle", nascendo baixo demais (h: 60).
   sec.controls = [{ kind: "vsegment", name: "G1", header: "Load CLIP", label: "Load CLIP", x: 16, y: 16, w: 400, h: 60, items: [
     { kind: "label", name: "L1", text: "Clip Name", label: "Clip Name" }, { kind: "combo", name: "C1", bind: `${id}/clip_name`, labelPos: "none", w: 240 },
@@ -75,7 +75,7 @@ t(`selected items resize together: ${ws2}`, ws2[0] === ws2[1] && ws2[0] < 240);
 // 5. Altura estável entre edição e modo normal (antes engordava a cada troca),
 //    e grupo de uma linha que já tinha engordado volta à altura do conteúdo.
 const hs = await E(async () => {
-  const sn = window.__sn; const id = sn.__ssGraph._nodes[0].id;
+  const sn = window.__sn; const id = sn.subgraph._nodes[0].id;
   const list = sn.properties.ui_layout.tabs[0].sections[0].controls;
   list.push({ kind: "segment", name: "H1", header: "Row", label: "Row", x: 16, y: 300, w: 420, h: 96, items: [
     { kind: "combo", name: "HC", bind: `${id}/type`, labelPos: "none", w: 200 }, { kind: "label", name: "HL", text: "Device", label: "Device" } ] });
@@ -92,7 +92,7 @@ t(`one-row group keeps the same compact height in both modes: ${hs}`, hs.every((
 // 6. Itens selecionados em grupos DIFERENTES redimensionam juntos, e a guia
 //    compara com os itens dos outros grupos da zona.
 await E(async () => {
-  const sn = window.__sn; const id = sn.__ssGraph._nodes[0].id;
+  const sn = window.__sn; const id = sn.subgraph._nodes[0].id;
   const list = sn.properties.ui_layout.tabs[0].sections[0].controls;
   list.length = 0;
   const grp = (n, y) => ({ kind: "segment", name: n, header: n, label: n, x: 16, y, w: 420, h: 57, items: [

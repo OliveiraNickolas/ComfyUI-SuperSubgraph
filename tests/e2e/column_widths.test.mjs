@@ -17,7 +17,7 @@ await E(async () => {
   const n = LG.createNode("EmptyImage"); app.graph.add(n);
   app.canvas.deselectAll?.(); app.canvas.select(n);
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
-  const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph"); window.__sn = sn;
+  const sn = app.graph.nodes.find(n => n.isSubgraphNode?.()); window.__sn = sn;
   const z = (h, w, col) => ({ header: h, width: w, col, row: 1, controls: [] });
   sn.properties.ui_layout.tabs[0].sections = [{ header: "TOP", width: "100%", controls: [] }, z("A", "33.3%", 0), z("B", "33.3%", 1), z("C", "33.3%", 2)];
   sn.setSize([1200, 500]);

@@ -18,8 +18,8 @@ const ids = await E(() => {
   L.connect(1, M, 0); M.connect(0, P, 0);
   app.canvas.deselectAll(); for (const n of [L, M, P]) app.canvas.select(n);
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
-  const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
-  const li = sn.__ssGraph.nodes.find(n => n.type === "LoadImage");
+  const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
+  const li = sn.subgraph.nodes.find(n => n.type === "LoadImage");
   sn.properties.ui_layout.tabs[0].sections[0].controls.push({ name: "Image1", kind: "media", label: "", bind: `${li.id}/image`, x: 16, y: 16, w: 288, h: 224 });
   sn.pos = [200, 150]; sn.__legoState.refresh();
   app.canvas.ds.offset = [0, 0]; app.canvas.ds.scale = 1; app.canvas.setDirty(true, true);
@@ -43,11 +43,12 @@ await pg.waitForFunction(() => !document.querySelector("#maskEditorCanvasContain
 await pg.waitForTimeout(1500);
 const after = await E((ids) => {
   const sn = window.app.graph.getNodeById(ids.sn);
-  const v = sn.__ssGraph.getNodeById(ids.li).widgets.find(w => w.name === "image").value;
+  // "image" foi promovido pelo ComfyUI ao converter: o valor que vale é o do nó.
+  const v = (sn.widgets.find(w => w.name === "image") || sn.subgraph.getNodeById(ids.li).widgets.find(w => w.name === "image")).value;
   const thumb = sn.__legoHost.querySelector('.lego-row[data-name="Image1"] img');
   return { v, thumb: thumb?.src || "" };
 }, ids);
-t("Save writes the masked image into the inner widget: " + after.v, /clipspace/.test(after.v) && after.v !== "example.png");
+t("Save writes the masked image into the (promoted) image widget: " + after.v, /clipspace/.test(after.v) && after.v !== "example.png");
 t("card thumbnail follows the new image: " + after.thumb.slice(0, 120), /clipspace/.test(decodeURIComponent(after.thumb)) && !/%5Binput%5D|\[input\]/.test(after.thumb));
 // executa: a máscara pintada chega ao MaskToImage de dentro (imagem não toda preta)
 const run = await E(async () => {

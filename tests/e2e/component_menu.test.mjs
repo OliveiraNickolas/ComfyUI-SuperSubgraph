@@ -17,8 +17,8 @@ const sid = await E(async () => {
   A.connect(0, S, 0); S.connect(0, P, 0);
   app.canvas.deselectAll(); app.canvas.select(S); app.canvas.select(P);
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
-  const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
-  const si = sn.__ssGraph.nodes.find(n => n.type === "ImageScale").id;
+  const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
+  const si = sn.subgraph.nodes.find(n => n.type === "ImageScale").id;
   sn.properties.ui_layout.tabs[0].sections[0].controls.push(
     { name: "Stepper1", kind: "number", label: "Width", bind: `${si}/width`, x: 16, y: 16, w: 224, h: 48 },
     { name: "Stepper2", kind: "number", label: "Height", bind: `${si}/height`, x: 16, y: 80, w: 224, h: 48 });

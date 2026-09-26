@@ -25,16 +25,16 @@ const ids = await E(() => {
     app.canvas.deselectAll(); for (const n of [S, P]) app.canvas.select(n);
     ext.__flatCanvas().find(i => i && /Convert Selection/.test(i.content)).callback();
     if (pad) app.graph.remove(pad);
-    return app.graph.nodes.filter(n => n.type === "SuperSubgraph").at(-1);
+    return app.graph.nodes.filter(n => n.isSubgraphNode?.()).at(-1);
   };
   const s1 = make(0, false), s2 = make(600, true);
-  const si1 = s1.__ssGraph.nodes.find(n => n.type === "ImageScale").id;
+  const si1 = s1.subgraph.nodes.find(n => n.type === "ImageScale").id;
   s1.properties.ui_layout.tabs[0].sections[0].controls.push({ name: "Stepper1", kind: "number", label: "Width", bind: `${si1}/width`, x: 16, y: 16, w: 256, h: 48, color: "#22c55e" });
   s1.properties.ui_layout.tabs[0].sections[0].header = "MY ZONE";
   s1.__legoState.refresh();
   s1.pos = [200, 100]; s2.pos = [200, 450];
   app.canvas.deselectAll(); app.canvas.ds.offset = [0, 0]; app.canvas.ds.scale = 1; app.canvas.setDirty(true, true);
-  return { s1: s1.id, s2: s2.id, si1, si2: s2.__ssGraph.nodes.find(n => n.type === "ImageScale").id };
+  return { s1: s1.id, s2: s2.id, si1, si2: s2.subgraph.nodes.find(n => n.type === "ImageScale").id };
 });
 t("the two inner ImageScale nodes have different ids: " + ids.si1 + " vs " + ids.si2, String(ids.si1) !== String(ids.si2));
 
@@ -45,7 +45,7 @@ const top = await E(() => [...document.querySelectorAll(".litecontextmenu .litem
 t("node menu has one 'SuperSubgraph' entry and no loose SS items: " + top.filter(x => /super/i.test(x)).join("|"), top.filter(x => /super/i.test(x)).join("|") === "SuperSubgraph");
 await pg.getByText("SuperSubgraph", { exact: true }).last().click(); await pg.waitForTimeout(400);
 const sub = await E(() => [...document.querySelectorAll(".litecontextmenu")].at(-1)?.innerText.split("\n").map(s => s.trim()).filter(Boolean));
-t("submenu groups the actions: " + sub.join("|"), !sub.some(x => /^Convert Selection/.test(x)) && ["Open Inside", "Edit Card", "Save Card Layout…", "Save SuperSubgraph to Library…", "Files", "More"].every(x => sub.includes(x)));
+t("submenu groups the actions: " + sub.join("|"), !sub.some(x => /^Convert Selection/.test(x)) && ["Open Inside", "Edit Card", "Save Card Layout…", "Files", "More"].every(x => sub.includes(x)));
 await pg.screenshot({ path: path.join(dir, "ss_menu.png") });
 await pg.keyboard.press("Escape"); await pg.mouse.click(1400, 950); await pg.waitForTimeout(200);
 

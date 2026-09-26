@@ -23,13 +23,13 @@ const r = await E(() => {
   for (const g of app.graph._groups || app.graph.groups) app.canvas.select(g);
   app.canvas.select(P);
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert Selection/.test(i.content)).callback();
-  const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
+  const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   const L = sn.properties.ui_layout;
   return { outer: app.graph.nodes.map(n => n.type).sort().join(), outerGroups: (app.graph._groups || app.graph.groups).length,
-    innerGroups: (sn.__ssGraph._groups || sn.__ssGraph.groups).map(g => g.title).join(),
+    innerGroups: (sn.subgraph._groups || sn.subgraph.groups).map(g => g.title).join(),
     tabs: L.tabs.map(t => t.name).join(), zoneColor: L.tabs[0].sections[0].color, sid: sn.id };
 });
-t("selecting 2 groups + a node converts their nodes: " + r.outer, r.outer === "EmptyImage,SuperSubgraph");
+t("selecting 2 groups + a node converts their nodes: " + r.outer, r.outer.split(",").length === 2 && r.outer.split(",").includes("EmptyImage"));
 t("groups go inside the SuperSubgraph and leave the outside: " + r.innerGroups + " / outside " + r.outerGroups, r.innerGroups === "Resize,Effects" && r.outerGroups === 0);
 t("one tab per group (+ Other for loose nodes): " + r.tabs, r.tabs === "Resize,Effects,Other");
 t("zone takes the group color: " + r.zoneColor, r.zoneColor === "#3f789e");
@@ -55,12 +55,12 @@ await E(() => document.querySelectorAll(".litecontextmenu").forEach(m => m.remov
 // botão ⋯
 await pg.locator(".lego-head .lego-more-btn").first().click(); await pg.waitForTimeout(400);
 const more = await E(() => [...document.querySelectorAll(".litecontextmenu")].at(-1)?.innerText.split("\n").map(s => s.trim()).filter(Boolean) || []);
-t("⋯ button opens the SuperSubgraph menu: " + more.join("|"), ["Open Inside", "Edit Card", "Save Card Layout…", "Save SuperSubgraph to Library…", "Files", "More"].every(x => more.includes(x)));
+t("⋯ button opens the SuperSubgraph menu: " + more.join("|"), ["Open Inside", "Edit Card", "Save Card Layout…", "Files", "More"].every(x => more.includes(x)));
 await pg.screenshot({ path: path.join(dir, "more_menu.png") });
 // submenu "More" abre ao clicar
 await pg.locator(".litecontextmenu .litemenu-entry", { hasText: "More" }).last().click(); await pg.waitForTimeout(300);
 const moreSub = await E(() => [...document.querySelectorAll(".litecontextmenu")].at(-1)?.innerText || "");
-t("'More' submenu works from the ⋯ menu: " + moreSub.replace(/\n/g, "|"), /Unpack into Regular Nodes/.test(moreSub) && /Rebuild Card from Widgets/.test(moreSub));
+t("'More' submenu works from the ⋯ menu: " + moreSub.replace(/\n/g, "|"), /Turn back into a classic Subgraph/.test(moreSub) && /Rebuild Card from Widgets/.test(moreSub));
 await pg.keyboard.press("Escape"); await pg.mouse.click(1450, 900); await E(() => document.querySelectorAll(".litecontextmenu").forEach(m => m.remove()));
 
 // roda e depois desfaz: os groups voltam
@@ -72,10 +72,10 @@ const run = await E(async () => {
 t("still runs with groups inside: " + run, run === "ok");
 const un = await E((sid) => {
   const app = window.app; const sn = app.graph.getNodeById(sid);
-  app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatNode(sn).find(i => i && i.content === "Unpack into Regular Nodes").callback();
+  app.graph.unpackSubgraph(sn);   // desempacotar é o do próprio ComfyUI
   return { groups: (app.graph._groups || app.graph.groups).map(g => g.title).sort().join(), nodes: app.graph.nodes.map(n => n.type).sort().join() };
 }, r.sid);
-t("Unpack brings the groups back: " + JSON.stringify(un), un.groups === "Effects,Resize" && un.nodes === "EmptyImage,ImageBlur,ImageInvert,ImageScale,PreviewImage");
+t("native Unpack brings the groups back: " + JSON.stringify(un), un.groups === "Effects,Resize" && un.nodes === "EmptyImage,ImageBlur,ImageInvert,ImageScale,PreviewImage");
 t("no extension errors " + JSON.stringify(errs.slice(0, 3)), !errs.length);
 console.log(`\n${ok} passed, ${fail} failed`);
 await b.close();

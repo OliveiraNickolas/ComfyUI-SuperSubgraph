@@ -1,15 +1,13 @@
 """
-ComfyUI-SuperSubgraph — "Lego UI" + motor próprio de subgrafo.
+ComfyUI-SuperSubgraph — cartão ("Lego UI") por cima dos subgrafos nativos.
 
-Frontend: o cartão é um DOM widget e o layout mora em
-`node.properties.ui_layout`, que o LiteGraph serializa com o workflow.
-
-Backend: o nó `SuperSubgraph` (super_subgraph_node.py) é o motor
-independente — guarda o grafo de dentro e o desdobra na execução com o
-"node expansion" do ComfyUI, sem depender do subgraph nativo.
+Só frontend: o Super Subgraph é um subgrafo nativo do ComfyUI com o cartão
+por cima (um DOM widget cujo layout mora em `node.properties.ui_layout`,
+serializado com o workflow). A execução é 100% a do ComfyUI.
 """
 
-from .super_subgraph_node import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+NODE_CLASS_MAPPINGS = {}
+NODE_DISPLAY_NAME_MAPPINGS = {}
 
 WEB_DIRECTORY = "./web"
 

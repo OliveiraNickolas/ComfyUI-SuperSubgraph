@@ -93,45 +93,21 @@ const M = await import("../.build/mod.mjs");
 let ok = 0, fail = 0;
 const t = (name, cond) => { cond ? ok++ : fail++; console.log(cond ? "PASS" : "FAIL", name); };
 
-// ── 1. TEST ENTER & EXIT SUPER SUBGRAPH ──
+// ── 1. SUPER SUBGRAPH = SUBGRAFO NATIVO: entrar usa a navegação nativa ──
+fakeCanvas.openSubgraph = function (sub, node) { this.graph = sub; this.openedFrom = node; };
+const nativeInner = new FakeGraph();
+nativeInner.isRootGraph = false;
 const sn = {
-  id: 101,
-  type: "SuperSubgraph",
-  title: "Super1",
-  properties: {
-    ss_inner: {
-      graph: {
-        last_node_id: 1,
-        nodes: [{ id: 1, type: "KSampler", pos: [100, 100], size: [200, 100] }],
-        links: []
-      }
-    },
-    ui_layout: { schema: 2, tabs: [{ sections: [{ controls: [] }] }] }
-  },
-  flags: {},
-  widgets: [],
-  setSize() {},
-  addDOMWidget(name, type, el, opts) {
-    const w = { name, type, element: el, ...opts };
-    this.widgets.push(w);
-    document.body.append(el);
-    return w;
-  }
+  id: 101, type: "4fc0e6fd-0000-4000-8000-000000000000", title: "Super1",
+  subgraph: nativeInner, isSubgraphNode: () => true,
+  properties: { ui_layout: { schema: 2, tabs: [{ sections: [{ controls: [] }] }] } },
+  flags: {}, widgets: [], setSize() {},
+  addDOMWidget(name, type, el, opts) { const w = { name, type, element: el, ...opts }; this.widgets.push(w); document.body.append(el); return w; },
 };
-
 M.attach(sn);
-
 M.enterSuper(sn);
-
-const inner = M.ssInnerGraph(sn);
-t("enterSuper sets canvas.graph = inner", fakeCanvas.graph === inner);
-t("enterSuper does not attach sn.subgraph (prevents ComfyUI link loss)", sn.subgraph === undefined);
-t("enterSuper does not set canvas.subgraph (prevents native subgraph link rewrite)", fakeCanvas.subgraph === undefined);
-
-M.exitSuper(1);
-
-t("exitSuper restores root graph", fakeCanvas.graph === globalThis.__app.graph);
-t("exitSuper ensures sn.subgraph is clean", sn.subgraph === undefined);
+t("enterSuper opens the native subgraph (openSubgraph)", fakeCanvas.graph === nativeInner && fakeCanvas.openedFrom === sn);
+fakeCanvas.graph = rootGraph;
 
 // ── 2. TEST OBJECT INSPECTOR ALIGNMENT ──
 const node = {
@@ -343,107 +319,6 @@ if (groupRow) {
   t("new zone has Tab 1 and Tab 2", createdSec.tabs[0].name === "Tab 1" && createdSec.tabs[1].name === "Tab 2");
   t("new zone has activeTab 0", createdSec.activeTab === 0);
 }
-
-// ── 6. TEST NODE REDIRECTION TO INNER ON GRAPH.ADD ──
-M.enterSuper(sn);
-const activeInner = M.ssInnerGraph(sn);
-const addedInnerNode = { id: 777, type: "CLIPTextEncode", pos: [200, 200], inputs: [], outputs: [] };
-globalThis.__app.graph.add(addedInnerNode);
-t("adding node to app.graph while inside SuperSubgraph redirects to inner", activeInner._nodes.includes(addedInnerNode));
-t("redirected node is NOT added to rootGraph", !rootGraph._nodes.includes(addedInnerNode));
-M.exitSuper(1);
-
-const addedRootNode = { id: 888, type: "VAEDecode", pos: [300, 300], inputs: [], outputs: [] };
-globalThis.__app.graph.add(addedRootNode);
-t("adding node to app.graph when outside adds to rootGraph normally", rootGraph._nodes.includes(addedRootNode));
-
-// ── 7. TEST APPLY SUPER SLOTS & BOUNDARY HELPERS ──
-const slotNode = {
-  id: 303,
-  type: "SuperSubgraph",
-  inputs: [],
-  outputs: [],
-  properties: {
-    ss_inner: {
-      inputs: [{ name: "clip_in", type: "CLIP", targets: [["1", "clip"]] }],
-      outputs: [{ name: "latent_out", type: "LATENT", source: ["1", 0] }]
-    }
-  },
-  addInput(name, type) { const s = { name, type, link: null }; this.inputs.push(s); return s; },
-  addOutput(name, type) { const s = { name, type, links: [] }; this.outputs.push(s); return s; },
-  removeInput(idx) { this.inputs.splice(idx, 1); },
-  removeOutput(idx) { this.outputs.splice(idx, 1); }
-};
-M.applySuperSlots(slotNode);
-t("applySuperSlots ensures in_1 slot exists", slotNode.inputs.some((s) => s.name === "in_1"));
-t("applySuperSlots sets input label and type", slotNode.inputs[0].label === "clip_in" && slotNode.inputs[0].type === "CLIP");
-t("applySuperSlots ensures out_1 slot exists", slotNode.outputs.some((s) => s.name === "out_1"));
-t("applySuperSlots sets output label and type", slotNode.outputs[0].label === "latent_out" && slotNode.outputs[0].type === "LATENT");
-
-M.renameBoundaryIO(slotNode, true, 0, "positive_clip");
-t("renameBoundaryIO updates input name", slotNode.properties.ss_inner.inputs[0].name === "positive_clip");
-t("renameBoundaryIO updates slot label", slotNode.inputs[0].label === "positive_clip");
-
-M.renameBoundaryIO(slotNode, false, 0, "final_latent");
-t("renameBoundaryIO updates output name", slotNode.properties.ss_inner.outputs[0].name === "final_latent");
-t("renameBoundaryIO updates slot label", slotNode.outputs[0].label === "final_latent");
-
-// ── 8. TEST QUICK OUT (EJECT NODE PRESERVING CONNECTIONS) ──
-const hostNode = {
-  id: 500,
-  type: "SuperSubgraph",
-  title: "SuperHost",
-  pos: [100, 100],
-  size: [300, 200],
-  properties: {
-    ss_inner: {
-      graph: {
-        last_node_id: 10,
-        nodes: [
-          { id: 1, type: "CheckpointLoaderSimple", pos: [10, 10], inputs: [], outputs: [{ name: "MODEL", type: "MODEL", links: [] }] },
-          { id: 2, type: "ResolutionMaster", pos: [200, 10], inputs: [{ name: "model", type: "MODEL", link: null }], outputs: [{ name: "latent", type: "LATENT", links: [] }] },
-          { id: 3, type: "KSampler", pos: [400, 10], inputs: [{ name: "latent_image", type: "LATENT", link: null }], outputs: [{ name: "LATENT", type: "LATENT", links: [] }] }
-        ]
-      },
-      inputs: [],
-      outputs: []
-    }
-  },
-  inputs: [],
-  outputs: [],
-  addInput(name, type) { const s = { name, type, link: null }; this.inputs.push(s); return s; },
-  addOutput(name, type) { const s = { name, type, links: [] }; this.outputs.push(s); return s; },
-  removeInput(idx) { this.inputs.splice(idx, 1); },
-  removeOutput(idx) { this.outputs.splice(idx, 1); }
-};
-rootGraph.add(hostNode);
-
-M.enterSuper(hostNode);
-const hInner = M.ssInnerGraph(hostNode);
-const inner1 = hInner.getNodeById(1);
-const inner2 = hInner.getNodeById(2);
-const inner3 = hInner.getNodeById(3);
-
-// Wire 1 -> 2 -> 3 inside inner graph
-inner1.connect(0, inner2, 0);
-inner2.connect(0, inner3, 0);
-
-t("inner connections established", inner2.inputs[0].link != null && inner3.inputs[0].link != null);
-
-// Quick out node 2 ("ResolutionMaster")
-M.quickOutNode(inner2);
-
-t("quickOutNode removes ejected node from inner graph", hInner.getNodeById(2) === undefined);
-t("quickOutNode adds ejected node to rootGraph", rootGraph.getNodeById(2) === inner2);
-t("quickOutNode exits to rootGraph canvas", fakeCanvas.graph === rootGraph);
-
-// Check that wire from inner1 (CheckpointLoader) now outputs through hostNode to inner2 (ResolutionMaster)
-t("hostNode exposed output for inner1", hostNode.properties.ss_inner.outputs.length === 1);
-t("hostNode output connects to ejected node input", inner2.inputs[0].link != null);
-
-// Check that wire from inner2 to inner3 now inputs into hostNode
-t("hostNode exposed input for inner3", hostNode.properties.ss_inner.inputs.length === 1);
-t("ejected node output connects to hostNode input", hostNode.inputs[0].link != null);
 
 // ── 9. TEST STABLE MEDIA VIEW URL (NO FLICKERING/RELOAD ON CARD USE) ──
 const url1 = M.viewURL("my_image.png");
@@ -853,28 +728,6 @@ t("VHS annotated number stays a number (not mirrored)", ["number", "slider"].inc
 t("hidden-type widgets are not promotable", !M.usable({ name: "x", type: "easyhidden", value: 1 }) && !M.usable({ name: "y", type: "h3frhidden", value: 1 }) && !M.usable({ name: "z", type: "number", value: 1, hidden: true }));
 t("object widget without UI is not promotable", !M.usable({ name: "crop", type: "imagecrop", value: { x: 1 } }));
 t("numbers show the widget precision like native", M.fmtNum(8, M.numDecimals({ precision: 1 }, 0.1, false)) === "8.0" && M.fmtNum(1, M.numDecimals({}, 0.01, false)) === "1.00" && M.fmtNum(20.4, 0) === "20");
-
-// Ligação quebrada no grafo de dentro (entrada aponta para link inexistente)
-{
-  const g = { links: new Map([[5, { id: 5, origin_id: 1, origin_slot: 0, target_id: 2, target_slot: 0 }]]),
-    _nodes: [
-      { id: 1, outputs: [{ links: [5, 99] }] },
-      { id: 2, inputs: [{ name: "images", link: 5 }, { name: "mask", link: 20131 }] },
-    ] };
-  g.getNodeById = (id) => g._nodes.find((n) => String(n.id) === String(id));
-  const fixed = M.repairInnerLinks(g, { title: "T" });
-  t("repairInnerLinks drops dangling input/output links and keeps good ones",
-    fixed === 2 && g._nodes[1].inputs[1].link === null && g._nodes[1].inputs[0].link === 5 && g._nodes[0].outputs[0].links.join() === "5");
-}
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-M.enterSuper(sn);
-t("enterSuper sets inner graph on canvas", fakeCanvas.graph === M.ssInnerGraph(sn));
-t("inner graph id is a valid UUID", UUID_RE.test(fakeCanvas.graph?.id));
-t("canvas.subgraph is kept undefined to prevent native arrange crash", fakeCanvas.subgraph === undefined);
-
-M.exitSuper(1);
 
 console.log(`\n${ok} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

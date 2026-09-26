@@ -2902,10 +2902,7 @@ export const CSS_OUTPUT = `
 /* Arraste entre grupos, zonas e sub-abas: feedback de entrada e saída */
 export const CSS_DRAG = `
 .lego-pick-overlay{position:fixed;inset:0;pointer-events:none;z-index:9990}
-.lego-ss-boundary{position:fixed;inset:0;pointer-events:none;z-index:40}
-.lego-ss-io{position:fixed;transform:translateY(-50%);padding:1px 6px;border-radius:9px;background:#a855f7;color:#fff;font:700 8px/12px system-ui,sans-serif;white-space:nowrap;box-shadow:0 1px 6px rgba(0,0,0,.45);pointer-events:auto;cursor:help}
-.lego-ss-io.in{transform:translate(calc(-100% - 8px),-50%)}
-.lego-ss-io.out{transform:translate(8px,-50%)}
+
 .lego-pick-box{position:fixed;box-sizing:border-box;border-radius:6px;pointer-events:none}
 .lego-pick-box.whole{border:2.5px solid #a855f7;box-shadow:0 0 0 3px rgba(168,85,247,0.25),0 0 18px rgba(168,85,247,0.55)}
 .lego-pick-box.widget{border:2px solid #22c55e;border-radius:6px;background:rgba(34,197,94,0.12);box-shadow:0 0 10px rgba(34,197,94,0.45)}
@@ -2914,20 +2911,7 @@ export const CSS_DRAG = `
 .lego-picker-promote-btn:disabled{opacity:.45;cursor:default}
 .lego-picker-promote-btn:not(:disabled):hover{background:#9333ea}
 .lego-ss-enter{margin-left:auto;margin-right:6px}
-.lego-ss-nav{position:fixed;top:50px;left:220px;z-index:1000;display:flex;align-items:center;gap:5px;height:20px;box-sizing:border-box;
-  padding:0 10px 0 6px;border-radius:6px;background:rgba(24,24,28,0.94);border:1px solid rgba(168,85,247,0.55);
-  box-shadow:0 8px 24px rgba(0,0,0,0.45);color:#e5e7eb;font:500 10px system-ui,sans-serif;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
-.lego-ss-nav-badge{padding:2px 5px;border-radius:4px;background:#a855f7;color:#fff;font:800 8px/1.2 system-ui,sans-serif}
-.lego-ss-nav-back{display:flex;align-items:center;gap:4px;padding:3px 9px 3px 5px;border-radius:7px;border:1px solid rgba(255,255,255,0.14);
-  background:rgba(255,255,255,0.06);color:inherit;font:600 10px system-ui,sans-serif;cursor:pointer}
-.lego-ss-nav-back:hover{background:rgba(168,85,247,0.28);border-color:rgba(168,85,247,0.7)}
-.lego-ss-nav-kbd{margin-left:4px;padding:0 4px;border-radius:4px;border:1px solid rgba(255,255,255,0.2);font:600 7.5px/12px monospace;opacity:.7}
-.lego-ss-nav-crumbs{display:flex;align-items:center;gap:6px;min-width:0}
-.lego-ss-nav-crumb{background:none;border:none;color:#a1a1aa;font:500 10px system-ui,sans-serif;cursor:pointer;padding:2px 3px;border-radius:4px;
-  white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}
-button.lego-ss-nav-crumb:hover{color:#fff;background:rgba(255,255,255,0.08)}
-.lego-ss-nav-crumb.current{color:#fff;font-weight:700;cursor:default}
-.lego-ss-nav-sep{color:#71717a}
+
 .lego-ss-icon{position:relative;display:inline-block;width:13px;height:13px;flex:none}
 .lego-ss-icon::before{content:"";position:absolute;inset:0;background-color:currentColor;
   -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m15 15 6 6m-6-6v4.8m0-4.8h4.8'/%3E%3Cpath d='M9 19.8V15m0 0H4.2M9 15l-6 6'/%3E%3Cpath d='M15 4.2V9m0 0h4.8M15 9l6-6'/%3E%3Cpath d='M9 4.2V9m0 0H4.2M9 9 3 3'/%3E%3C/svg%3E") center/contain no-repeat;

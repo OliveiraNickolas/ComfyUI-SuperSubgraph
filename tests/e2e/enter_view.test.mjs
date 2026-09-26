@@ -1,4 +1,4 @@
-// Entrar e sair do Super Subgraph mantém as vistas: fora volta exatamente onde
+// (Navegação nativa do ComfyUI) Entrar e sair do Super Subgraph mantém as vistas: fora volta exatamente onde
 // estava; dentro volta onde parou na última vez (a 1ª entrada enquadra tudo).
 import { launch, COMFY_URL } from "../lib.mjs";
 const b = await launch();
@@ -19,7 +19,7 @@ const pos = await pg.evaluate(() => {
   const c = LG.createNode("ImageBlur"); c.pos = [2400, 1500]; app.graph.add(c);
   app.canvas.deselectAll?.(); app.canvas.select(a); app.canvas.select(c);
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
-  return app.graph.nodes.find(n => n.type === "SuperSubgraph").pos.slice();
+  return app.graph.nodes.find(n => n.isSubgraphNode?.()).pos.slice();
 });
 
 // 1ª ida: dentro enquadra; ao sair, fora volta exatamente onde estava.
@@ -51,7 +51,7 @@ await pg.locator(".subgraph-breadcrumb .p-breadcrumb-item-link").first().click()
 await pg.waitForTimeout(1500);
 const back2 = await ds();
 t(`breadcrumb exit returns to the same outside view ${JSON.stringify(back2)}`, same(back2, out2));
-t("inside changes are saved on breadcrumb exit", await pg.evaluate(() => (window.app.graph.nodes.find((n) => n.type === "SuperSubgraph").properties.ss_inner.graph.nodes || []).some((n) => n.type === "ImageInvert")));
+t("inside changes live in the native subgraph", await pg.evaluate(() => window.app.graph.nodes.find((n) => n.isSubgraphNode?.()).subgraph.nodes.some((n) => n.type === "ImageInvert")));
 t("breadcrumb no longer lists the Super Subgraph", !/Super Subgraph/.test(await pg.evaluate(() => document.querySelector(".subgraph-breadcrumb")?.innerText || "")));
 await enter();
 t(`inside view remembered after a native exit ${JSON.stringify(await ds())}`, same(await ds(), { o: [-40, -20], s: 1.1, inner: true }));

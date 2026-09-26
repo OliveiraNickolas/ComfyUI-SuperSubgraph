@@ -10,13 +10,11 @@ const EXPORTS = [
   "esc", "removeControlsByName", "renameClone", "walkControls", "attach", "pasteComponents",
   "copySelectedComponents", "doUndo", "openTabContextMenu", "renderObjectInspector", "ATTACHED",
   "writeWidget", "autoLayout", "dropArmedTool", "addItemToSegment", "OUTPUTS", "openInspector",
-  "alignInspectorToTarget", "enterSuper", "exitSuper", "ssInnerGraph", "getContiguousRow",
-  "widthForCount", "createNewZone", "hookGraphAdd", "ensureSuperOutput",
-  "renameBoundaryIO", "quickOutNode", "quickOutNodes", "applySuperSlots", "viewURL",
+  "alignInspectorToTarget", "enterSuper", "getContiguousRow",
+  "widthForCount", "createNewZone", "viewURL",
   "sectionRequiredWidth", "requiredNodeWidth", "groupSectionsLayout", "addZoneBelow", "addZoneBeside",
   "sameUrl", "MEDIA_ELEMENT_CACHE", "OUTPUT_VIEW_CACHE", "renderZoneGuides", "clearZoneGuides",
-  "describeWidget", "cardHeight", "usable", "fmtNum", "numDecimals", "repairInnerLinks",
-];
+  "describeWidget", "cardHeight", "usable", "fmtNum", "numDecimals", ];
 
 let src = fs.readFileSync(SRC, "utf8");
 const swap = (re, to) => {

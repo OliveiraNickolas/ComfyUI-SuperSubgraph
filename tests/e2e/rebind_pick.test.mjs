@@ -15,9 +15,9 @@ const ids = await E(() => {
   const n = LG.createNode("KSampler"); n.pos = [0, 0]; app.graph.add(n);
   app.canvas.deselectAll?.(); app.canvas.select(n);
   app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph").__flatCanvas().find(i => i && /Convert/.test(i.content)).callback();
-  const sn = app.graph.nodes.find(n => n.type === "SuperSubgraph");
+  const sn = app.graph.nodes.find(n => n.isSubgraphNode?.());
   window.__sn = sn;
-  const inner = sn.__ssGraph._nodes[0];
+  const inner = sn.subgraph._nodes[0];
   const sec = sn.properties.ui_layout.tabs[0].sections[0];
   if (sec.tabs) { delete sec.tabs; delete sec.activeTab; }
   sec.controls = [{ kind: "number", name: "Stepper1", bind: `${inner.id}/steps`, label: "Steps", x: 16, y: 16, w: 256, h: 32 }];
