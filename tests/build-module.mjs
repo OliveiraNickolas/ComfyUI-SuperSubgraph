@@ -11,7 +11,7 @@ const EXPORTS = [
   "copySelectedComponents", "doUndo", "openTabContextMenu", "renderObjectInspector", "ATTACHED",
   "writeWidget", "autoLayout", "dropArmedTool", "addItemToSegment", "OUTPUTS", "openInspector",
   "alignInspectorToTarget", "enterSuper", "exitSuper", "ssInnerGraph", "getContiguousRow",
-  "widthForCount", "createNewZone", "hookGraphAdd", "ensureSuperOutput", "ensureSuperInput",
+  "widthForCount", "createNewZone", "hookGraphAdd", "ensureSuperOutput",
   "renameBoundaryIO", "quickOutNode", "quickOutNodes", "applySuperSlots", "viewURL",
   "sectionRequiredWidth", "requiredNodeWidth", "groupSectionsLayout", "addZoneBelow", "addZoneBeside",
   "sameUrl", "MEDIA_ELEMENT_CACHE", "OUTPUT_VIEW_CACHE", "renderZoneGuides", "clearZoneGuides",

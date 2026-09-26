@@ -390,9 +390,6 @@ export const CSS = `
   border-color: rgba(59, 130, 246, 0.35);
 }
 
-
-
-
 /* ══════════════════════════════════════════════════════════════════════════
    RENDERIZAÇÃO FIEL DO NÓ DO COMFYUI (Visual Nativo sem Ficha Técnica)
    ══════════════════════════════════════════════════════════════════════════ */
@@ -726,43 +723,7 @@ export const CSS = `
   color: #38bdf8;
   font-weight: 600;
 }
-.lego-comfy-det-desc{
-  font-size: 10px;
-  line-height: 1.5;
-  color: #a1a1aa;
-}
-.lego-comfy-det-field{
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.lego-comfy-det-label{
-  font-size: 9.5px;
-  font-weight: 700;
-  color: #e2e8f0;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.lego-comfy-det-input{
-  width: 100%;
-  box-sizing: border-box;
-  background: rgba(0, 0, 0, 0.38);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 7px;
-  padding: 6px 8px;
-  color: #ffffff;
-  font-size: 11px;
-  outline: none;
-  transition: border-color .12s;
-}
-.lego-comfy-det-input:focus{
-  border-color: var(--lego-accent);
-}
-.lego-comfy-det-grid{
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
+
 .lego-comfy-det-btn{
   margin-top: auto;
   padding: 5px 8px;
@@ -788,136 +749,6 @@ export const CSS = `
   transform: translateY(0);
 }
 
-
-/* ── Menu Flutuante de Adicionar Componente com 2 Cliques (Estilo ComfyUI Canvas) ── */
-.lego-search-overlay{
-  position: fixed;
-  inset: 0;
-  z-index: 999999;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-}
-.lego-search-box{
-  position: fixed;
-  z-index: 1000000;
-  width: 320px;
-  max-height: 420px;
-  background: #181824;
-  border: 1.5px solid var(--lego-accent);
-  border-radius: 6px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  font-family: inherit;
-  animation: legoSearchPop 0.12s cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes legoSearchPop {
-  from { transform: scale(0.94); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
-}
-.lego-search-header{
-  padding: 6px;
-  background: rgba(10, 10, 16, 0.8);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.lego-search-title{
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--lego-dim);
-}
-.lego-search-input{
-  width: 100%;
-  box-sizing: border-box;
-  background: rgba(26, 26, 36, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 6px;
-  padding: 5px 8px;
-  color: #fff;
-  font-size: 11px;
-  outline: none;
-  transition: border-color .15s, box-shadow .15s;
-}
-.lego-search-input:focus{
-  border-color: var(--lego-accent);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
-}
-.lego-search-list{
-  overflow-y: auto;
-  max-height: 320px;
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.lego-search-item{
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  user-select: none;
-  transition: background .1s ease, color .1s ease;
-}
-.lego-search-item:hover, .lego-search-item.highlighted{
-  background: var(--lego-accent);
-  color: #fff;
-}
-.lego-search-item-icon{
-  font-size: 14px;
-  width: 24px;
-  text-align: center;
-  flex-shrink: 0;
-}
-.lego-search-item-info{
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-.lego-search-item-title{
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--lego-text);
-}
-.lego-search-item-desc{
-  font-size: 9px;
-  color: var(--lego-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.lego-search-item:hover .lego-search-item-title,
-.lego-search-item.highlighted .lego-search-item-title{
-  color: #ffffff;
-}
-.lego-search-item:hover .lego-search-item-desc,
-.lego-search-item.highlighted .lego-search-item-desc{
-  color: #dbeafe;
-}
-.lego-search-footer{
-  padding: 6px 10px;
-  background: rgba(10, 10, 16, 0.6);
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-  font-size: 8px;
-  color: var(--lego-dim);
-  display: flex;
-  justify-content: space-between;
-}
-
 /* ── Borda de Seleção de Elementos ── */
 .lego-row.selected::before{
   content: "";
@@ -928,7 +759,6 @@ export const CSS = `
   pointer-events: none;
   box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.4);
 }
-
 
 .lego-card{
   /* Três níveis legíveis: o cartão é o mais ESCURO (container), a linha do
@@ -979,10 +809,9 @@ export const CSS = `
 /* Num grupo horizontal o rótulo nunca fica menor que o próprio texto: sem
    espaço, o conteúdo vaza e o grupo cresce (fitGroupToContent). */
 .lego-segment-box.horizontal > .lego-segment-item.is-label{flex-shrink:0;min-width:max-content}
-.lego-head-tools{display:inline-flex;align-items:center;gap:6px;flex:none;margin-left:auto}
-.lego-sec-h > .lego-head-tools{order:2;margin-left:8px}
+
 .lego-sec-h::after{order:1}
-.lego-tabs > .lego-head-tools{align-self:center;padding-left:8px}
+
 .lego-head-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .lego-title-row{display:flex;align-items:center;gap:5px;min-width:0}
 .lego-title{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
@@ -995,9 +824,7 @@ export const CSS = `
   justify-content:center;padding:0;transition:all .15s ease}
 .lego-title-edit-btn:hover{background:var(--lego-accent,#38bdf8);color:#fff;
   border-color:var(--lego-accent,#38bdf8);box-shadow:0 0 8px rgba(56,189,248,0.4)}
-.lego-sub{font-size:10px;color:var(--lego-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.lego-badge{flex:none;font-size:9px;font-weight:600;padding:3px 9px;border-radius:999px;
-  background:rgba(255,255,255,0.06);border:1px solid var(--lego-line);color:var(--lego-dim);white-space:nowrap}
+
 .lego-iconbtn{flex:none;width:28px;height:18px;border-radius:7px;cursor:pointer;
   display:grid;place-items:center;background:rgba(255,255,255,0.04);color:var(--lego-dim);
   border:1px solid var(--lego-line);font-size:11px;line-height:1;padding:0;transition:all .15s ease}
@@ -1293,9 +1120,6 @@ export const CSS = `
   box-shadow: 0 3px 8px rgba(239, 68, 68, 0.7);
 }
 
-
-
-
 /* Indicadores de Drop 4-Way (Cima, Baixo, Esquerda, Direita) */
 .lego-drop-top{box-shadow:inset 0 4px 0 var(--lego-accent) !important;background:rgba(59,130,246,0.12) !important}
 .lego-drop-bottom{box-shadow:inset 0 -4px 0 var(--lego-accent) !important;background:rgba(59,130,246,0.12) !important}
@@ -1466,13 +1290,6 @@ export const CSS = `
 }
 
 /* Alças de Redimensionamento de Componente (Largura ↔ e Altura ↕) */
-.lego-row-resizer{position:absolute;top:0;right:-3px;bottom:6px;width:7px;cursor:col-resize;
-  z-index:25;user-select:none;border-radius:3px;transition:background .15s}
-.lego-row-resizer:hover, .lego-row-resizer.active{background:var(--lego-accent);box-shadow:0 0 8px rgba(59,130,246,0.6)}
-
-.lego-row-resizer-bottom{position:absolute;left:0;right:6px;bottom:-3px;height:7px;cursor:row-resize;
-  z-index:25;user-select:none;border-radius:3px;transition:background .15s}
-.lego-row-resizer-bottom:hover, .lego-row-resizer-bottom.active{background:var(--lego-accent);box-shadow:0 0 8px rgba(59,130,246,0.6)}
 
 /* Alça de Canto Elegante (Bordinha em Negrito) */
 .lego-resizer-corner{position:absolute;right:2px;bottom:2px;width:12px;height:12px;cursor:nwse-resize;
@@ -1483,14 +1300,9 @@ export const CSS = `
   box-shadow:2px 2px 8px rgba(59,130,246,0.7);transform:scale(1.2)}
 
 /* ── Botão / Chip de Largura ── */
-.lego-width-badge{flex:none;font-size:9px;font-weight:700;padding:2px 7px;border-radius:5px;
-  background:rgba(255,255,255,0.06);border:1px solid var(--lego-line);color:var(--lego-dim);
-  cursor:pointer;user-select:none;transition:all .15s;display:inline-flex;align-items:center;gap:3px}
-.lego-width-badge:hover{color:#fff;background:rgba(59,130,246,0.2);border-color:var(--lego-accent)}
 
 /* Tooltip flutuante de Resize */
-.lego-resize-tooltip{position:fixed;background:var(--lego-accent);color:#fff;font-size:10px;font-weight:700;
-  padding:4px 9px;border-radius:5px;box-shadow:0 4px 15px rgba(0,0,0,0.6);pointer-events:none;z-index:99999999}
+
 .lego-sec-h{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;letter-spacing:.06em;
   text-transform:uppercase;color:var(--lego-dim)}
 .lego-sec-h::after{content:"";flex:1;height:1px;background:var(--lego-line)}
@@ -1516,7 +1328,6 @@ export const CSS = `
 .lego-row.wide .lego-in{width:100%}
 .lego-row.drag{opacity:.4}
 .lego-row.over{outline:2px dashed var(--lego-accent)}
-
 
 .lego-row.missing .lego-lbl{color:#ef4444;text-decoration:line-through}
 .lego-missing-box{display:flex;align-items:center;gap:6px;min-width:0}
@@ -1559,7 +1370,6 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-sw.on{background:var(--lego-on);border-color:rgba(34,197,94,0.4)}
 .lego-sw.on::after{transform:translateX(12px)}
 
-.lego-grid{display:grid;gap:6px}
 /* ── Load Image / Video / Audio / Componente de Mídia Coeso e Responsivo Vertical ── */
 .lego-row.is-media{
   justify-content: flex-start !important;
@@ -1743,15 +1553,6 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   border-color: var(--lego-accent);
   box-shadow: 0 2px 10px rgba(59,130,246,0.4);
 }
-
-.lego-slot{position:relative;aspect-ratio:1;border:1.5px dashed var(--lego-line);border-radius:7px;
-  display:grid;place-items:center;overflow:hidden;background:var(--lego-panel);cursor:pointer;transition:all .15s}
-.lego-slot:hover{border-color:var(--lego-accent);background:var(--lego-panel-hover)}
-.lego-slot.drop{border-color:var(--lego-accent);border-style:solid;background:rgba(59,130,246,0.15)}
-.lego-slot img{width:100%;height:100%;object-fit:cover}
-.lego-slot .ph{color:var(--lego-dim);font-size:9.5px;font-weight:500;text-align:center;padding:6px;word-break:break-word}
-.lego-slot .cap{position:absolute;left:0;right:0;bottom:0;padding:4px 6px;font-size:8.5px;font-weight:600;
-  background:rgba(0,0,0,0.75);backdrop-filter:blur(4px);color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 .lego-row.grp{grid-template-columns:28px 1fr auto}
 
@@ -1943,7 +1744,6 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   letter-spacing: -0.2px;
 }
 
-
 .lego-lbl.grp-n{text-align:center;font-variant-numeric:tabular-nums;font-weight:700;color:var(--lego-dim);font-size:10px}
 .lego-grp{display:flex;align-items:center;gap:5px;min-width:0;width:100%}
 .lego-cell{min-width:0}
@@ -1953,19 +1753,11 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-cell.k-number{flex:none;width:120px}
 .lego-cell.k-text{flex:1;min-width:70px}
 
-.lego-cols{display:grid;gap:5px;align-items:start}
-.lego-cols .lego-row.wide{grid-column:1/-1}
-
 .lego-empty{color:var(--lego-dim);font-size:10px;font-style:italic;padding:8px;text-align:center}
 .lego-empty-cta{display:flex;flex-direction:column;align-items:center;gap:5px}
 .lego-promote-cta{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:6px;border:1px solid rgba(168,85,247,.55);background:rgba(168,85,247,.16);color:#e9d5ff;font:600 12px/1 inherit;font-style:normal;cursor:pointer}
 .lego-promote-cta:hover{background:rgba(168,85,247,.3)}
 .lego-empty-hint{font-size:9px;opacity:.7}
-.lego-pick{display:flex;flex-direction:column;gap:5px;max-height:240px;overflow:auto;
-  padding:8px;background:#1f1f26;border:1px solid var(--lego-line);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,0.4)}
-.lego-pick button{text-align:left;background:transparent;border:0;color:var(--lego-text);
-  font:inherit;font-size:10px;padding:5px 8px;border-radius:5px;cursor:pointer;transition:background .12s}
-.lego-pick button:hover{background:var(--lego-accent);color:#fff}
 
 /* ══════════════════════════════════════════════════════════════════════════
    ELEMENTO SEGMENTO PERSONALIZADO (Custom Multi-Control Segment)
@@ -2107,7 +1899,6 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   flex: none;
 }
 
-
 /* Segmento como .lego-row no Canvas 2D */
 .lego-row.is-segment{
   padding: 4px 6px;
@@ -2164,7 +1955,6 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 
 .lego-segment-box{
   width: 100%;
@@ -2479,14 +2269,6 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 
 /* Modal de Configuração do Segmento */
 
-
-
-
-
-
-
-
-
 /* ── Paleta de Componentes ── */
 .lego-palette{width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:5px;padding:6px 10px;background:rgba(20,20,30,0.92);border:1.5px solid var(--lego-accent);border-radius:7px;margin-bottom:10px;box-shadow:0 4px 18px rgba(0,0,0,0.45)}
 .lego-palette-head{display:flex;align-items:center;justify-content:space-between;gap:5px;font-size:9px;
@@ -2500,7 +2282,6 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   color:var(--lego-text);transition:all .15s ease}
 .lego-pal-item:hover{background:rgba(59,130,246,0.22);border-color:var(--lego-accent);transform:translateY(-1px);color:#fff}
 .lego-pal-item:active{cursor:grabbing}
-.lego-pal-icon{font-size:11px;line-height:1}
 
 /* ── Ações de Aba e Menu de Contexto ── */
 .lego-tab-title{flex:1;white-space:nowrap}
@@ -2570,30 +2351,6 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 /* ── Section Actions ── */
 .lego-sec-actions{display:flex;align-items:center;gap:4px}
 /* ── Botão + Adicionar Componente no Card ── */
-.lego-ctrl-add-btn{
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 5px 8px;
-  border-radius: 6px;
-  border: 1.5px dashed var(--lego-line);
-  background: rgba(255,255,255,0.02);
-  color: var(--lego-dim);
-  font-size: 9.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all .15s ease;
-  user-select: none;
-  box-sizing: border-box;
-  margin-top: 4px;
-}
-.lego-ctrl-add-btn:hover, .lego-ctrl-add-btn.over{
-  border-color: var(--lego-accent);
-  color: #fff;
-  background: rgba(59,130,246,0.12);
-}
 
 .lego-zone-add{width:100%;flex:1 1 100%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:5px;padding:5px 8px;
   border:2px dashed var(--lego-line);border-radius:9px;background:rgba(255,255,255,0.02);
@@ -2651,16 +2408,6 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 }
 
 /* ── Visual Workflow Explorer (HUD & Picker) ── */
-.lego-btn-explore{
-  width:100%;box-sizing:border-box;display:flex;align-items:center;gap:5px;
-  padding:6px 10px;border-radius:9px;border:1px solid rgba(59,130,246,0.4);
-  background:linear-gradient(135deg, rgba(37,99,235,0.25), rgba(59,130,246,0.12));
-  color:#fff;cursor:pointer;transition:all .18s ease;margin-bottom:10px;text-align:left;
-}
-.lego-btn-explore:hover{
-  background:linear-gradient(135deg, rgba(37,99,235,0.45), rgba(59,130,246,0.25));
-  border-color:var(--lego-accent);box-shadow:0 4px 16px rgba(59,130,246,0.3);transform:translateY(-1px);
-}
 
 .lego-picker-hud{
   position:fixed;top:18px;left:50%;transform:translateX(-50%);
@@ -2690,7 +2437,7 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 @keyframes legoPopIn{from{transform:scale(0.92);opacity:0}to{transform:scale(1);opacity:1}}
 
 .lego-node-picker-header{display:flex;align-items:center;justify-content:space-between;gap:6px;border-bottom:1px solid var(--lego-line);padding-bottom:8px}
-.lego-node-picker-title{font-weight:700;font-size:11px;color:#fff}
+
 .lego-node-picker-sub{font-size:9px;color:var(--lego-dim)}
 
 .lego-node-widget-btn{
@@ -2714,12 +2461,7 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-ins-body{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:6px}
 .lego-ins-field{display:flex;flex-direction:column;gap:6px}
 .lego-ins-field label{font-size:9.5px;font-weight:700;color:var(--lego-dim);text-transform:uppercase;letter-spacing:.04em}
-.lego-ins-bind-list{display:flex;flex-direction:column;gap:3px;max-height:200px;overflow-y:auto;
-  border:1px solid var(--lego-line);border-radius:6px;background:rgba(0,0,0,0.35);padding:6px}
-.lego-ins-bind-item{display:flex;align-items:center;justify-content:space-between;gap:5px;padding:7px 10px;
-  border-radius:5px;cursor:pointer;font-size:10px;color:var(--lego-text);transition:all .12s}
-.lego-ins-bind-item:hover{background:rgba(59,130,246,0.2);color:#fff}
-.lego-ins-bind-item.selected{background:var(--lego-accent);color:#fff;font-weight:600}
+
 .lego-ins-footer{display:flex;justify-content:flex-end;gap:6px;padding:5px 8px;
   border-top:1px solid var(--lego-line);background:rgba(0,0,0,0.25)}
 `;
@@ -2769,7 +2511,6 @@ export const CSS_FORM = `
   box-shadow: 0 0 0 2px rgba(59,130,246,0.35);
 }
 .lego-pal-item.alt { background: rgba(255,255,255,0.03); }
-.lego-pal-sep { width: 1px; align-self: stretch; background: rgba(255,255,255,0.14); margin: 0 4px; }
 
 /* ── Inspetor de Objetos: janela flutuante, fora do no ── */
 .lego-oi {
@@ -2895,16 +2636,6 @@ export const CSS_FORM = `
   border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; box-sizing: border-box;
 }
 .lego-ghost-field.tall { height: 100%; align-items: flex-start; padding-top: 6px; }
-.lego-ghost-media {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  min-height: 46px; border-radius: 6px;
-  background: rgba(0,0,0,0.3); border: 1px dashed rgba(255,255,255,0.18);
-}
-.lego-unbound-tag {
-  position: absolute; left: 5px; top: 50%; transform: translateY(-50%); display: flex;
-  color: #fbbf24; opacity: .7; cursor: pointer; pointer-events: auto;
-}
-.lego-unbound-tag:hover { opacity: 1; }
 
 .lego-btn.danger { color: #fca5a5; border-color: rgba(239,68,68,0.4); }
 .lego-btn.danger:hover { background: rgba(239,68,68,0.18); }

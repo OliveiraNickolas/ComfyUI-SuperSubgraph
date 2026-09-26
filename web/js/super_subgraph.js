@@ -286,6 +286,9 @@ function installFormShortcuts() {
         e.preventDefault();
         return;
       }
+      // Lista de um dropdown aberta: o Esc só fecha a lista (o listener dela
+      // cuida disso), sem limpar a seleção do cartão.
+      if (document.querySelector(".lego-list-pop")) return;
       for (const n of ATTACHED) {
         const st = n.__legoState;
         if (st) {
@@ -552,7 +555,6 @@ function describeWidget(w) {
   return { kind: "text" };
 }
 
-/** Widgets que o cartão nunca deve tocar. */
 /**
  * Widgets "ajudantes" de interface: não vão para a execução e o componente de
  * mídia do cartão já faz o papel deles (botão de upload, player de áudio,
@@ -567,6 +569,7 @@ function isHelperWidget(w) {
   return false;
 }
 
+/** Widgets que o cartão pode ligar (os demais ele nunca toca). */
 function usable(w) {
   if (!w || w.__lego || w.__ssInternal) return false;
   if (isHelperWidget(w)) return false;
@@ -799,7 +802,9 @@ function autoLayout(node) {
     else if (d.kind === "combo" && isAudioCombo(w)) bins.media.push({ ...ctrl, kind: "audio" });
     else if (d.kind === "combo" && isImageCombo(w)) bins.media.push({ ...ctrl, kind: "media" });
     else if (d.kind === "combo" && isModelCombo(w)) bins.models.push(ctrl);
-    else if (d.kind === "toggle" || RE_TOGGLE.test(n)) bins.toggles.push({ ...ctrl, kind: "toggle" });
+    // Pelo nome só vira Toggle o que já tem cara de liga/desliga (combo de 2
+    // opções); um INT "force_offload_blocks" continua número.
+    else if (d.kind === "toggle" || (RE_TOGGLE.test(n) && d.kind === "combo" && valuesOf(w).length === 2)) bins.toggles.push({ ...ctrl, kind: "toggle" });
     else if (RE_SEED.test(n)) bins.sampler.push({ ...ctrl, seed: true });
     else if (RE_CANVAS.test(n)) bins.canvas.push(ctrl);
     else if (RE_SAMPLER.test(n)) bins.sampler.push(ctrl);
@@ -1015,9 +1020,6 @@ const GLYPHS = {
   pencil:
     '<path d="M4 20l1-4.5L15.5 5a2.1 2.1 0 013 3L8 18.5z" fill="none" stroke="currentColor" ' +
     'stroke-width="1.9" stroke-linejoin="round"/>',
-  folder:
-    '<path d="M3 6.5h6l2 2.5h10v9.5a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 18.5z" ' +
-    'fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>',
   // Três pontos: menu.
   more:
     '<circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/>',
@@ -1152,16 +1154,17 @@ function mkToggle(node, w, ctrl, state) {
     } else if (typeof w.value === "number") {
       nextVal = w.value ? 0 : 1;
     } else if (typeof w.value === "string") {
-      const low = w.value.toLowerCase();
-      if (low === "true") nextVal = "false";
-      else if (low === "false") nextVal = "true";
-      else if (low === "yes") nextVal = "no";
-      else if (low === "no") nextVal = "yes";
-      else if (low === "enable" || low === "enabled") nextVal = "disabled";
-      else if (low === "disable" || low === "disabled") nextVal = "enabled";
-      else if (low === "on") nextVal = "off";
-      else if (low === "off") nextVal = "on";
-      else nextVal = !isValOn();
+      // Combo de duas opções: alterna para a OUTRA opção dele (valor sempre válido).
+      const opts = valuesOf(w, node);
+      if (opts.length === 2 && opts.includes(w.value)) {
+        nextVal = opts[0] === w.value ? opts[1] : opts[0];
+      } else {
+        // Mantém a mesma família de palavra: enable↔disable, enabled↔disabled…
+        const low = w.value.toLowerCase();
+        const PAIRS = { true: "false", yes: "no", enable: "disable", enabled: "disabled", on: "off" };
+        const flip = PAIRS[low] ?? Object.keys(PAIRS).find((k) => PAIRS[k] === low);
+        nextVal = flip ?? !isValOn();
+      }
     } else {
       nextVal = !w.value;
     }
@@ -1180,7 +1183,7 @@ function mkSlider(node, w, ctrl, state) {
   if (!ctrl?.step && !Number.isFinite(o?.step) && !Number.isFinite(o?.step2)) {
     step = (max - min <= 1) ? 0.01 : ((max - min <= 10) ? 0.1 : 1);
   }
-  const isInt = isIntWidget(o, step);
+  const isInt = isIntWidget(o, step, w);
   const dec = isInt
     ? 0
     : Number.isFinite(o.precision)
@@ -1307,7 +1310,7 @@ function seedModeButton(node, w, state) {
 function mkNumber(node, w, ctrl, state) {
   const o = w.options || {};
   const step = ctrl.step ?? realStep(o);
-  const isInt = isIntWidget(o, step);
+  const isInt = isIntWidget(o, step, w);
 
   const wrap = el("div", "lego-slider");
   const num = el("input", "lego-in");
@@ -1463,8 +1466,10 @@ function mkText(node, w, ctrl, state, multiline) {
 
   inp.addEventListener("pointerdown", eatPointer);
   inp.addEventListener("keydown", (e) => e.stopPropagation());
-  inp.addEventListener("change", () => writeWidget(node, w, inp.value));
-  inp.addEventListener("blur", () => writeWidget(node, w, inp.value));
+  // change e blur disparam juntos: grava uma vez, e só se o texto mudou.
+  const commit = () => { if (inp.value !== String(w.value ?? "")) writeWidget(node, w, inp.value); };
+  inp.addEventListener("change", commit);
+  inp.addEventListener("blur", commit);
   state.watch(w, paint);
   return inp;
 }
@@ -1484,9 +1489,8 @@ function mkButton(node, w, ctrl) {
   b.addEventListener("pointerdown", (e) => {
     eatPointer(e);
     b.classList.add("lego-btn-clicked");
-  });
-  window.addEventListener("pointerup", () => {
-    b.classList.remove("lego-btn-clicked");
+    // Só enquanto pressionado: um listener fixo na window vazava a cada redesenho.
+    window.addEventListener("pointerup", () => b.classList.remove("lego-btn-clicked"), { once: true });
   });
   b.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -1813,6 +1817,16 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
   ph.style.justifyContent = "center";
   ph.innerHTML = `<span class="lego-glyph-wrap" style="opacity:0.4;">${glyph(mediaGlyph, 30)}</span><span class="lego-media-ph-hint" style="font-size:11px;opacity:0.6;margin-top:6px;font-weight:500;">Drop or click to load ${mediaTypeName}</span>`;
 
+  // Erro ao carregar (arquivo apagado, 404) mostra o placeholder DESTE
+  // desenho. Definido aqui, a cada render: o elemento vem do cache e o
+  // handler antigo apontava para o placeholder de um cartão já descartado.
+  const mediaEl = isVideo ? video : isAudio ? audioEl : img;
+  const shownEl = isAudio ? audioWrap : mediaEl;
+  mediaEl.onerror = () => {
+    shownEl.style.display = "none";
+    ph.style.display = "flex";
+  };
+
   if (hasInitialVal) {
     ph.style.display = "none";
     if (isVideo) {
@@ -1892,26 +1906,14 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
         if (!sameUrl(video.src, url)) video.src = url;
         video.style.display = "block";
         ph.style.display = "none";
-        video.onerror = () => {
-          video.style.display = "none";
-          ph.style.display = "flex";
-        };
       } else if (isAudio) {
         if (!sameUrl(audioEl.src, url)) audioEl.src = url;
         audioWrap.style.display = "flex";
         ph.style.display = "none";
-        audioEl.onerror = () => {
-          audioWrap.style.display = "none";
-          ph.style.display = "flex";
-        };
       } else {
         if (!sameUrl(img.src, url)) img.src = url;
         img.style.display = "block";
         ph.style.display = "none";
-        img.onerror = () => {
-          img.style.display = "none";
-          ph.style.display = "flex";
-        };
       }
     } else {
       lastLoadedUrl = "";
@@ -1979,9 +1981,8 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
     if (!file) return;
     try {
       uploadBtn.textContent = "⏳";
-      const uploadedName = await uploadTo(node, w, file);
+      await uploadTo(node, w, file);
       populateOptions();
-      if (w) sel.value = uploadedName;
       updateThumb();
     } catch (err) {
       console.error(LOG, "Upload failed", err);
@@ -2023,9 +2024,8 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
     if (!isVideo && !isAudio && !(file.type.startsWith("image/") || RE_IMAGE.test(file.name))) return;
     try {
       uploadBtn.textContent = "⏳";
-      const uploadedName = await uploadTo(node, w, file);
+      await uploadTo(node, w, file);
       populateOptions();
-      if (w) sel.value = uploadedName;
       updateThumb();
     } catch (err) {
       console.error(LOG, "Upload failed", err);
@@ -2069,6 +2069,7 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
         }
       });
       ro.observe(parentRow);
+      state?.observers?.push(ro);   // desligado no próximo refresh
     } else {
       checkHeight();
     }
@@ -2077,9 +2078,6 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
   }
 
   if (w && state?.watch) {
-    if (state.seen && !state.seen.has(w)) {
-      state.seen.set(w, w.value);
-    }
     state.watch(w, () => {
       populateOptions();
       updateThumb();
@@ -2089,12 +2087,10 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
   return box;
 }
 
-/* mkMediaSlot foi removida: 59 linhas definidas e nunca chamadas — quem
-   desenha mídia é mkMediaControl. */
 function mkStepNumber(node, w, ctrl, state) {
   const o = w?.options || {};
   const step = ctrl.step ?? realStep(o);
-  const isInt = isIntWidget(o, step);
+  const isInt = isIntWidget(o, step, w);
   const min = Number.isFinite(o.min) ? o.min : -Infinity;
   const max = Number.isFinite(o.max) ? o.max : Infinity;
 
@@ -2477,7 +2473,7 @@ function getComponentMinDimensions(ctrl) {
   if (k === "hdivider") return { minW: 16, minH: 16 };
   if (k === "vdivider") return { minW: 16, minH: 16 };
   if (k === "label") return { minW: 32, minH: 16 };
-  if (k === "media" || k === "video" || k === "audio") return { minW: 140, minH: 64 };
+  if (isMediaKind(k)) return { minW: 140, minH: 64 };
   if (k === "textarea") return { minW: 80, minH: 48 };
   if (k === "slider") return { minW: 72, minH: 28 };
   if (k === "toggle") return { minW: 36, minH: 24 };
@@ -2496,7 +2492,7 @@ function addItemToSegment(host, state, segmentCtrl, itemDef) {
   if (!Array.isArray(segmentCtrl.items)) segmentCtrl.items = [];
   const layout = host.properties[PROP];
   const tool = toolByKind(itemDef.kind);
-  const is2D = itemDef.kind === "textarea" || itemDef.kind === "media" || itemDef.kind === "video" || itemDef.kind === "audio" || itemDef.kind === "preview_override";
+  const is2D = itemDef.kind === "textarea" || isMediaKind(itemDef.kind) || itemDef.kind === "preview_override";
   const newItem = {
     kind: itemDef.kind,
     label: itemDef.label || itemDef.name || tool.label,
@@ -2523,9 +2519,6 @@ function addItemToSegment(host, state, segmentCtrl, itemDef) {
   return newItem;
 }
 
-/**
- * Builds a Custom Segment component (containing multiple inline sub-controls).
- */
 /* ══════════════════════════════════════════════════════════════════════════
    Arraste entre grupos e zonas
 
@@ -2535,8 +2528,19 @@ function addItemToSegment(host, state, segmentCtrl, itemDef) {
    procurar no layout.
    ══════════════════════════════════════════════════════════════════════════ */
 
-const isContainerKind = (k) => k === "segment" || k === "vsegment" || k === "group";
-const is2DKind = (k) => k === "textarea" || k === "media" || k === "video" || k === "audio" || k === "preview_override" || isOutputKind(k);
+/**
+ * Pixels de tela por pixel do cartão: zoom do canvas × escala da UI do cartão
+ * (o root usa `zoom = layout.scale`). Converte clientX/Y em x/y do layout.
+ */
+function domScale(host) {
+  return (app?.canvas?.ds?.scale || 1) * (host?.properties?.[PROP]?.scale || 1);
+}
+
+/** Componente de mídia de ENTRADA (imagem, vídeo ou áudio carregado). */
+function isMediaKind(k) {
+  return k === "media" || k === "video" || k === "audio";
+}
+const is2DKind = (k) => k === "textarea" || isMediaKind(k) || k === "preview_override" || isOutputKind(k);
 
 /**
  * O navegador dispara um `click` logo depois de soltar um arraste; ele não
@@ -2861,7 +2865,7 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       itemWrap.style.width = `${Math.max(itemMinW, item.w)}px`;
       itemWrap.classList.add("has-custom-w");
     }
-    const isMediaItem = item.kind === "media" || item.kind === "video" || item.kind === "audio";
+    const isMediaItem = isMediaKind(item.kind);
     const defaultH = isOutputItem ? (item.kind === "outaudio" ? 96 : 160) :
       (item.kind === "textarea") ? 80 :
       (isMediaItem ? 120 :
@@ -2983,17 +2987,15 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
         itemWrap.classList.add("resizing");
 
         const undoSnapshot = JSON.stringify(host.properties[PROP] || {});
-
-        document.querySelectorAll(".lego-segment-item.selected").forEach((el) => el.classList.remove("selected"));
-        document.querySelectorAll(".lego-row.selected").forEach((el) => el.classList.remove("selected"));
-        itemWrap.classList.add("selected");
         selectComponent(host, state, item, ctrl.items, false);
+        // Altura só é redimensionável em grupo vertical ou item 2D (mídia, texto longo, output…).
+        const resizesH = isVertical || is2DKind(item.kind) || item.kind === "vdivider";
 
         const startClientX = e.clientX;
         const startClientY = e.clientY;
         const origW = itemWrap.offsetWidth;
         const origH = itemWrap.offsetHeight;
-        const curScale = app?.canvas?.ds?.scale || 1;
+        const curScale = domScale(host);
 
         let finalW = origW;
         let finalH = origH;
@@ -3010,7 +3012,7 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
           itemWrap.style.width = `${finalW}px`;
           itemWrap.classList.add("has-custom-w");
 
-          if (isVertical || item.kind === "textarea" || item.kind === "media" || item.kind === "video" || item.kind === "audio" || item.kind === "vdivider") {
+          if (resizesH) {
             finalH = Math.max(minH, Math.round((origH + deltaY) / 16) * 16);
             itemWrap.style.height = `${finalH}px`;
             itemWrap.classList.add("has-custom-h");
@@ -3028,13 +3030,11 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
           window.removeEventListener("mousemove", onMove, true);
           window.removeEventListener("mouseup", onUp, true);
 
+          // Clique sem arrastar não fixa o tamanho (o item segue flexível).
+          if (finalW === origW && finalH === origH) { state.refresh(); return; }
           item.w = finalW;
-          if (isVertical || item.kind === "textarea" || item.kind === "media" || item.kind === "video" || item.kind === "audio" || item.kind === "vdivider") {
-            item.h = finalH;
-          }
-          if (finalW !== origW || finalH !== origH) {
-            pushUndoSnapshot(host, undoSnapshot);
-          }
+          if (resizesH) item.h = finalH;
+          pushUndoSnapshot(host, undoSnapshot);
           state.refresh();
         };
 
@@ -3063,8 +3063,9 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       textSpan.style.cssText = "font-size:12px; font-weight:600; color:var(--lego-fg, #e2e8f0); user-select:none; display:flex; width:100%;";
       applyLabelStyle(textSpan, item);
       if (state?.edit) {
-        textSpan.title = "Click to edit text";
-        itemWrap.addEventListener("click", (e) => {
+        // Duplo clique (como o rótulo solto): o clique simples só seleciona.
+        textSpan.title = "Double-click to edit text";
+        itemWrap.addEventListener("dblclick", (e) => {
           if (e.target.closest(".lego-item-del-btn") || e.target.closest(".lego-resizer-corner")) return;
           e.stopPropagation();
           const val = prompt("Edit label text:", item.text || item.label || "Label");
@@ -3147,7 +3148,9 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
         }
       }
 
-      if (item.kind === "toggle") {
+      if (item.kind === "preview_override" || w?.type === "kj_preview") {
+        itemWrap.append(mkPreviewOverride(node, w, item, state));
+      } else if (item.kind === "toggle") {
         itemWrap.append(mkToggle(node, w, item, state));
       } else if (item.kind === "combo") {
         const combo = mkCombo(node, w, item, state);
@@ -3155,7 +3158,8 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
         combo.style.minWidth = "80px";
         itemWrap.append(combo);
       } else if (item.kind === "number") {
-        itemWrap.append(mkStepNumber(node, w, item, state));
+        // Seed mantém o controle de seed também dentro do grupo (como solto).
+        itemWrap.append(item.seed ? mkNumber(node, w, item, state) : mkStepNumber(node, w, item, state));
       } else if (item.kind === "slider") {
         itemWrap.append(mkSlider(node, w, item, state));
       } else if (item.kind === "textarea") {
@@ -3274,31 +3278,32 @@ function controlKindFor(ctrl, w) {
 function mkPreviewOverride(node, w, ctrl, state) {
   const box = el("div", "lego-preview-override-box");
   box.style.cssText = "width:100%;height:100%;min-height:120px;display:flex;flex-direction:column;position:relative;overflow:hidden;border-radius:6px;";
-  if (w?.element) {
-    if (!w.__origParent && w.element.parentElement) {
-      w.__origParent = w.element.parentElement;
-    }
-    box.append(w.element);
+  const mount = () => {
+    const cur = w.element.parentElement;
+    // "Casa" original = o container do nó no canvas, nunca o cartão de um
+    // desenho anterior (senão o enterSuper devolveria o preview para lá).
+    if (!w.__origParent && cur && !cur.closest(".lego-card")) w.__origParent = cur;
+    box.prepend(w.element);
     w.element.style.width = "100%";
     w.element.style.height = "100%";
     w.element.style.minHeight = "120px";
+  };
+  if (w?.element) {
+    mount();
   } else {
+    // O kjnodes cria o elemento depois: espera um pouco, mas para se este
+    // cartão já foi redesenhado (a caixa saiu da página).
     const ph = el("div", "lego-empty", "Preview Override (KJ)");
     box.append(ph);
+    let tries = 0;
     const checkTimer = setInterval(() => {
-      if (w?.element) {
-        clearInterval(checkTimer);
-        ph.remove();
-        if (!w.__origParent && w.element.parentElement) {
-          w.__origParent = w.element.parentElement;
-        }
-        box.prepend(w.element);
-        w.element.style.width = "100%";
-        w.element.style.height = "100%";
-        w.element.style.minHeight = "120px";
-      }
+      tries++;
+      if (tries > 40 || (tries > 2 && !box.isConnected)) return clearInterval(checkTimer);
+      if (!w?.element) return;
+      clearInterval(checkTimer);
+      ph.remove();
+      mount();
     }, 100);
-    setTimeout(() => clearInterval(checkTimer), 4000);
   }
   if (ctrl?.hidePreview) {
     box.classList.add("is-censored");
@@ -3333,7 +3338,7 @@ function buildBare(host, ctrl, state) {
   if (kind === "slider") return mkSlider(node, w, ctrl, state);
   if (kind === "number") return mkNumber(node, w, ctrl, state);
   if (kind === "combo") return mkCombo(node, w, ctrl, state);
-  if (kind === "media" || kind === "video" || kind === "audio") return mkMediaControl(node, w, ctrl, state, null, kind);
+  if (isMediaKind(kind)) return mkMediaControl(node, w, ctrl, state, null, kind);
   if (kind === "textarea") return mkText(node, w, ctrl, state, true);
   if (kind === "button") return mkButton(node, w, ctrl);
   return mkText(node, w, ctrl, state, false);
@@ -3421,9 +3426,8 @@ function ghostControl(kind, ctrl) {
     b.addEventListener("pointerdown", (e) => {
       eatPointer(e);
       b.classList.add("lego-btn-clicked");
-    });
-    window.addEventListener("pointerup", () => {
-      b.classList.remove("lego-btn-clicked");
+      // Só enquanto pressionado: um listener fixo na window vazava a cada redesenho.
+      window.addEventListener("pointerup", () => b.classList.remove("lego-btn-clicked"), { once: true });
     });
     b.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -3448,7 +3452,7 @@ function ghostControl(kind, ctrl) {
     ch.innerHTML = glyph("chevron", 12);
     b.append(el("span", "lego-ghost-fill"), ch);
     box.append(b);
-  } else if (kind === "media" || kind === "video" || kind === "audio") {
+  } else if (isMediaKind(kind)) {
     const isVideo = kind === "video";
     const isAudio = kind === "audio";
     const mediaTypeName = isVideo ? "video" : isAudio ? "audio" : "image";
@@ -3571,7 +3575,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   const isGroup = ctrl.kind === "group" || isSegmentLike;
   const isOutput = isOutputKind(ctrl.kind);
   const hit = (isGroup || isCosmetic || isOutput) ? null : resolveBind(host, ctrl.bind);
-  const isMediaLike = (k) => k === "media" || k === "video" || k === "audio" || k === "preview_override";
+  const isMediaLike = (k) => isMediaKind(k) || k === "preview_override";
   const isHitMedia = isImageCombo(hit?.widget) || isVideoCombo(hit?.widget) || isAudioCombo(hit?.widget) || hit?.widget?.type === "kj_preview";
   const isMedia = isMediaLike(ctrl.kind) || isHitMedia;
   const wide = !isGroup && !isCosmetic && (ctrl.kind === "textarea" || isMedia);
@@ -3791,9 +3795,8 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   let control;
   if (kind === "preview_override" || w?.type === "kj_preview") {
     control = mkPreviewOverride(node, w, ctrl, state);
-    row.classList.add("is-preview-override");
   }
-  else if (kind === "media" || kind === "video" || kind === "audio") {
+  else if (isMediaKind(kind)) {
     control = mkMediaControl(node, w, ctrl, state, row, kind);
     row.style.minHeight = "64px";
   }
@@ -4171,10 +4174,12 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       }
 
       const container = parentContainer || row.parentElement || document.querySelector(".lego-sec-controls") || document.body;
+      const containerMinH0 = container.style.minHeight;
+      const containerH0 = container.style.height;
       const undoSnapshot = JSON.stringify(host.properties[PROP] || {});
       const startClientX = e.clientX;
       const startClientY = e.clientY;
-      const curScale = app?.canvas?.ds?.scale || 1;
+      const curScale = domScale(host);
       let isDragging = false;
       wasDragged = false;
 
@@ -4428,6 +4433,11 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
             container.style.minHeight = `${maxMovingBottom}px`;
             container.style.height = `${maxMovingBottom}px`;
           }
+        } else if (!pointerInside) {
+          // Ponteiro saiu: desfaz o crescimento provisório, senão as zonas de
+          // baixo ficam deslocadas e fogem do ponteiro que vai até elas.
+          container.style.minHeight = containerMinH0;
+          container.style.height = containerH0;
         }
       };
 
@@ -4563,7 +4573,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       const origH = typeof ctrl.h === "number" ? ctrl.h : (row.offsetHeight || 46);
       const ctrlX = typeof ctrl.x === "number" ? ctrl.x : 0;
       const ctrlY = typeof ctrl.y === "number" ? ctrl.y : 0;
-      const curScale = app?.canvas?.ds?.scale || 1;
+      const curScale = domScale(host);
 
       // Alvos para alinhamento inteligente (todos os outros elementos do canvas)
       const targetCtrls = (sectionCtrls || []).filter((c) => {
@@ -4801,10 +4811,10 @@ function widgetLabel(w) {
 /** Componente solto para um único parâmetro de um nó. */
 function singleCtrlFor(host, node, w) {
   const kind = detectMediaKind(w, describeWidget(w), node);
-  const media = kind === "media" || kind === "video" || kind === "audio" || kind === "preview_override";
+  const media = isMediaKind(kind) || kind === "preview_override";
   const c = {
     kind,
-    bind: node === host ? w.name : `${node.id}/${w.name}`,
+    bind: bindKey(host, node, w),
     label: widgetLabel(w),
     w: kind === "preview_override" ? 320 : media ? 288 : kind === "textarea" ? 320 : 256,
     h: kind === "preview_override" ? 240 : media ? 144 : kind === "textarea" ? 96 : 32,
@@ -4822,12 +4832,12 @@ function wholeNodeItems(host, node, onlyNames) {
     if (mp && !onlyNames && w !== mp.media && !mp.rest.includes(w)) continue;   // ajudantes do nó de mídia
     if (mp && w === mp.media) {
       // A mídia se identifica pelo arquivo: entra sem Label na frente.
-      items.push({ kind: detectMediaKind(w, describeWidget(w), node), bind: node === host ? w.name : `${node.id}/${w.name}`, label: widgetLabel(w), labelPos: "none", h: 120 });
+      items.push({ kind: detectMediaKind(w, describeWidget(w), node), bind: bindKey(host, node, w), label: widgetLabel(w), labelPos: "none", h: 120 });
       continue;
     }
     let kind = detectMediaKind(w, describeWidget(w), node);
     if (kind === "preview_override") {
-      items.push({ kind, bind: node === host ? w.name : `${node.id}/${w.name}`, label: widgetLabel(w), labelPos: "none", w: 320, h: 240 });
+      items.push({ kind, bind: bindKey(host, node, w), label: widgetLabel(w), labelPos: "none", w: 320, h: 240 });
       continue;
     }
     // Número vira Stepper: é o controle compacto que cabe numa linha de grupo.
@@ -4835,7 +4845,7 @@ function wholeNodeItems(host, node, onlyNames) {
     // O nome que o usuário deu ao parâmetro (widget renomeado/promovido)
     // vale mais que o nome técnico.
     const text = widgetLabel(w);
-    const control = { kind, bind: node === host ? w.name : `${node.id}/${w.name}`, label: text, labelPos: "none" };
+    const control = { kind, bind: bindKey(host, node, w), label: text, labelPos: "none" };
     if (is2DKind(kind)) control.h = kind === "textarea" ? 80 : 120;
     // O botão já escreve o próprio nome; os demais ganham um Label na frente.
     if (kind !== "button") items.push({ kind: "label", text, label: text });
@@ -4858,7 +4868,7 @@ function mediaNodeParts(node) {
   const ws = (node.widgets || []).filter(usable);
   const media = ws.find((w) => {
     const k = detectMediaKind(w, describeWidget(w), node);
-    return k === "media" || k === "video" || k === "audio";
+    return isMediaKind(k);
   });
   if (!media) return null;
   const rest = ws.filter((w) => w !== media && w.type !== "button" && w.options?.serialize !== false);
@@ -5031,84 +5041,13 @@ function listBindableTargets(host) {
   return list;
 }
 
-/** Lista widgets ainda não usados no cartão — deste nó e dos demais do grafo. */
-function unboundWidgets(host, layout) {
-  const used = new Set();
-  for (const t of layout.tabs || []) {
-    for (const s of t.sections || []) {
-      for (const c of s.controls || []) {
-        if (c.bind) used.add(c.bind);
-        if (c.items) {
-          for (const it of c.items) if (it.bind) used.add(it.bind);
-        }
-      }
-      if (Array.isArray(s.tabs)) {
-        for (const st of s.tabs) {
-          for (const c of st.controls || []) {
-            if (c.bind) used.add(c.bind);
-            if (c.items) {
-              for (const it of c.items) if (it.bind) used.add(it.bind);
-            }
-          }
-        }
-      }
-    }
-  }
-  const all = listBindableTargets(host);
-  return all.filter((it) => !used.has(it.bind));
-}
-
-/** Converte largura (porcentagem granular ou px) para value CSS com gap flexbox exato. */
-/** Funções de Grid Modular de 12 Colunas (Estilo Widgets iOS) */
-function widthToSpan(w) {
-  if (!w) return 12;
-  if (typeof w === "number") return Math.max(1, Math.min(12, Math.round(w)));
-  if (typeof w === "string") {
-    if (w.includes("col")) {
-      const n = parseInt(w);
-      if (!isNaN(n)) return Math.max(1, Math.min(12, n));
-    }
-    if (w.endsWith("%")) {
-      const pct = parseFloat(w);
-      if (pct >= 95) return 12;
-      if (pct <= 20) return 2;
-      return Math.max(1, Math.min(12, Math.round((pct / 100) * 12)));
-    }
-  }
-  return 12;
-}
-
-function spanToPercent(span) {
-  if (span >= 12) return "100%";
-  if (span === 6) return "50%";
-  if (span === 4) return "33.3%";
-  if (span === 3) return "25%";
-  if (span === 8) return "66.7%";
-  if (span === 9) return "75%";
-  return `${Math.round((span / 12) * 100)}%`;
-}
-
-function spanToBadgeLabel(span) {
-  return `${span} col (${spanToPercent(span)})`;
-}
-
+/** Converte largura (porcentagem ou px) em valor CSS, descontando o gap do flexbox. */
 function widthToCss(w) {
   if (!w || w === "100%") return "100%";
   if (typeof w === "string" && w.endsWith("%")) {
     const pct = parseFloat(w);
     if (pct >= 100) return "100%";
     const gapOffset = Math.round((1 - pct / 100) * 12);
-    return `calc(${pct}% - ${gapOffset}px)`;
-  }
-  return w;
-}
-
-function ctrlWidthToCss(w) {
-  if (!w || w === "100%") return "100%";
-  if (typeof w === "string" && w.endsWith("%")) {
-    const pct = parseFloat(w);
-    if (pct >= 100) return "100%";
-    const gapOffset = Math.max(1, Math.round(8 * (1 - pct / 100)));
     return `calc(${pct}% - ${gapOffset}px)`;
   }
   return w;
@@ -5213,7 +5152,7 @@ function sectionRequiredWidth(s) {
       if (c.kind === "vdivider") w = 16;
       else if (c.kind === "label") w = 160;
       else if (c.kind === "preview_override") w = 320;
-      else if (c.kind === "media" || c.kind === "video" || c.kind === "audio") w = 288;
+      else if (isMediaKind(c.kind)) w = 288;
       else if (typeof isOutputKind === "function" && isOutputKind(c.kind)) w = 320;
       else w = 256;
     }
@@ -5235,7 +5174,7 @@ function sectionRequiredHeight(s) {
   const checkItem = (c) => {
     if (!c) return;
     const y = typeof c.y === "number" ? c.y : 16;
-    const isM = (c.kind === "media" || c.kind === "video" || c.kind === "audio" || c.kind === "preview_override");
+    const isM = (isMediaKind(c.kind) || c.kind === "preview_override");
     let h = typeof c.h === "number" ? c.h : (c.kind === "preview_override" ? 240 : isM ? 144 : (c.kind === "textarea" ? 96 : 46));
     maxY = Math.max(maxY, y + h);
   };
@@ -5757,11 +5696,9 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
 
   function onCanvasPointerDown(e) {
     if (e.target.closest(".lego-picker-hud") || e.target.closest(".lego-node-picker-popup")) return;
-    if (multi) {
-      // Só o que está no canvas (ou num nó dele): menus e painéis seguem livres.
-      const onCanvas = e.target === canvas.canvas || !!e.target.closest?.(".dom-widget, [data-node-id], .lg-node");
-      if (!onCanvas || e.button !== 0) return;
-    }
+    // Só o botão esquerdo no canvas (ou num nó dele): menus e painéis seguem livres.
+    const onCanvas = e.target === canvas.canvas || !!e.target.closest?.(".dom-widget, [data-node-id], .lg-node");
+    if (!onCanvas || e.button !== 0) return;
 
     const hitNode = getNodeAtEvent(canvas, e);
     if (!hitNode) return; // Clicou no fundo do canvas: permite pan/zoom nativo!
@@ -6130,7 +6067,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
   targetPickerBtn.type = "button";
   targetPickerBtn.innerHTML = `${glyph("target", 16)}<span>Target Picker</span>`;
   targetPickerBtn.title = "Target Picker: Pick a node parameter directly on the workflow canvas";
-  targetPickerBtn.addEventListener("click", runTargetPicker);
+  targetPickerBtn.addEventListener("click", () => runTargetPicker());
 
   const closeBtn = glyphBtn("lego-comfy-close-btn", "close", 15);
   closeBtn.title = "Close dialog (Esc)";
@@ -6243,7 +6180,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
     const sidePicker = el("div", "lego-sidebar-target-picker-btn");
     sidePicker.innerHTML = `${glyph("target", 15)}<span>Target Picker</span>`;
     sidePicker.title = "Target Picker: Pick a node parameter directly on the workflow canvas";
-    sidePicker.addEventListener("click", runTargetPicker);
+    sidePicker.addEventListener("click", () => runTargetPicker());
     sidebar.append(sidePicker);
 
     // 1. Botão 'Most relevant' no topo da sidebar
@@ -6381,7 +6318,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
           const isInput = t.kind === "text" || t.kind === "textarea" || t.kind === "slider" || t.kind === "number" || t.kind === "toggle" || t.kind === "combo";
           if (!isInput) return false;
         } else if (activeFilter === "media") {
-          const isMed = t.kind === "media" || t.kind === "video" || t.kind === "audio";
+          const isMed = isMediaKind(t.kind);
           if (!isMed) return false;
         } else if (activeFilter === "output") {
           if (!isOutputKind(t.kind)) return false;
@@ -6417,7 +6354,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
         const isInput = t.kind === "text" || t.kind === "textarea" || t.kind === "slider" || t.kind === "number" || t.kind === "toggle" || t.kind === "combo";
         if (!isInput) return false;
       } else if (activeFilter === "media") {
-        const isMed = t.kind === "media" || t.kind === "video" || t.kind === "audio";
+        const isMed = isMediaKind(t.kind);
         if (!isMed) return false;
       } else if (activeFilter === "actions") {
         if (t.kind !== "button") return false;
@@ -7112,7 +7049,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
     c.bind = selectedTarget.bind;
     c.label = selectedTarget.label || prettify(selectedTarget.name);
     c.kind = selectedTarget.kind;
-    const isTargetMedia = (selectedTarget.kind === "media" || selectedTarget.kind === "video" || selectedTarget.kind === "audio");
+    const isTargetMedia = isMediaKind(selectedTarget.kind);
 
     if (isNew) {
       // Tamanho padrão só para quem está nascendo. Num componente existente,
@@ -8310,12 +8247,14 @@ function findSelected(layout, state) {
 function selectComponent(host, state, ctrl, list, openInspectorToo, multi = false) {
   const layout = host.properties[PROP];
   if (!state.selectedNames) state.selectedNames = new Set();
+  // Só o cartão deste nó: nomes de componente se repetem entre nós diferentes.
+  const scope = host.__legoHost || document;
 
   if (!ctrl) {
     state.selectedNames.clear();
     state.selectedName = null;
-    document.querySelectorAll(".lego-row.selected").forEach((r) => r.classList.remove("selected"));
-    document.querySelectorAll(".lego-segment-item.selected").forEach((r) => r.classList.remove("selected"));
+    scope.querySelectorAll(".lego-row.selected").forEach((r) => r.classList.remove("selected"));
+    scope.querySelectorAll(".lego-segment-item.selected").forEach((r) => r.classList.remove("selected"));
   } else {
     const name = ensureComponentName(layout, ctrl);
     if (multi) {
@@ -8332,7 +8271,7 @@ function selectComponent(host, state, ctrl, list, openInspectorToo, multi = fals
     }
 
     // Atualiza marcação visual no DOM
-    document.querySelectorAll(".lego-row").forEach((r) => {
+    scope.querySelectorAll(".lego-row").forEach((r) => {
       const rName = r.dataset.name;
       if (rName && state.selectedNames.has(rName)) {
         r.classList.add("selected");
@@ -8340,7 +8279,7 @@ function selectComponent(host, state, ctrl, list, openInspectorToo, multi = fals
         r.classList.remove("selected");
       }
     });
-    document.querySelectorAll(".lego-segment-item").forEach((it) => {
+    scope.querySelectorAll(".lego-segment-item").forEach((it) => {
       const itName = it.dataset.name || it.dataset.itemName;
       if (itName && state.selectedNames.has(itName)) {
         it.classList.add("selected");
@@ -8537,9 +8476,48 @@ function alignInspectorToTarget(host, state) {
   }
 }
 
+/** Apaga a aba `i` mantendo aberta a que estava aberta (ou a vizinha, se era ela). */
+function removeTabAt(owner, tabs, i) {
+  tabs.splice(i, 1);
+  const a = owner.activeTab || 0;
+  if (a > i || a >= tabs.length) owner.activeTab = Math.max(0, a - 1);
+}
+
+/** Pergunta o nome e cria uma aba nova (com uma zona de duas sub-abas); true se criou. */
+function addTab(layout, tabs) {
+  const v = prompt("New tab name:", `Tab ${tabs.length + 1}`);
+  if (!v) return false;
+  tabs.push({
+    name: v,
+    sections: [{
+      header: v.toUpperCase(),
+      width: "100%",
+      activeTab: 0,
+      tabs: [
+        { name: "Tab 1", controls: [] },
+        { name: "Tab 2", controls: [] }
+      ]
+    }]
+  });
+  layout.activeTab = tabs.length - 1;
+  return true;
+}
+
+/** Pergunta o nome e cria uma sub-aba nova na zona `s`; true se criou. */
+function addSubTabTo(s) {
+  const v = prompt("New sub-tab name:", `Tab ${s.tabs.length + 1}`);
+  if (!v) return false;
+  s.tabs.push({ name: v, controls: [] });
+  s.activeTab = s.tabs.length - 1;
+  return true;
+}
+
 /** A janela flutuante. Some quando não há nada selecionado ou fora da edição. */
 function renderObjectInspector(host, state, force) {
   renderAlignBars(host, state);
+  // O Inspetor é um só: o refresh de OUTRO cartão não pode fechá-lo nem
+  // trocar o conteúdo — só um pedido explícito (`force`) o transfere.
+  if (INSPECTOR && INSPECTOR.__host && INSPECTOR.__host !== host && !force) return;
   const layout = host.properties[PROP];
   if (!state.edit) return closeObjectInspector();
   // Sem `force`, só repinta o que já está aberto: ele nunca aparece sozinho.
@@ -8552,6 +8530,7 @@ function renderObjectInspector(host, state, force) {
     INSPECTOR.addEventListener("wheel", (e) => e.stopPropagation());
     document.body.append(INSPECTOR);
   }
+  INSPECTOR.__host = host;
 
   // Se force for verdadeiro ou se for recém-aberto ou se o usuário não tiver arrastado manualmente,
   // alinha a janela imediatamente ao lado do componente ou nó que a chamou.
@@ -8685,7 +8664,7 @@ function renderObjectInspector(host, state, force) {
 
     const alignRow = el("div", "lego-oi-align-row");
     alignRow.style.display = "grid";
-    alignRow.style.gridTemplateColumns = "repeat(4, 1fr)";
+    alignRow.style.gridTemplateColumns = "repeat(5, 1fr)";
     alignRow.style.gap = "4px";
 
     const mkAlignBtn = (label, title, fn) => {
@@ -8701,15 +8680,6 @@ function renderObjectInspector(host, state, force) {
       return b;
     };
 
-    const getSelCtrls = () => {
-      const res = [];
-      walkControls(layout, (c) => {
-        if (state.selectedNames.has(c.name)) res.push(c);
-      });
-      return res;
-    };
-
-    alignRow.style.gridTemplateColumns = "repeat(5, 1fr)";
     for (const it of ALIGN_OPS) {
       if (!it) continue;
       const [op, title] = it;
@@ -8771,6 +8741,8 @@ function renderObjectInspector(host, state, force) {
     let taken = false;
     walkControls(layout, (c) => { if (c !== ctrl && c.name === clean) taken = true; });
     if (taken) { alert(`A component named ${clean} already exists.`); return; }
+    state.selectedNames?.delete(ctrl.name);
+    state.selectedNames?.add(clean);
     ctrl.name = clean;
     state.selectedName = clean;
     state.refresh();
@@ -8968,7 +8940,7 @@ function renderObjectInspector(host, state, force) {
     }
   }
 
-  const isMediaCtrl = ctrl.kind === "media" || ctrl.kind === "video" || ctrl.kind === "audio" || ctrl.kind === "preview_override";
+  const isMediaCtrl = isMediaKind(ctrl.kind) || ctrl.kind === "preview_override";
   const isVisualMedia = ctrl.kind === "media" || ctrl.kind === "video" || ctrl.kind === "outimage" || ctrl.kind === "outvideo" || ctrl.kind === "preview_override";
   if (isVisualMedia) {
     props.append(propRow("Hide Preview", propToggle(!!ctrl.hidePreview, (v) => {
@@ -9355,8 +9327,7 @@ function buildCard(host, state) {
             isSubTab: false,
             onUpdate: () => state.refresh(),
             onDelete: () => {
-              tabs.splice(i, 1);
-              layout.activeTab = Math.max(0, i - 1);
+              removeTabAt(layout, tabs, i);
               state.refresh();
             }
           });
@@ -9370,8 +9341,7 @@ function buildCard(host, state) {
           delBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             if (confirm(`Delete tab "${t.name}" and its zones?`)) {
-              tabs.splice(i, 1);
-              layout.activeTab = Math.max(0, i - 1);
+              removeTabAt(layout, tabs, i);
               state.refresh();
             }
           });
@@ -9398,8 +9368,7 @@ function buildCard(host, state) {
           isSubTab: false,
           onUpdate: () => state.refresh(),
           onDelete: () => {
-            tabs.splice(i, 1);
-            layout.activeTab = Math.max(0, i - 1);
+            removeTabAt(layout, tabs, i);
             state.refresh();
           }
         });
@@ -9415,27 +9384,11 @@ function buildCard(host, state) {
           isSubTab: false,
           onUpdate: () => state.refresh(),
           onDelete: () => {
-            tabs.splice(i, 1);
-            layout.activeTab = Math.max(0, i - 1);
+            removeTabAt(layout, tabs, i);
             state.refresh();
           },
           onAdd: () => {
-            const v = prompt("New tab name:", `Tab ${tabs.length + 1}`);
-            if (!v) return;
-            tabs.push({
-              name: v,
-              sections: [{
-                header: v.toUpperCase(),
-                width: "100%",
-                activeTab: 0,
-                tabs: [
-                  { name: "Tab 1", controls: [] },
-                  { name: "Tab 2", controls: [] }
-                ]
-              }]
-            });
-            layout.activeTab = tabs.length - 1;
-            state.refresh();
+            if (addTab(layout, tabs)) state.refresh();
           }
         });
       });
@@ -9449,22 +9402,7 @@ function buildCard(host, state) {
       add.addEventListener("pointerdown", eatPointer);
       add.addEventListener("click", (e) => {
         e.stopPropagation();
-        const v = prompt("New tab name:", `Tab ${tabs.length + 1}`);
-        if (!v) return;
-        tabs.push({
-          name: v,
-          sections: [{
-            header: v.toUpperCase(),
-            width: "100%",
-            activeTab: 0,
-            tabs: [
-              { name: "Tab 1", controls: [] },
-              { name: "Tab 2", controls: [] }
-            ]
-          }]
-        });
-        layout.activeTab = tabs.length - 1;
-        state.refresh();
+        if (addTab(layout, tabs)) state.refresh();
       });
       bar.append(add);
     }
@@ -9587,9 +9525,6 @@ function buildCard(host, state) {
               }
             });
           }
-        } else if (state.draggingControl) {
-          e.preventDefault();
-          sec.classList.add("drop-target");
         } else if (state.draggingComponent) {
           e.preventDefault();
           sec.classList.add("drop-target");
@@ -9710,31 +9645,6 @@ function buildCard(host, state) {
           return;
         }
 
-        // 2. Arrastando um COMPONENTE para dentro desta ZONA
-        if (state.draggingControl) {
-          e.preventDefault();
-          const { ctrl: movedCtrl, fromSectionCtrls } = state.draggingControl;
-          state.draggingControl = null;
-
-          const fromIdx = fromSectionCtrls.indexOf(movedCtrl);
-          if (fromIdx >= 0) fromSectionCtrls.splice(fromIdx, 1);
-
-          // Se na seção de origem só restou 1 controle e ele era 50%, restaura para 100%
-          if (fromSectionCtrls.length === 1 && fromSectionCtrls[0].width === "50%") {
-            fromSectionCtrls[0].width = "100%";
-          }
-
-          activeTarget.controls = activeTarget.controls || [];
-          // Ao mover para uma nova seção, se ela estiver vazia ou com controles 100%, expande para 100%
-          if (!activeTarget.controls.length || activeTarget.controls.every(c => !c.width || c.width === "100%")) {
-            movedCtrl.width = "100%";
-          }
-          activeTarget.controls.push(movedCtrl);
-
-          state.refresh();
-          return;
-        }
-
         // 3. Drop de novo componente da Paleta
         if (state.draggingComponent) {
           e.preventDefault();
@@ -9807,7 +9717,7 @@ function buildCard(host, state) {
       h.append(titleSpan);
 
       // Toggle Grade/Lista no modo normal (se tiver imagens/vídeos/áudios na lista ativa)
-      const hasMedia = list.some(c => (c.kind === "media" || c.kind === "video" || c.kind === "audio") || (c.kind === "group" && c.items?.some(it => it.kind === "media" || it.kind === "video" || it.kind === "audio")));
+      const hasMedia = list.some(c => isMediaKind(c.kind) || (c.kind === "group" && c.items?.some(it => isMediaKind(it.kind))));
       if (hasMedia && !state.edit) {
         const gridToggle = glyphBtn(`lego-iconbtn${activeTarget.grid ? " on" : ""}`, "grid", 12);
         gridToggle.title = activeTarget.grid ? "Visualizar em Lista" : "Visualizar em Grade 3×3";
@@ -10159,6 +10069,8 @@ function buildCard(host, state) {
             window.removeEventListener("mousemove", onMoveW, true);
             window.removeEventListener("mouseup", onUpW, true);
 
+            // Clique sem arrastar não fixa a largura (nem grava Undo).
+            if (!ev || Math.abs(ev.clientX - startClientX) < 3) return;
             pushUndo(host);
             if (colEl?.__colEntries) {
               colEl.__colEntries.forEach((ent) => { ent.sec.width = finalW; });
@@ -10286,6 +10198,8 @@ function buildCard(host, state) {
             window.removeEventListener("mousemove", onMoveH, true);
             window.removeEventListener("mouseup", onUpH, true);
 
+            // Clique sem arrastar não fixa a altura: a zona segue crescendo sozinha.
+            if (!ev || Math.abs(ev.clientY - startClientY) < 3) return;
             pushUndo(host);
             s.height = `${finalH}px`;
             state.refresh();
@@ -10365,8 +10279,7 @@ function buildCard(host, state) {
                 isSubTab: true,
                 onUpdate: () => state.refresh(),
                 onDelete: () => {
-                  s.tabs.splice(stIdx, 1);
-                  s.activeTab = Math.max(0, stIdx - 1);
+                  removeTabAt(s, s.tabs, stIdx);
                   state.refresh();
                 }
               });
@@ -10380,8 +10293,7 @@ function buildCard(host, state) {
               delBtn.addEventListener("click", (e) => {
                 e.stopPropagation();
                 if (confirm(`Delete sub-tab "${st.name}" and its components?`)) {
-                  s.tabs.splice(stIdx, 1);
-                  s.activeTab = Math.max(0, stIdx - 1);
+                  removeTabAt(s, s.tabs, stIdx);
                   state.refresh();
                 }
               });
@@ -10408,8 +10320,7 @@ function buildCard(host, state) {
               isSubTab: true,
               onUpdate: () => state.refresh(),
               onDelete: () => {
-                s.tabs.splice(stIdx, 1);
-                s.activeTab = Math.max(0, stIdx - 1);
+                removeTabAt(s, s.tabs, stIdx);
                 state.refresh();
               }
             });
@@ -10425,16 +10336,11 @@ function buildCard(host, state) {
               isSubTab: true,
               onUpdate: () => state.refresh(),
               onDelete: () => {
-                s.tabs.splice(stIdx, 1);
-                s.activeTab = Math.max(0, stIdx - 1);
+                removeTabAt(s, s.tabs, stIdx);
                 state.refresh();
               },
               onAdd: () => {
-                const v = prompt("New sub-tab name:", `Tab ${s.tabs.length + 1}`);
-                if (!v) return;
-                s.tabs.push({ name: v, controls: [] });
-                s.activeTab = s.tabs.length - 1;
-                state.refresh();
+                if (addSubTabTo(s)) state.refresh();
               }
             });
           });
@@ -10449,11 +10355,7 @@ function buildCard(host, state) {
           addSubTab.addEventListener("pointerdown", eatPointer);
           addSubTab.addEventListener("click", (e) => {
             e.stopPropagation();
-            const v = prompt("New sub-tab name:", `Tab ${s.tabs.length + 1}`);
-            if (!v) return;
-            s.tabs.push({ name: v, controls: [] });
-            s.activeTab = s.tabs.length - 1;
-            state.refresh();
+            if (addSubTabTo(s)) state.refresh();
           });
           subBar.append(addSubTab);
         }
@@ -10481,7 +10383,6 @@ function buildCard(host, state) {
       }
 
       // ── ÁREA DE CANVAS 2D DA ZONA (SEM TEXTURA DE BOLINHAS, TOTALMENTE DISCRETO) ──
-      const CTRL_GRID = 16;
       const ctrlsBox = el("div", `lego-sec-controls${state.edit ? " in-edit" : ""}`);
       ctrlsBox.__legoList = list;   // alvo de arraste (ver zoneDropTargetAt)
       ctrlsBox.style.minWidth = "0";
@@ -10490,7 +10391,7 @@ function buildCard(host, state) {
         let maxY = 70;
         for (const item of list) {
           const iy = typeof item.y === "number" ? item.y : 16;
-          const isM = (item.kind === "media" || item.kind === "video" || item.kind === "audio");
+          const isM = isMediaKind(item.kind);
           const ih = typeof item.h === "number" ? item.h : (isM ? 144 : 46);
           maxY = Math.max(maxY, iy + ih + 16);
         }
@@ -10544,7 +10445,7 @@ function buildCard(host, state) {
         // virarem uma grade 3x3 em vez de uma pilha de 9 linhas.
         /** Um grupo que carrega mídia precisa de altura de miniatura, não de linha. */
         const hasMedia = (c) =>
-          (c.kind === "media" || c.kind === "video" || c.kind === "audio") || (c.items || []).some((i) => i.kind === "media" || i.kind === "video" || i.kind === "audio");
+          isMediaKind(c.kind) || (c.items || []).some((i) => isMediaKind(i.kind));
         const autoCols = Math.max(1, Math.round(activeTarget.grid || 1));
         // A coluna sai da largura disponível NA ZONA, não do nó inteiro, evitando estourar em zonas 50%
         const secWStr = s.width || "100%";
@@ -10552,7 +10453,7 @@ function buildCard(host, state) {
         const hostW = host.size?.[0] || MIN_W;
         const autoAvail = Math.max(200, Math.round((hostW - 56) * secPct) - 24);
         const autoColW = autoCols > 1
-          ? Math.max(96, Math.floor((autoAvail - 16 * (autoCols + 1)) / autoCols / CTRL_GRID) * CTRL_GRID)
+          ? Math.max(96, Math.floor((autoAvail - 16 * (autoCols + 1)) / autoCols / GRID) * GRID)
           : (list[0] && hasMedia(list[0]) ? 288 : 256);
         let autoCol = 0;
         let curColY = 16;
@@ -10570,12 +10471,12 @@ function buildCard(host, state) {
               rowH = 0;
             }
           }
-          c.x = Math.max(0, Math.round(c.x / CTRL_GRID) * CTRL_GRID);
-          c.y = Math.max(0, Math.round(c.y / CTRL_GRID) * CTRL_GRID);
+          c.x = Math.max(0, Math.round(c.x / GRID) * GRID);
+          c.y = Math.max(0, Math.round(c.y / GRID) * GRID);
           if (!c.w) c.w = autoCols > 1 ? autoColW : (hasMedia(c) ? 288 : 256);
-          c.w = Math.max(hasMedia(c) ? 160 : 80, Math.round(c.w / CTRL_GRID) * CTRL_GRID);
+          c.w = Math.max(hasMedia(c) ? 160 : 80, Math.round(c.w / GRID) * GRID);
           if (!c.h) c.h = hasMedia(c) ? 144 : (c.kind === "textarea" ? 96 : 46);
-          c.h = Math.max(hasMedia(c) ? 64 : 36, Math.round(c.h / CTRL_GRID) * CTRL_GRID);
+          c.h = Math.max(hasMedia(c) ? 64 : 36, Math.round(c.h / GRID) * GRID);
         });
 
         // Renderiza cada controle no Canvas 2D
@@ -10594,9 +10495,9 @@ function buildCard(host, state) {
           e.stopPropagation();
           e.preventDefault();
           const boxRect = ctrlsBox.getBoundingClientRect();
-          const curScale = app?.canvas?.ds?.scale || 1;
-          const dropX = Math.max(16, Math.round(((e.clientX - boxRect.left) / curScale) / CTRL_GRID) * CTRL_GRID);
-          const dropY = Math.max(16, Math.round(((e.clientY - boxRect.top) / curScale) / CTRL_GRID) * CTRL_GRID);
+          const curScale = domScale(host);
+          const dropX = Math.max(16, Math.round(((e.clientX - boxRect.left) / curScale) / GRID) * GRID);
+          const dropY = Math.max(16, Math.round(((e.clientY - boxRect.top) / curScale) / GRID) * GRID);
           state.edit = true;
           state.refresh();
           openComponentSearchMenu({
@@ -10613,7 +10514,7 @@ function buildCard(host, state) {
       // Suporte a soltar novo componente da paleta diretamente nas coordenadas X, Y desta zona
       if (state.edit) {
         ctrlsBox.addEventListener("dragover", (e) => {
-          if (state.draggingComponent || state.draggingControl) {
+          if (state.draggingComponent) {
             e.preventDefault();
             ctrlsBox.classList.add("over");
           }
@@ -10624,9 +10525,9 @@ function buildCard(host, state) {
         ctrlsBox.addEventListener("drop", (e) => {
           ctrlsBox.classList.remove("over");
           const boxRect = ctrlsBox.getBoundingClientRect();
-          const curScale = app?.canvas?.ds?.scale || 1;
-          const dropX = Math.max(16, Math.round(((e.clientX - boxRect.left) / curScale) / CTRL_GRID) * CTRL_GRID);
-          const dropY = Math.max(16, Math.round(((e.clientY - boxRect.top) / curScale) / CTRL_GRID) * CTRL_GRID);
+          const curScale = domScale(host);
+          const dropX = Math.max(16, Math.round(((e.clientX - boxRect.left) / curScale) / GRID) * GRID);
+          const dropY = Math.max(16, Math.round(((e.clientY - boxRect.top) / curScale) / GRID) * GRID);
 
           if (state.draggingComponent) {
             e.preventDefault();
@@ -10634,19 +10535,6 @@ function buildCard(host, state) {
             const d = state.draggingComponent;
             state.draggingComponent = null;
             dropArmedTool(host, state, activeTarget, dropX, dropY, false, d.kind);
-          } else if (state.draggingControl) {
-            e.preventDefault();
-            e.stopPropagation();
-            const { ctrl: movedCtrl, fromSectionCtrls } = state.draggingControl;
-            state.draggingControl = null;
-
-            const fromIdx = fromSectionCtrls.indexOf(movedCtrl);
-            if (fromIdx >= 0) fromSectionCtrls.splice(fromIdx, 1);
-
-            movedCtrl.x = dropX;
-            movedCtrl.y = dropY;
-            list.push(movedCtrl);
-            state.refresh();
           }
         });
 
@@ -10658,9 +10546,9 @@ function buildCard(host, state) {
           e.preventDefault();
 
           const boxRect = ctrlsBox.getBoundingClientRect();
-          const curScale = app?.canvas?.ds?.scale || 1;
-          const dropX = Math.max(16, Math.round(((e.clientX - boxRect.left) / curScale) / CTRL_GRID) * CTRL_GRID);
-          const dropY = Math.max(16, Math.round(((e.clientY - boxRect.top) / curScale) / CTRL_GRID) * CTRL_GRID);
+          const curScale = domScale(host);
+          const dropX = Math.max(16, Math.round(((e.clientX - boxRect.left) / curScale) / GRID) * GRID);
+          const dropY = Math.max(16, Math.round(((e.clientY - boxRect.top) / curScale) / GRID) * GRID);
 
           openComponentSearchMenu({
             host,
@@ -10693,7 +10581,7 @@ function buildCard(host, state) {
           }
 
           const boxRect = ctrlsBox.getBoundingClientRect();
-          const curScale = app?.canvas?.ds?.scale || 1;
+          const curScale = domScale(host);
           const startX = (e.clientX - boxRect.left) / curScale;
           const startY = (e.clientY - boxRect.top) / curScale;
 
@@ -10785,9 +10673,9 @@ function buildCard(host, state) {
             e.preventDefault();
             e.stopPropagation();
             const boxRect = ctrlsBox.getBoundingClientRect();
-            const sc = app?.canvas?.ds?.scale || 1;
-            const px = Math.max(0, Math.round(((e.clientX - boxRect.left) / sc) / CTRL_GRID) * CTRL_GRID);
-            const py = Math.max(0, Math.round(((e.clientY - boxRect.top) / sc) / CTRL_GRID) * CTRL_GRID);
+            const sc = domScale(host);
+            const px = Math.max(0, Math.round(((e.clientX - boxRect.left) / sc) / GRID) * GRID);
+            const py = Math.max(0, Math.round(((e.clientY - boxRect.top) / sc) / GRID) * GRID);
             dropArmedTool(host, state, activeTarget, px, py, e.shiftKey);
           }
         });
@@ -11011,7 +10899,7 @@ function buildCard(host, state) {
             });
           }
         }
-        if (state.draggingComponent || state.draggingControl) {
+        if (state.draggingComponent) {
           e.preventDefault();
         }
       });
@@ -11026,25 +10914,19 @@ function buildCard(host, state) {
         clearZoneGuides(body);
         if (e.target.closest(".lego-sec")) return; // Deixa o card tratar se o drop foi em cima de um card
 
-        const bodyRect = body.getBoundingClientRect();
-        const curScale = app?.canvas?.ds?.scale || 1;
-        const dropX = Math.max(20, Math.round(((e.clientX - bodyRect.left) / curScale) / GRID) * GRID);
-        const dropY = Math.max(20, Math.round(((e.clientY - bodyRect.top) / curScale) / GRID) * GRID);
-
         if (state.draggingComponent) {
           e.preventDefault();
           const d = state.draggingComponent;
           state.draggingComponent = null;
 
-          const newSec = {
-            header: toolByKind(d.kind).label.toUpperCase(),
-            x: dropX,
-            y: dropY,
-            w: 340,
-            controls: []
-          };
+          const before = JSON.stringify(host.properties[PROP] || {});
+          const newSec = { header: toolByKind(d.kind).label.toUpperCase(), controls: [] };
           sections.push(newSec);
           dropArmedTool(host, state, newSec, 16, 16, false, d.kind);
+          // O dropArmedTool gravou o Undo já com a zona vazia; um passo só
+          // (zona + componente) deve voltar ao estado de antes do drop.
+          const stack = host.__legoUndoStack;
+          if (stack?.length) stack[stack.length - 1] = before;
         }
       });
 
@@ -11399,25 +11281,16 @@ function installNodeColorHooks(node) {
   };
 
   // 2. Intercepta ciclos de renderização do canvas
-  const origOnDrawForeground = node.onDrawForeground;
-  node.onDrawForeground = function () {
+  const syncOnDraw = (orig) => function () {
     if (this.color !== this.__lastLegoColor || this.bgcolor !== this.__lastLegoBgcolor) {
       this.__lastLegoColor = this.color;
       this.__lastLegoBgcolor = this.bgcolor;
       applyNodeColorTheme(this);
     }
-    return origOnDrawForeground ? origOnDrawForeground.apply(this, arguments) : undefined;
+    return orig ? orig.apply(this, arguments) : undefined;
   };
-
-  const origOnDrawBackground = node.onDrawBackground;
-  node.onDrawBackground = function () {
-    if (this.color !== this.__lastLegoColor || this.bgcolor !== this.__lastLegoBgcolor) {
-      this.__lastLegoColor = this.color;
-      this.__lastLegoBgcolor = this.bgcolor;
-      applyNodeColorTheme(this);
-    }
-    return origOnDrawBackground ? origOnDrawBackground.apply(this, arguments) : undefined;
-  };
+  node.onDrawForeground = syncOnDraw(node.onDrawForeground);
+  node.onDrawBackground = syncOnDraw(node.onDrawBackground);
 
   // 3. Intercepta configure para manter a cor ao carregar workflow ou duplicar
   const origConfigure = node.configure;
@@ -11434,6 +11307,10 @@ function installNodeColorHooks(node) {
     const proto = Object.getPrototypeOf(node);
     const descColor = Object.getOwnPropertyDescriptor(node, "color") || Object.getOwnPropertyDescriptor(proto, "color");
     const descBg = Object.getOwnPropertyDescriptor(node, "bgcolor") || Object.getOwnPropertyDescriptor(proto, "bgcolor");
+    // Campo comum (sem getter): guardar o valor atual antes de trocar por
+    // acessor, senão a cor carregada do workflow some.
+    if (descColor && !descColor.get) node.__rawColor = descColor.value;
+    if (descBg && !descBg.get) node.__rawBgcolor = descBg.value;
 
     Object.defineProperty(node, "color", {
       get() {
@@ -11550,6 +11427,7 @@ function attach(node) {
     watchers: new Map(),
     seen: new Map(),   // último valor desenhado de cada widget vigiado
     outputViews: [],   // áreas de output vivas, repintadas a cada `executed`
+    observers: [],     // ResizeObservers dos controles; desligados a cada refresh
     ro: null,
     pending: false,
     lastTick: 0,
@@ -11582,6 +11460,8 @@ function attach(node) {
       state.watchers.clear();
       state.seen.clear();
       state.outputViews = [];
+      for (const o of state.observers) o.disconnect();
+      state.observers = [];
       host.replaceChildren(buildCard(node, state));
       paintRun(node);
       renderAlignBars(node, state);
@@ -11641,16 +11521,21 @@ function attach(node) {
     return { minWidth: minW, minHeight: Math.max(160, cardHeight(host)) };
   };
 
-  const origOnResize = node.onResize;
-  node.onResize = function (size) {
-    if (origOnResize) origOnResize.apply(this, arguments);
-    const minW = requiredNodeWidth(node, host);
-    const minH = Math.max(160, cardHeight(host) + PAD);
-    if (size && Array.isArray(size)) {
+  // Embrulha onResize uma vez só; o limite usa o cartão ATUAL (depois de um
+  // "Remove Card UI" não há cartão e o nó volta a encolher livremente).
+  if (!node.__legoResizeHooked) {
+    node.__legoResizeHooked = true;
+    const origOnResize = node.onResize;
+    node.onResize = function (size) {
+      if (origOnResize) origOnResize.apply(this, arguments);
+      const h = this.__legoHost;
+      if (!h || !Array.isArray(size)) return;
+      const minW = requiredNodeWidth(this, h);
+      const minH = Math.max(160, cardHeight(h) + PAD);
       if (size[0] < minW) size[0] = minW;
       if (size[1] < minH) size[1] = minH;
-    }
-  };
+    };
+  }
   widget.onRemove = () => {
     ATTACHED.delete(node);
     state.ro?.disconnect();
@@ -11752,19 +11637,27 @@ function ssInnerGraph(node) {
   if (node.__ssGraph) {
     if (node.subgraph === node.__ssGraph) delete node.subgraph;
     const inner = node.__ssGraph;
-    const uuid = ensureUuid(inner.id);
-    markAsSubgraph(inner, root, uuid);
-    if (node.properties?.[SS_PROP]?.graph) {
-      node.properties[SS_PROP].graph.id = uuid;
+    // Caminho quente (menus, pintura): só re-registra se ainda não está no mapa.
+    if (!inner.id || root?.subgraphs?.get?.(inner.id) !== inner) {
+      const uuid = ensureUuid(inner.id);
+      markAsSubgraph(inner, root, uuid);
+      if (node.properties?.[SS_PROP]?.graph) {
+        node.properties[SS_PROP].graph.id = uuid;
+      }
     }
-    return node.__ssGraph;
+    return inner;
   }
   const data = node.properties?.[SS_PROP]?.graph;
   if (!data) return null;
   try {
-    const inner = newInnerGraph(JSON.parse(JSON.stringify(data)));
+    const copy = JSON.parse(JSON.stringify(data));
+    // Cópia/colagem de um Super Subgraph traz o mesmo id do original: ganha
+    // um id novo, senão os dois disputam a mesma entrada em rootGraph.subgraphs.
+    const owner = copy.id && root?.subgraphs?.get?.(copy.id)?.__ssHostNode;
+    if (owner && owner !== node && owner.graph) copy.id = ensureUuid();
+    const inner = newInnerGraph(copy);
     inner.__ssHostNode = node;
-    const uuid = ensureUuid(data.id || inner.id);
+    const uuid = ensureUuid(copy.id || inner.id);
     markAsSubgraph(inner, root, uuid);
     if (node.properties?.[SS_PROP]?.graph) {
       node.properties[SS_PROP].graph.id = uuid;
@@ -11796,40 +11689,29 @@ let bypassSsAddHook = false;
 function hookGraphAdd() {
   const LG = liteGraph();
   const Cls = LG?.LGraph || app.rootGraph?.constructor || app.graph?.constructor;
-  if (Cls && !Cls.prototype.__ssAddHooked) {
-    Cls.prototype.__ssAddHooked = true;
-    const origAdd = Cls.prototype.add;
-    Cls.prototype.add = function (node, ...args) {
-      if (!bypassSsAddHook && SS_NAV.length > 0) {
-        const top = SS_NAV[SS_NAV.length - 1];
-        const target = top?.inner;
-        if (target && (this === app.graph || this === app.rootGraph) && target !== this) {
-          const res = target.add(node, ...args);
-          target.setDirtyCanvas?.(true, true);
-          app.canvas?.setDirty?.(true, true);
-          return res;
-        }
+  if (!Cls || Cls.prototype.__ssAddHooked) return;
+  Cls.prototype.__ssAddHooked = true;
+  // Durante configure (abrir workflow, undo/redo) os nós são readicionados em
+  // lote ao grafo raiz — nunca redirecionar isso, senão a raiz fica vazia.
+  let configuring = 0;
+  const origConfigure = Cls.prototype.configure;
+  Cls.prototype.configure = function (...args) {
+    configuring++;
+    try { return origConfigure.apply(this, args); } finally { configuring--; }
+  };
+  const origAdd = Cls.prototype.add;
+  Cls.prototype.add = function (node, ...args) {
+    if (!bypassSsAddHook && !configuring && SS_NAV.length > 0) {
+      const target = SS_NAV[SS_NAV.length - 1]?.inner;
+      if (target && target !== this && (this === app.graph || this === app.rootGraph) && app.canvas?.graph === target) {
+        const res = target.add(node, ...args);
+        target.setDirtyCanvas?.(true, true);
+        app.canvas?.setDirty?.(true, true);
+        return res;
       }
-      return origAdd.apply(this, [node, ...args]);
-    };
-  }
-  if (app.graph && !app.graph.__ssAddHooked) {
-    app.graph.__ssAddHooked = true;
-    const origAppAdd = app.graph.add;
-    app.graph.add = function (node, ...args) {
-      if (!bypassSsAddHook && SS_NAV.length > 0) {
-        const top = SS_NAV[SS_NAV.length - 1];
-        const target = top?.inner;
-        if (target && target !== this) {
-          const res = target.add(node, ...args);
-          target.setDirtyCanvas?.(true, true);
-          app.canvas?.setDirty?.(true, true);
-          return res;
-        }
-      }
-      return origAppAdd.apply(this, [node, ...args]);
-    };
-  }
+    }
+    return origAdd.apply(this, [node, ...args]);
+  };
 }
 
 /** Nós de dentro do host: do Super Subgraph ou do subgrafo nativo. */
@@ -12137,17 +12019,20 @@ function convertSelectionToSuper(nodes = selectedNodes()) {
   const tabGroups = groups.map((g) => ({ title: g.title, color: g.color }));
   const looseNodes = nodes.some((n) => !ownerGroup(n, groups));
 
+  // Criar o nó ANTES de remover a seleção: se o tipo não estiver registrado,
+  // nada é apagado.
+  const sn = LG.createNode(SS_TYPE);
+  if (!sn) {
+    alert("Super Subgraph: the SuperSubgraph node is not registered. Restart ComfyUI after updating the extension.");
+    return null;
+  }
+
   graph.beforeChange?.();
   for (const n of nodes) graph.remove(n);
   // Group que ficou vazio aqui fora (todos os nós foram para dentro) sai também.
   const outside = graph._nodes || graph.nodes || [];
   for (const g of groups) if (!outside.some((n) => nodeInGroup(n, g))) graph.remove(g);
 
-  const sn = LG.createNode(SS_TYPE);
-  if (!sn) {
-    alert("Super Subgraph: the SuperSubgraph node is not registered. Restart ComfyUI after updating the extension.");
-    return null;
-  }
   sn.pos = [minX, minY];
   graph.add(sn);
   // Nasce largo o bastante para os widgets de "nó inteiro" caberem em linha.
@@ -12632,15 +12517,10 @@ function superMenuOptions(node) {
               {
                 content: `Remove in_${k + 1}`,
                 callback: () => {
-                  const target = io.targets?.[0];
-                  if (target) {
-                    const targetNode = inner.getNodeById?.(target[0]) ?? inner.getNodeById?.(Number(target[0]));
-                    if (targetNode) unexposeSuperInput(node, targetNode, target[1]);
-                    else {
-                      meta.inputs.splice(k, 1);
-                      afterBoundaryChange(node);
-                    }
-                  }
+                  // Tira a entrada inteira (todos os alvos), com a renumeração da borda.
+                  removeSuperInputAt(node, k);
+                  afterBoundaryChange(node);
+                  showLegoToast(`Input "${io.name}" is no longer exposed`);
                 }
               }
             ]
@@ -12663,14 +12543,9 @@ function superMenuOptions(node) {
               {
                 content: `Remove out_${j + 1}`,
                 callback: () => {
-                  if (io.source) {
-                    const srcNode = inner.getNodeById?.(io.source[0]) ?? inner.getNodeById?.(Number(io.source[0]));
-                    if (srcNode) unexposeSuperOutput(node, srcNode, io.source[1]);
-                    else {
-                      meta.outputs.splice(j, 1);
-                      afterBoundaryChange(node);
-                    }
-                  }
+                  removeSuperOutputAt(node, j);
+                  afterBoundaryChange(node);
+                  showLegoToast(`Output "${io.name}" is no longer exposed`);
                 }
               }
             ]
@@ -13067,6 +12942,30 @@ function afterBoundaryChange(host) {
   app.canvas?.setDirty?.(true, true);
 }
 
+/** Tira in_(k+1) da borda: desliga o fio de fora e renumera as seguintes, mantendo os fios. */
+function removeSuperInputAt(host, k) {
+  const meta = host.properties[SS_PROP];
+  if (!meta?.inputs?.[k]) return null;
+  const [io] = meta.inputs.splice(k, 1);
+  const idx = hostInputIndex(host, k);
+  if (idx >= 0) host.removeInput(idx);
+  for (let m = k + 1; m <= meta.inputs.length; m++) {
+    const slot = (host.inputs || []).find((s) => s.name === `in_${m + 1}`);
+    if (slot) slot.name = `in_${m}`;
+  }
+  return io;
+}
+
+/** Tira out_(j+1) da borda; removeOutput desliga os fios dela e desloca os das seguintes. */
+function removeSuperOutputAt(host, j) {
+  const meta = host.properties[SS_PROP];
+  if (!meta?.outputs?.[j]) return null;
+  const [io] = meta.outputs.splice(j, 1);
+  if (host.outputs?.[j]) host.removeOutput(j);
+  (host.outputs || []).forEach((o, i) => { if (/^out_\d+$/.test(o.name)) o.name = `out_${i + 1}`; });
+  return io;
+}
+
 /** Expõe a entrada `inputName` do nó de dentro como uma nova in_N. */
 function exposeSuperInput(host, node, inputName) {
   const meta = host.properties[SS_PROP];
@@ -13081,20 +12980,6 @@ function exposeSuperInput(host, node, inputName) {
   showLegoToast(`Input "${meta.inputs[k].name}" exposed`);
 }
 
-/** Garante que a entrada inputName do nó de dentro esteja exposta no host; retorna o índice em meta.inputs. */
-function ensureSuperInput(host, node, inputName) {
-  const meta = host.properties?.[SS_PROP];
-  if (!meta) return -1;
-  meta.inputs = meta.inputs || [];
-  const id = String(node.id);
-  const existingIdx = meta.inputs.findIndex(
-    (io) => (io.targets || []).some(([t, n]) => String(t) === id && n === inputName)
-  );
-  if (existingIdx >= 0) return existingIdx;
-  exposeSuperInput(host, node, inputName);
-  return meta.inputs.length - 1;
-}
-
 /** Tira a entrada `inputName` do nó de dentro da borda; in_N vazia sai e as seguintes renumeram. */
 function unexposeSuperInput(host, node, inputName) {
   const meta = host.properties[SS_PROP];
@@ -13103,16 +12988,7 @@ function unexposeSuperInput(host, node, inputName) {
   if (k < 0) return;
   const io = meta.inputs[k];
   io.targets = io.targets.filter(([t, n]) => !(String(t) === id && n === inputName));
-  if (!io.targets.length) {
-    meta.inputs.splice(k, 1);
-    const idx = hostInputIndex(host, k);
-    if (idx >= 0) host.removeInput(idx);   // desliga o fio de fora
-    // Renumera: in_(k+2).. viram in_(k+1).., mantendo os fios.
-    for (let m = k + 1; m <= meta.inputs.length; m++) {
-      const slot = (host.inputs || []).find((s) => s.name === `in_${m + 1}`);
-      if (slot) slot.name = `in_${m}`;
-    }
-  }
+  if (!io.targets.length) removeSuperInputAt(host, k);
   afterBoundaryChange(host);
   showLegoToast(`Input "${io.name}" is no longer exposed`);
 }
@@ -13139,10 +13015,7 @@ function unexposeSuperOutput(host, node, slot) {
   const id = String(node.id);
   const j = (meta.outputs || []).findIndex((io) => io.source && String(io.source[0]) === id && Number(io.source[1]) === Number(slot));
   if (j < 0) return;
-  const [io] = meta.outputs.splice(j, 1);
-  // removeOutput desliga os fios desta saída e desloca os das seguintes.
-  if (host.outputs?.[j]) host.removeOutput(j);
-  (host.outputs || []).forEach((o, i) => { if (/^out_\d+$/.test(o.name)) o.name = `out_${i + 1}`; });
+  const io = removeSuperOutputAt(host, j);
   afterBoundaryChange(host);
   showLegoToast(`Output "${io.name}" is no longer exposed`);
 }
@@ -13187,27 +13060,21 @@ function pruneSuperBoundary(host) {
   let changed = false;
   for (let k = (meta.inputs || []).length - 1; k >= 0; k--) {
     const io = meta.inputs[k];
-    const keep = (io.targets || []).filter(([id, name]) => (nodeOf(id)?.inputs || []).some((s) => s.name === name));
-    if (keep.length === (io.targets || []).length) continue;
+    const targets = io.targets || [];
+    const keep = targets.filter(([id, name]) => (nodeOf(id)?.inputs || []).some((s) => s.name === name));
+    // Entrada sem nenhum alvo (ex.: sobra do Quick Out) também sai.
+    if (keep.length && keep.length === targets.length) continue;
     changed = true;
     if (keep.length) { io.targets = keep; continue; }
-    meta.inputs.splice(k, 1);
-    const idx = hostInputIndex(host, k);
-    if (idx >= 0) host.removeInput(idx);
-    for (let m = k + 1; m <= meta.inputs.length; m++) {
-      const slot = (host.inputs || []).find((s) => s.name === `in_${m + 1}`);
-      if (slot) slot.name = `in_${m}`;
-    }
+    removeSuperInputAt(host, k);
   }
   for (let j = (meta.outputs || []).length - 1; j >= 0; j--) {
     const src = meta.outputs[j].source;
     if (src && nodeOf(src[0])?.outputs?.[Number(src[1])]) continue;
     changed = true;
-    meta.outputs.splice(j, 1);
-    if (host.outputs?.[j]) host.removeOutput(j);
+    removeSuperOutputAt(host, j);
   }
   if (!changed) return;
-  (host.outputs || []).forEach((o, i) => { if (/^out_\d+$/.test(o.name)) o.name = `out_${i + 1}`; });
   afterBoundaryChange(host);
 }
 
@@ -13738,7 +13605,7 @@ function cardHeight(host) {
   if (!host) return 260;
   const card = host.firstElementChild;
   if (!card) return 260;
-  const scale = card.style?.zoom ? parseFloat(card.style.zoom) : (host.properties?.[PROP]?.scale || 1);
+  const scale = card.style?.zoom ? parseFloat(card.style.zoom) : 1;
   const rawH = Math.max(card.scrollHeight || 0, card.offsetHeight || 0) || 260;
   const h = rawH * (scale || 1);
   return Math.ceil(h || 260);
@@ -13769,6 +13636,7 @@ function detach(node) {
   ATTACHED.delete(node);
   closeObjectInspector();
   node.__legoState?.ro?.disconnect();
+  node.__legoState?.observers?.forEach((o) => o.disconnect());
   const w = node.__legoWidget;
   if (w) {
     const i = (node.widgets || []).indexOf(w);
@@ -13919,8 +13787,9 @@ app.registerExtension({
         }, 150);
       }
     };
+    // O evento borbulha do <canvas> até a window: ouvir só aqui (ouvir nos dois
+    // rodava tudo em dobro — serializar, podar e redesenhar o cartão).
     window.addEventListener("litegraph:set-graph", handleGraphChange);
-    app.canvas?.canvas?.addEventListener("litegraph:set-graph", handleGraphChange);
     refreshSuperLibrary();
     refreshLayoutLibrary();
     for (const type of ["execution_start", "progress_state", "executing", "execution_error", "execution_interrupted", "execution_success"]) {
@@ -14009,9 +13878,3 @@ app.registerExtension({
 });
 
 console.log(`${LOG} v2 (DOM) loaded`);
-
-
-/**
- * Interactive dialog to assemble Custom Segment element
- * Allows adding Checkbox, Text, Dropdown, and Number (+/-) in the same element.
- */
