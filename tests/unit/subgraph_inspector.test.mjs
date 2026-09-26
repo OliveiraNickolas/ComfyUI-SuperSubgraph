@@ -283,8 +283,10 @@ if (groupRow) {
   t("renders two column elements in lego-cols-row", colEls.length === 2);
   const colA = colEls[0];
   const colB = colEls[1];
-  t("col A has width calc with gap offset", colA.style.width.includes("calc(50%"));
-  t("col A flex basis matches calc", colA.style.flex.includes("calc(50%"));
+  // A porcentagem é a fatia exata da largura útil (sem o vão de 12px entre colunas).
+  const half = (v) => /calc\(\(100% - 12px\) \* 0\.5\)|calc\(0\.5 \* \(100% - 12px\)\)/.test(v);
+  t("col A width is its share of the usable row width", half(colA.style.width));
+  t("col A flex basis matches the width", half(colA.style.flex));
   // A última coluna preenche o resto da linha (bordas direitas alinhadas).
   t("last column fills the rest of the row", colB.style.flex.startsWith("1 1") && !colB.style.width);
   t("zones inside columns have 100% width", secEls[0].style.width === "100%" && secEls[1].style.width === "100%");

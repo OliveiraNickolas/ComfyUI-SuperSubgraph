@@ -5606,12 +5606,23 @@ function widthToCss(w) {
 
 /** Snap granular de largura em passos de 5%, com snaps magnéticos em 33.3% e 66.7% */
 function snapWidth(ratio, isShift) {
-  const pct = Math.max(15, Math.min(100, ratio * 100));
-  if (isShift) return `${Math.round(pct)}%`;
-  if (Math.abs(pct - 33.3) < 2.5) return "33.3%";
-  if (Math.abs(pct - 66.7) < 2.5) return "66.7%";
-  const snapped = Math.round(pct / 5) * 5;
-  return `${Math.max(15, Math.min(100, snapped))}%`;
+  const pct = Math.max(10, Math.min(100, ratio * 100));
+  // Shift: livre (décimos). Sem Shift: passos de 1%, com um ímã fraco nas
+  // frações comuns — larguras personalizadas continuam fáceis de acertar.
+  if (isShift) return `${Math.round(pct * 10) / 10}%`;
+  for (const m of [25, 33.3, 50, 66.7, 75]) if (Math.abs(pct - m) < 0.8) return `${m}%`;
+  return `${Math.round(pct)}%`;
+}
+
+/**
+ * Largura CSS de uma coluna numa linha de `numCols` colunas: a porcentagem é
+ * a fatia exata da largura útil (sem os vãos de 12px entre colunas).
+ */
+function colWidthCss(w, numCols) {
+  const pct = parseFloat(w);
+  if (!Number.isFinite(pct) || pct >= 100) return "100%";
+  const gaps = 12 * Math.max(0, numCols - 1);
+  return `calc((100% - ${gaps}px) * ${Math.round(pct * 10) / 1000})`;
 }
 
 /** Obtém o grupo contíguo de seções que compartilham a mesma linha (larguras < 100%, mesmo row). */
@@ -10434,12 +10445,12 @@ function buildCard(host, state) {
           const startClientX = e.clientX;
           const bodyRect = body.getBoundingClientRect();
           const curScale = domScale();
-          const bodyW = bodyRect.width || 800;
-
           // Se estiver dentro de uma coluna, redimensiona a coluna e a vizinha em tempo real
           const colEl = sec.closest(".lego-col");
           const colsRow = colEl?.closest(".lego-cols-row");
           const siblingCols = colsRow ? Array.from(colsRow.querySelectorAll(":scope > .lego-col")) : [];
+          // Porcentagens de coluna são da largura útil da linha (sem os vãos).
+          const bodyW = Math.max(1, (bodyRect.width || 800) - 12 * Math.max(0, siblingCols.length - 1) * curScale);
           const colIdx = colEl ? siblingCols.indexOf(colEl) : -1;
           const nextColEl = (colIdx >= 0 && colIdx < siblingCols.length - 1) ? siblingCols[colIdx + 1] : null;
 
@@ -10480,8 +10491,8 @@ function buildCard(host, state) {
               const remPct = Math.max(5, Math.round((pairTotalPct - pctA) * 10) / 10);
               finalNextW = `${remPct}%`;
 
-              const cssW = widthToCss(finalW);
-              const cssNextW = widthToCss(finalNextW);
+              const cssW = colWidthCss(finalW, siblingCols.length);
+              const cssNextW = colWidthCss(finalNextW, siblingCols.length);
               colEl.style.width = cssW;
               colEl.style.flex = `0 0 ${cssW}`;
               colEl.style.maxWidth = cssW;
@@ -10526,8 +10537,8 @@ function buildCard(host, state) {
                 const otherLeftX = (oR.left - bodyRect.left) / curScale;
 
                 let snapTargetX = null;
-                if (Math.abs(curRightEdge - otherRightX) <= 20) snapTargetX = otherRightX;
-                else if (Math.abs(curRightEdge - otherLeftX) <= 20) snapTargetX = otherLeftX;
+                if (Math.abs(curRightEdge - otherRightX) <= 6) snapTargetX = otherRightX;
+                else if (Math.abs(curRightEdge - otherLeftX) <= 6) snapTargetX = otherLeftX;
 
                 if (snapTargetX !== null) {
                   const snapName = other.querySelector(".lego-sec-h span")?.textContent || "Zone";
@@ -10561,8 +10572,8 @@ function buildCard(host, state) {
                         if (totalPairW - adoptedScreenW >= minNextWScreen) {
                           finalW = adoptedW;
                           finalNextW = `${remPct}%`;
-                          const cssW = widthToCss(finalW);
-                          const cssNextW = widthToCss(finalNextW);
+                          const cssW = colWidthCss(finalW, siblingCols.length);
+                          const cssNextW = colWidthCss(finalNextW, siblingCols.length);
                           colEl.style.width = cssW; colEl.style.flex = `0 0 ${cssW}`; colEl.style.maxWidth = cssW;
                           nextColEl.style.width = cssNextW; nextColEl.style.flex = `0 0 ${cssNextW}`; nextColEl.style.maxWidth = cssNextW;
                           localX = snapTargetX; isSnapped = true;
@@ -10594,7 +10605,7 @@ function buildCard(host, state) {
                           : 80) * curScale;
                         if (totalPairW - targetWidthScreen >= minNextWScreen) {
                           finalW = `${targetPct}%`; finalNextW = `${remPct}%`;
-                          const cssW = widthToCss(finalW); const cssNextW = widthToCss(finalNextW);
+                          const cssW = colWidthCss(finalW, siblingCols.length); const cssNextW = colWidthCss(finalNextW, siblingCols.length);
                           colEl.style.width = cssW; colEl.style.flex = `0 0 ${cssW}`; colEl.style.maxWidth = cssW;
                           nextColEl.style.width = cssNextW; nextColEl.style.flex = `0 0 ${cssNextW}`; nextColEl.style.maxWidth = cssNextW;
                           localX = snapTargetX; isSnapped = true;
@@ -11268,7 +11279,7 @@ function buildCard(host, state) {
           colEl.__col = col;
           const defaultW = widthForCount(numCols);
           const colW = col.width || defaultW;
-          const cssW = widthToCss(colW);
+          const cssW = colWidthCss(colW, numCols);
           if (cIdx === numCols - 1) {
             // A última coluna ocupa o que sobra: a borda direita da linha
             // sempre bate com a das zonas de largura total (as porcentagens
@@ -11302,7 +11313,22 @@ function buildCard(host, state) {
             const colBEl = colElements[cIdx + 1];
 
             const divider = el("div", "lego-col-divider");
-            divider.title = "Drag column divider (hold Shift for smooth)";
+            divider.title = "Drag to resize the columns (Shift = free) · Double-click to type the widths";
+            // Duplo clique: digita as larguras de todas as colunas da linha.
+            divider.addEventListener("dblclick", (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              const cur = g.columns.map((c) => String(parseFloat(c.width || widthForCount(numCols)))).join(" / ");
+              const v = prompt(`Column widths in % (${numCols} columns, left to right):`, cur);
+              if (v == null) return;
+              let nums = v.split(/[\/;,\s]+/).map((x) => parseFloat(x)).filter((x) => Number.isFinite(x) && x > 0);
+              if (nums.length !== numCols) { showLegoToast(`Type ${numCols} numbers, e.g. ${cur}`); return; }
+              const sum = nums.reduce((a, x) => a + x, 0);
+              if (Math.abs(sum - 100) > 0.5) nums = nums.map((x) => (x * 100) / sum);   // soma ≠ 100: proporcional
+              pushUndo(host);
+              g.columns.forEach((c, i) => c.entries.forEach((ent) => { ent.sec.width = `${Math.round(nums[i] * 10) / 10}%`; }));
+              state.refresh();
+            });
 
             divider.addEventListener("pointerdown", (e) => {
               e.stopPropagation();
@@ -11312,10 +11338,12 @@ function buildCard(host, state) {
               const startClientX = e.clientX;
               const bodyRect = body.getBoundingClientRect();
               const curScale = domScale();
-              const bodyW = bodyRect.width || 800;
+              // Porcentagens são da largura útil da linha (sem os vãos entre colunas).
+              const bodyW = Math.max(1, (bodyRect.width || 800) - 12 * (numCols - 1) * curScale);
 
               const colARect = colAEl.getBoundingClientRect();
               const colBRect = colBEl.getBoundingClientRect();
+              const colAStyle = colAEl.style.cssText, colBStyle = colBEl.style.cssText;
               const origWA = colARect.width;
               const origWB = colBRect.width;
               const totalPairW = origWA + origWB;
@@ -11340,8 +11368,8 @@ function buildCard(host, state) {
                 const remPct = Math.max(5, Math.round((pairTotalPct - pctA) * 10) / 10);
                 finalWB = `${remPct}%`;
 
-                const cssWA = widthToCss(finalWA);
-                const cssWB = widthToCss(finalWB);
+                const cssWA = colWidthCss(finalWA, numCols);
+                const cssWB = colWidthCss(finalWB, numCols);
                 colAEl.style.width = cssWA;
                 colAEl.style.flex = `0 0 ${cssWA}`;
                 colAEl.style.maxWidth = cssWA;
@@ -11349,7 +11377,7 @@ function buildCard(host, state) {
                 colBEl.style.flex = `0 0 ${cssWB}`;
                 colBEl.style.maxWidth = cssWB;
 
-                let isSnapped = !ev.shiftKey && (
+                let isSnapped = !ev.shiftKey && Math.abs(pctA - ratioA * 100) > 0.5 && (
                   finalWA === "25%" || finalWA === "33.3%" || finalWA === "50%" || finalWA === "66.7%" || finalWA === "75%"
                 );
                 const snapLocalX = ((colARect.left - bodyRect.left) + (pctA / 100 * bodyW)) / curScale;
@@ -11372,8 +11400,9 @@ function buildCard(host, state) {
                     const otherLeftX = (oR.left - bodyRect.left) / curScale;
 
                     let snapTargetX = null;
-                    if (Math.abs(curDividerX - otherRightX) <= 20) snapTargetX = otherRightX;
-                    else if (Math.abs(curDividerX - otherLeftX) <= 20) snapTargetX = otherLeftX;
+                    // Ímã curto: só puxa quando já está quase alinhado.
+                    if (Math.abs(curDividerX - otherRightX) <= 6) snapTargetX = otherRightX;
+                    else if (Math.abs(curDividerX - otherLeftX) <= 6) snapTargetX = otherLeftX;
 
                     if (snapTargetX !== null) {
                       const snapName = other.querySelector(".lego-sec-h span")?.textContent || "Zone";
@@ -11401,8 +11430,8 @@ function buildCard(host, state) {
                         finalWA = (snapTargetX === otherRightX && Math.abs(otherColLeft - myColLeft) < 5 && otherSecData?.width)
                           ? otherSecData.width : `${tPct}%`;
                         finalWB = `${tRemPct}%`;
-                        const cA = widthToCss(finalWA);
-                        const cB = widthToCss(finalWB);
+                        const cA = colWidthCss(finalWA, numCols);
+                        const cB = colWidthCss(finalWB, numCols);
                         colAEl.style.width = cA; colAEl.style.flex = `0 0 ${cA}`; colAEl.style.maxWidth = cA;
                         colBEl.style.width = cB; colBEl.style.flex = `0 0 ${cB}`; colBEl.style.maxWidth = cB;
                         localX = snapTargetX;
@@ -11436,6 +11465,12 @@ function buildCard(host, state) {
                 window.removeEventListener("mousemove", onMoveCol, true);
                 window.removeEventListener("mouseup", onUpCol, true);
 
+                // Clique sem arrastar (ex.: o 1º clique de um duplo clique) não
+                // muda nada nem redesenha — senão o duplo clique se perdia.
+                if (!ev || Math.abs(ev.clientX - startClientX) < 3) {
+                  colAEl.style.cssText = colAStyle; colBEl.style.cssText = colBStyle;
+                  return;
+                }
                 pushUndo(host);
                 colA.entries.forEach((ent) => { ent.sec.width = finalWA; });
                 colB.entries.forEach((ent) => { ent.sec.width = finalWB; });
