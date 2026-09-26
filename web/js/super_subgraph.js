@@ -2058,7 +2058,7 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
   const thresholdH = isAudio ? 64 : 76;
   if (parentRow) {
     const checkHeight = () => {
-      const h = parentRow.getBoundingClientRect().height || parseInt(ctrl?.h || ctrl?.height || "0");
+      const h = parentRow.offsetHeight || parseInt(ctrl?.h || ctrl?.height || "0");
       box.classList.toggle("tall", h >= thresholdH || isAudio);
     };
 
@@ -2472,6 +2472,7 @@ function mkOutputView(host, ctrl, state) {
 
 function getComponentMinDimensions(ctrl) {
   const k = ctrl?.kind || "";
+  if (k === "preview_override") return { minW: 180, minH: 120 };
   if (isOutputKind(k)) return { minW: 120, minH: k === "outaudio" ? 64 : 96 };
   if (k === "hdivider") return { minW: 16, minH: 16 };
   if (k === "vdivider") return { minW: 16, minH: 16 };
@@ -2495,7 +2496,7 @@ function addItemToSegment(host, state, segmentCtrl, itemDef) {
   if (!Array.isArray(segmentCtrl.items)) segmentCtrl.items = [];
   const layout = host.properties[PROP];
   const tool = toolByKind(itemDef.kind);
-  const is2D = itemDef.kind === "textarea" || itemDef.kind === "media" || itemDef.kind === "video" || itemDef.kind === "audio";
+  const is2D = itemDef.kind === "textarea" || itemDef.kind === "media" || itemDef.kind === "video" || itemDef.kind === "audio" || itemDef.kind === "preview_override";
   const newItem = {
     kind: itemDef.kind,
     label: itemDef.label || itemDef.name || tool.label,
@@ -2535,7 +2536,7 @@ function addItemToSegment(host, state, segmentCtrl, itemDef) {
    ══════════════════════════════════════════════════════════════════════════ */
 
 const isContainerKind = (k) => k === "segment" || k === "vsegment" || k === "group";
-const is2DKind = (k) => k === "textarea" || k === "media" || k === "video" || k === "audio" || isOutputKind(k);
+const is2DKind = (k) => k === "textarea" || k === "media" || k === "video" || k === "audio" || k === "preview_override" || isOutputKind(k);
 
 /**
  * O navegador dispara um `click` logo depois de soltar um arraste; ele não
@@ -3274,6 +3275,9 @@ function mkPreviewOverride(node, w, ctrl, state) {
   const box = el("div", "lego-preview-override-box");
   box.style.cssText = "width:100%;height:100%;min-height:120px;display:flex;flex-direction:column;position:relative;overflow:hidden;border-radius:6px;";
   if (w?.element) {
+    if (!w.__origParent && w.element.parentElement) {
+      w.__origParent = w.element.parentElement;
+    }
     box.append(w.element);
     w.element.style.width = "100%";
     w.element.style.height = "100%";
@@ -3281,7 +3285,38 @@ function mkPreviewOverride(node, w, ctrl, state) {
   } else {
     const ph = el("div", "lego-empty", "Preview Override (KJ)");
     box.append(ph);
+    const checkTimer = setInterval(() => {
+      if (w?.element) {
+        clearInterval(checkTimer);
+        ph.remove();
+        if (!w.__origParent && w.element.parentElement) {
+          w.__origParent = w.element.parentElement;
+        }
+        box.prepend(w.element);
+        w.element.style.width = "100%";
+        w.element.style.height = "100%";
+        w.element.style.minHeight = "120px";
+      }
+    }, 100);
+    setTimeout(() => clearInterval(checkTimer), 4000);
   }
+  if (ctrl?.hidePreview) {
+    box.classList.add("is-censored");
+    const overlay = el("div", "lego-media-censor-overlay");
+    overlay.innerHTML = `<span class="lego-censor-icon">${glyph("eyeSlash", 20)}</span><span class="lego-censor-label">Preview hidden</span>`;
+    box.append(overlay);
+  }
+  const hideBtn = el("button", "lego-iconbtn lego-out-hide-btn");
+  hideBtn.type = "button";
+  hideBtn.title = ctrl?.hidePreview ? "Show preview" : "Hide preview";
+  hideBtn.innerHTML = glyph(ctrl?.hidePreview ? "eyeSlash" : "eye", 12);
+  hideBtn.addEventListener("pointerdown", eatPointer);
+  hideBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    ctrl.hidePreview = !ctrl.hidePreview;
+    state?.refresh?.();
+  });
+  box.append(hideBtn);
   return box;
 }
 
@@ -3536,8 +3571,8 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   const isGroup = ctrl.kind === "group" || isSegmentLike;
   const isOutput = isOutputKind(ctrl.kind);
   const hit = (isGroup || isCosmetic || isOutput) ? null : resolveBind(host, ctrl.bind);
-  const isMediaLike = (k) => k === "media" || k === "video" || k === "audio";
-  const isHitMedia = isImageCombo(hit?.widget) || isVideoCombo(hit?.widget) || isAudioCombo(hit?.widget);
+  const isMediaLike = (k) => k === "media" || k === "video" || k === "audio" || k === "preview_override";
+  const isHitMedia = isImageCombo(hit?.widget) || isVideoCombo(hit?.widget) || isAudioCombo(hit?.widget) || hit?.widget?.type === "kj_preview";
   const isMedia = isMediaLike(ctrl.kind) || isHitMedia;
   const wide = !isGroup && !isCosmetic && (ctrl.kind === "textarea" || isMedia);
   let row;
@@ -3754,7 +3789,11 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   const kind = controlKindFor(ctrl, w) || (isVideo ? "video" : isAudio ? "audio" : isMedia ? "media" : describeWidget(w).kind);
 
   let control;
-  if (kind === "media" || kind === "video" || kind === "audio") {
+  if (kind === "preview_override" || w?.type === "kj_preview") {
+    control = mkPreviewOverride(node, w, ctrl, state);
+    row.classList.add("is-preview-override");
+  }
+  else if (kind === "media" || kind === "video" || kind === "audio") {
     control = mkMediaControl(node, w, ctrl, state, row, kind);
     row.style.minHeight = "64px";
   }
@@ -3859,6 +3898,15 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   if (isSlider) {
     row.classList.add("is-slider");
     applySliderResponsiveLayout(ctrl.w, ctrl.h);
+  } else if (kind === "preview_override" || w?.type === "kj_preview") {
+    row.classList.add("is-preview-override");
+    row.replaceChildren();
+    if (ctrl.label && labelPos !== "none") {
+      const topBar = el("div", "lego-row-top");
+      topBar.append(lbl);
+      row.append(topBar);
+    }
+    row.append(control);
   } else if (labelPos === "none") {
     row.classList.add("lbl-none");
     row.append(control);
@@ -4753,13 +4801,13 @@ function widgetLabel(w) {
 /** Componente solto para um único parâmetro de um nó. */
 function singleCtrlFor(host, node, w) {
   const kind = detectMediaKind(w, describeWidget(w), node);
-  const media = kind === "media" || kind === "video" || kind === "audio";
+  const media = kind === "media" || kind === "video" || kind === "audio" || kind === "preview_override";
   const c = {
     kind,
     bind: node === host ? w.name : `${node.id}/${w.name}`,
     label: widgetLabel(w),
-    w: media ? 288 : kind === "textarea" ? 320 : 256,
-    h: media ? 144 : kind === "textarea" ? 96 : 32,
+    w: kind === "preview_override" ? 320 : media ? 288 : kind === "textarea" ? 320 : 256,
+    h: kind === "preview_override" ? 240 : media ? 144 : kind === "textarea" ? 96 : 32,
   };
   if (RE_SEED.test(w.name)) c.seed = true;
   return c;
@@ -4778,6 +4826,10 @@ function wholeNodeItems(host, node, onlyNames) {
       continue;
     }
     let kind = detectMediaKind(w, describeWidget(w), node);
+    if (kind === "preview_override") {
+      items.push({ kind, bind: node === host ? w.name : `${node.id}/${w.name}`, label: widgetLabel(w), labelPos: "none", w: 320, h: 240 });
+      continue;
+    }
     // Número vira Stepper: é o controle compacto que cabe numa linha de grupo.
     if (kind === "slider") kind = "number";
     // O nome que o usuário deu ao parâmetro (widget renomeado/promovido)
@@ -5160,6 +5212,7 @@ function sectionRequiredWidth(s) {
     if (!w) {
       if (c.kind === "vdivider") w = 16;
       else if (c.kind === "label") w = 160;
+      else if (c.kind === "preview_override") w = 320;
       else if (c.kind === "media" || c.kind === "video" || c.kind === "audio") w = 288;
       else if (typeof isOutputKind === "function" && isOutputKind(c.kind)) w = 320;
       else w = 256;
@@ -5182,8 +5235,8 @@ function sectionRequiredHeight(s) {
   const checkItem = (c) => {
     if (!c) return;
     const y = typeof c.y === "number" ? c.y : 16;
-    const isM = (c.kind === "media" || c.kind === "video" || c.kind === "audio");
-    let h = typeof c.h === "number" ? c.h : (isM ? 144 : (c.kind === "textarea" ? 96 : 46));
+    const isM = (c.kind === "media" || c.kind === "video" || c.kind === "audio" || c.kind === "preview_override");
+    let h = typeof c.h === "number" ? c.h : (c.kind === "preview_override" ? 240 : isM ? 144 : (c.kind === "textarea" ? 96 : 46));
     maxY = Math.max(maxY, y + h);
   };
   if (Array.isArray(s.controls)) s.controls.forEach(checkItem);
@@ -8915,8 +8968,8 @@ function renderObjectInspector(host, state, force) {
     }
   }
 
-  const isMediaCtrl = ctrl.kind === "media" || ctrl.kind === "video" || ctrl.kind === "audio";
-  const isVisualMedia = ctrl.kind === "media" || ctrl.kind === "video" || ctrl.kind === "outimage" || ctrl.kind === "outvideo";
+  const isMediaCtrl = ctrl.kind === "media" || ctrl.kind === "video" || ctrl.kind === "audio" || ctrl.kind === "preview_override";
+  const isVisualMedia = ctrl.kind === "media" || ctrl.kind === "video" || ctrl.kind === "outimage" || ctrl.kind === "outvideo" || ctrl.kind === "preview_override";
   if (isVisualMedia) {
     props.append(propRow("Hide Preview", propToggle(!!ctrl.hidePreview, (v) => {
       if (v) ctrl.hidePreview = true;
@@ -8926,8 +8979,8 @@ function renderObjectInspector(host, state, force) {
   }
   const isTextarea = ctrl.kind === "textarea";
   const { minW, minH } = getComponentMinDimensions(ctrl);
-  const defW = ctrl.w || (parentGroup ? (isTextarea ? 160 : (isDivider ? (ctrl.kind === "vdivider" ? 16 : 192) : 100)) : (isDivider ? (ctrl.kind === "vdivider" ? 16 : 256) : 256));
-  const defH = ctrl.h || (parentGroup ? (isTextarea ? 80 : (isMediaCtrl ? 96 : (isDivider ? 16 : 32))) : (isTextarea ? 96 : (isDivider ? 16 : 32)));
+  const defW = ctrl.w || (parentGroup ? (isTextarea ? 160 : (isDivider ? (ctrl.kind === "vdivider" ? 16 : 192) : 100)) : (isDivider ? (ctrl.kind === "vdivider" ? 16 : 256) : ctrl.kind === "preview_override" ? 320 : 256));
+  const defH = ctrl.h || (parentGroup ? (isTextarea ? 80 : (isMediaCtrl ? (ctrl.kind === "preview_override" ? 180 : 96) : (isDivider ? 16 : 32))) : (isTextarea ? 96 : (isDivider ? 16 : ctrl.kind === "preview_override" ? 240 : 32)));
   props.append(propRow("Width", propNumber(defW, (v) => { ctrl.w = Math.max(minW, v); state.refresh(); })));
   props.append(propRow("Height", propNumber(defH, (v) => { ctrl.h = Math.max(minH, v); state.refresh(); })));
 
@@ -12879,6 +12932,16 @@ function enterSuper(sn) {
   if (!c || !inner || typeof c.setGraph !== "function") return;
   if (c.graph === inner) return;
   closeObjectInspector();
+
+  // Restaura elementos DOM promovidos que foram anexados ao cartão para o container do subgrafo
+  for (const n of inner.nodes || []) {
+    for (const w of n.widgets || []) {
+      if (w.__origParent && w.element && w.element.parentElement !== w.__origParent) {
+        try { w.__origParent.append(w.element); } catch {}
+      }
+    }
+  }
+
   SS_NAV.push({ host: sn, from: c.graph, inner, view: { offset: [...(c.ds?.offset || [0, 0])], scale: c.ds?.scale || 1 } });
   c.deselectAll?.();
 
@@ -13677,8 +13740,7 @@ function cardHeight(host) {
   if (!card) return 260;
   const scale = card.style?.zoom ? parseFloat(card.style.zoom) : (host.properties?.[PROP]?.scale || 1);
   const rawH = Math.max(card.scrollHeight || 0, card.offsetHeight || 0) || 260;
-  const rectH = card.getBoundingClientRect ? card.getBoundingClientRect().height : 0;
-  const h = Math.max(rawH * (scale || 1), rectH || 0);
+  const h = rawH * (scale || 1);
   return Math.ceil(h || 260);
 }
 
@@ -13782,9 +13844,10 @@ app.registerExtension({
       setTimeout(() => {
         try {
           applySuperSlots(this);
+          this.__legoState?.refresh?.();
           this.setDirtyCanvas?.(true, true);
         } catch {}
-      }, 0);
+      }, 50);
       return r;
     };
   },

@@ -1,11 +1,11 @@
 import { chromium } from "playwright-core";
 import http from "node:http"; import fs from "node:fs"; import path from "node:path";
 import { launch, serve, OUT as dir } from "../lib.mjs";
-const srv = serve(8770);
+const srv = serve(8777);
 const b = await launch();
 const pg = await b.newPage({ viewport: { width: 820, height: 1600 } });
 const errs = []; pg.on("pageerror", e => errs.push(e.message));
-await pg.goto("http://localhost:8770/drag.html"); await pg.waitForFunction(() => window.__ready); await pg.waitForTimeout(200);
+await pg.goto("http://localhost:8777/drag.html"); await pg.waitForFunction(() => window.__ready); await pg.waitForTimeout(200);
 let ok = 0, fail = 0; const t = (n, c) => { c ? ok++ : fail++; console.log(c ? "PASS" : "FAIL", n); };
 const names = (sel) => pg.evaluate((s) => eval(s), sel);
 const center = async (sel, dx = 0.5, dy = 0.5) => { const bx = await pg.locator(sel).first().boundingBox(); return [bx.x + bx.width * dx, bx.y + bx.height * dy]; };

@@ -3060,9 +3060,39 @@ export const CSS_OUTPUT = `
 .lego-oi-toggle.on .lego-oi-toggle-knob {
   transform: translateX(16px);
 }
+.lego-row.is-preview-override {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  min-height: 120px;
+  height: 100%;
+}
+.lego-row.is-preview-override .lego-preview-override-box {
+  flex: 1 1 0;
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+}
 .lego-preview-override-box {
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid var(--lego-line);
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+.lego-preview-override-box.is-censored {
+  overflow: hidden !important;
+}
+.lego-preview-override-box.is-censored .kj-pov-image-area,
+.lego-preview-override-box.is-censored canvas,
+.lego-preview-override-box.is-censored img,
+.lego-preview-override-box.is-censored video {
+  filter: blur(28px) grayscale(40%);
+  transform: scale(1.12);
+  pointer-events: none;
+}
+.lego-preview-override-box.is-censored .lego-media-censor-overlay {
+  display: flex;
 }
 `;
 

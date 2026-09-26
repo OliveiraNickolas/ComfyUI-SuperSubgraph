@@ -766,6 +766,68 @@ const kjWidget = {
 const descKJ = M.describeWidget(kjWidget);
 t("describeWidget maps kj_preview to preview_override", descKJ.kind === "preview_override");
 
+// Test that cardHeight does not fluctuate with canvas zoom (getBoundingClientRect scale)
+const mockHost = {
+  properties: { ui_layout: { scale: 1 } },
+  firstElementChild: {
+    scrollHeight: 400,
+    offsetHeight: 400,
+    getBoundingClientRect: () => ({ height: 800 }) // simulated 2x canvas zoom
+  }
+};
+const hZoom2x = M.cardHeight(mockHost);
+mockHost.firstElementChild.getBoundingClientRect = () => ({ height: 200 }); // simulated 0.5x zoom
+const hZoomHalf = M.cardHeight(mockHost);
+t("cardHeight is zoom-independent (does not scale with getBoundingClientRect)", hZoom2x === 400 && hZoomHalf === 400);
+
+// Test ModelPreviewOverrideKJ rendering on SuperSubgraph card
+const kjRoot = dom.window.document.createElement("div");
+kjRoot.className = "kj-pov-root";
+const kjTestNode = {
+  id: 302,
+  title: "SuperSubgraph",
+  type: "SuperSubgraph",
+  size: [500, 600],
+  properties: {
+    ui_layout: {
+      schema: 2,
+      activeTab: 0,
+      tabs: [{
+        sections: [{
+          header: "PREVIEW",
+          controls: [{
+            name: "Input1",
+            kind: "preview_override",
+            bind: "preview",
+            w: 320,
+            h: 240
+          }]
+        }]
+      }]
+    }
+  },
+  widgets: [{
+    name: "preview",
+    type: "kj_preview",
+    element: kjRoot
+  }],
+  flags: {},
+  setSize() {},
+  addDOMWidget(name, type, el, opts) {
+    this.domElement = el;
+    const w = { name, type, element: el, ...opts };
+    this.widgets.push(w);
+    return w;
+  }
+};
+const kjTestState = M.attach(kjTestNode);
+kjTestState.refresh();
+
+const povBox = kjTestNode.domElement.querySelector(".lego-preview-override-box");
+t("preview_override renders .lego-preview-override-box", !!povBox);
+t("preview_override mounts w.element", povBox?.contains(kjRoot));
+t("preview_override does not render text input", !kjTestNode.domElement.querySelector(".lego-row.is-preview-override input.lego-in"));
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 M.enterSuper(sn);
