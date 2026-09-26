@@ -1394,6 +1394,9 @@ function mkNumber(node, w, ctrl, state) {
  * Aqui o botão ocupa o espaço que houver e a lista abre solta, larga o quanto
  * precisar, com searchBox e a pasta separada do name do arquivo.
  */
+/** Pastas abertas nas listas (vale para a sessão toda, em todos os dropdowns). */
+const DROPDOWN_OPEN = new Set();
+
 function openDropdown(anchorEl, values, current, onPick) {
   document.querySelectorAll(".lego-list-pop").forEach((e) => e.remove());
 
@@ -1412,9 +1415,83 @@ function openDropdown(anchorEl, values, current, onPick) {
   const onOutside = (e) => { if (!pop.contains(e.target)) closePopup(); };
   const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); closePopup(); } };
 
+  const entryOf = (v) => {
+    const rawVal = (typeof v === "object" && v !== null && "value" in v) ? v.value : v;
+    const displayLabel = (typeof v === "object" && v !== null) ? (v.content || v.text || v.label || v.value) : v;
+    return { rawVal, text: String(displayLabel ?? "") };
+  };
+  const pickRow = (it, rawVal, idx) => {
+    it.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closePopup();
+      onPick(rawVal, idx);
+    });
+  };
+
+  // Sem filtro e com caminhos ("sdxl/loras/x.safetensors"): árvore de pastas,
+  // como o seletor nativo. Pastas primeiro; a do valor atual já vem aberta.
+  const SEP = /[\\/]/;
+  const hasFolders = values.some((v) => SEP.test(entryOf(v).text));
+  const renderTree = () => {
+    const root = { dirs: new Map(), files: [] };
+    values.forEach((v, vi) => {
+      const { rawVal, text } = entryOf(v);
+      const parts = text.split(SEP);
+      let node = root, path = "";
+      for (const p of parts.slice(0, -1)) {
+        path += p + "/";
+        if (!node.dirs.has(p)) node.dirs.set(p, { path, dirs: new Map(), files: [], count: 0 });
+        node = node.dirs.get(p);
+        node.count++;
+      }
+      node.files.push({ vi, rawVal, text, leaf: parts[parts.length - 1] });
+    });
+    const cur = String(current ?? "");
+    const curParts = cur.split(SEP);
+    for (let i = 1; i < curParts.length; i++) DROPDOWN_OPEN.add(curParts.slice(0, i).join("/") + "/");
+    let selEl = null;
+    const draw = (node, depth) => {
+      for (const [name, d] of node.dirs) {
+        const open = DROPDOWN_OPEN.has(d.path);
+        const row = el("div", `lego-list-item lego-list-dir${open ? " open" : ""}`);
+        row.style.paddingLeft = `${8 + depth * 14}px`;
+        row.append(el("span", "lego-list-caret", open ? "\u25BE" : "\u25B8"), el("span", "lego-list-leaf", name), el("span", "lego-list-count", String(d.count)));
+        row.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (open) DROPDOWN_OPEN.delete(d.path); else DROPDOWN_OPEN.add(d.path);
+          const top = listEl.scrollTop;
+          render();
+          listEl.scrollTop = top;
+        });
+        listEl.append(row);
+        if (open) draw(d, depth + 1);
+      }
+      for (const f of node.files) {
+        const it = el("div", `lego-list-item${String(f.rawVal) === cur ? " sel" : ""}`);
+        it.style.paddingLeft = `${8 + depth * 14 + (depth ? 12 : 0)}px`;
+        it.append(el("span", "lego-list-leaf", f.leaf));
+        it.title = f.text;
+        pickRow(it, f.rawVal, f.vi);
+        if (String(f.rawVal) === cur) selEl = it;
+        listEl.append(it);
+      }
+    };
+    draw(root, 0);
+    return selEl;
+  };
+
+  let firstRender = true;
   const render = () => {
     const q = searchBox.value.toLowerCase();
     listEl.replaceChildren();
+    if (!q && hasFolders) {
+      const selEl = renderTree();
+      if (firstRender && selEl) requestAnimationFrame(() => selEl.scrollIntoView({ block: "nearest" }));
+      firstRender = false;
+      return;
+    }
     let n = 0;
     for (let vi = 0; vi < values.length; vi++) {
       const v = values[vi];
@@ -1428,12 +1505,7 @@ function openDropdown(anchorEl, values, current, onPick) {
       if (cut >= 0) it.append(el("span", "lego-list-folder", t.slice(0, cut + 1)));
       it.append(el("span", "lego-list-leaf", t.slice(cut + 1)));
       it.title = t;
-      it.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        closePopup();
-        onPick(rawVal, idx);
-      });
+      pickRow(it, rawVal, idx);
       listEl.append(it);
       if (++n >= 600) break;   // listas de modelo chegam a centenas
     }

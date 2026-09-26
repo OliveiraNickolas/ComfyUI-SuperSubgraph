@@ -433,6 +433,10 @@ export const CSS = `
   cursor:pointer;font-size:10px;line-height:1.35;color:#f2f2f6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lego-list-item:hover{background:#3b82f6;color:#fff}
 .lego-list-item.sel{background:rgba(59,130,246,0.22);font-weight:600}
+.lego-list-dir{align-items:center;gap:6px;color:var(--lego-dim,#94a3b8);font-weight:600}
+.lego-list-dir:hover{background:rgba(255,255,255,0.08);color:var(--lego-text)}
+.lego-list-caret{flex:none;width:10px;font-size:9px;opacity:.8}
+.lego-list-count{margin-left:auto;flex:none;font-size:9px;opacity:.55;font-weight:500}
 .lego-list-folder{opacity:.5;font-size:9.5px;flex:none}
 .lego-list-leaf{flex:none}
 
