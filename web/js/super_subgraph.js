@@ -3162,21 +3162,35 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
         const minW = itemMinW;
         const minH = itemMinH;
 
-        const itemEls = [...box.children].filter((c) => c.classList?.contains("lego-segment-item"));
-        const elOf = (it) => itemEls.find((c) => c.dataset.name === it.name) || null;
+        // Selecionados em qualquer grupo (ou soltos) do cartão redimensionam
+        // juntos; as guias comparam com os itens de todos os grupos da zona.
+        const card = host.__legoHost || box.closest(".lego-card") || document;
+        const layoutNow = host.properties[PROP];
+        const byName = new Map();
+        walkControls(layoutNow, (c, list) => { if (c?.name) byName.set(c.name, { c, list }); });
+        const elByName = (nm) => [...card.querySelectorAll(".lego-segment-item, .lego-row")].find((x) => x.dataset.name === nm) || null;
         const others = (state.selectedNames?.size > 1)
-          ? ctrl.items.filter((it) => it !== item && state.selectedNames.has(it.name)).map((it) => {
-            const oel = elOf(it);
-            return oel && { it, el: oel, w0: oel.offsetWidth, h0: oel.offsetHeight, min: getComponentMinDimensions(it) };
+          ? [...state.selectedNames].filter((nm) => nm !== item.name).map((nm) => {
+            const hitC = byName.get(nm);
+            const oel = elByName(nm);
+            if (!hitC || !oel || isGroupKind(hitC.c.kind)) return null;
+            return { it: hitC.c, el: oel, w0: oel.offsetWidth, h0: oel.offsetHeight, min: getComponentMinDimensions(hitC.c), loose: oel.classList.contains("lego-row") };
           }).filter(Boolean)
           : [];
-        // Guias: bordas e tamanhos dos outros itens do grupo (coordenadas do box).
-        const x0 = itemWrap.offsetLeft, y0 = itemWrap.offsetTop;
-        const sibs = itemEls.filter((c) => c !== itemWrap && !others.some((o) => o.el === c))
-          .map((c) => ({ l: c.offsetLeft, t: c.offsetTop, w: c.offsetWidth, h: c.offsetHeight }));
+        // Guias em coordenadas da zona (a linha pode ligar itens de grupos diferentes).
+        const zoneEl = box.closest(".lego-sec-controls") || box;
+        const zr = zoneEl.getBoundingClientRect();
+        const sc = domScale() || 1;
+        const localRect = (x) => { const r = x.getBoundingClientRect(); return { l: (r.left - zr.left) / sc, t: (r.top - zr.top) / sc, w: r.width / sc, h: r.height / sc }; };
+        const me = localRect(itemWrap);
+        const x0 = me.l, y0 = me.t;
+        const sibs = [...zoneEl.querySelectorAll(".lego-segment-item, .lego-row:not(.is-segment)")]
+          .filter((c) => c !== itemWrap && !c.contains(itemWrap) && !others.some((o) => o.el === c))
+          .map(localRect);
         let guides = [];
         const clearItemGuides = () => { guides.forEach((g) => g.remove()); guides = []; };
         const SNAP = 6;
+        let matched = [];
         const snapAxis = (raw, start, key0, keyS) => {
           // Borda final alinhada com a de outro item, ou mesmo tamanho que ele.
           let best = null, diff = SNAP + 1;
@@ -3187,13 +3201,20 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
               if (d < diff) { diff = d; best = cand; }
             }
           }
+          matched = best == null ? [] : sibs.filter((sb) => Math.abs(sb[key0] + sb[keyS] - start - best) < 1 || Math.abs(sb[keyS] - best) < 1);
           return best;
         };
         const guide = (vertical, pos) => {
           const g = el("div", `lego-align-guide ${vertical ? "v" : "h"}`);
-          if (vertical) { g.style.left = `${pos}px`; g.style.top = "0"; g.style.height = "100%"; }
-          else { g.style.top = `${pos}px`; g.style.left = "0"; g.style.width = "100%"; }
-          box.append(g);
+          const span = [me, ...matched];
+          if (vertical) {
+            const top = Math.min(...span.map((r) => r.t)) - 6, bot = Math.max(...span.map((r) => r.t + r.h)) + 6;
+            g.style.left = `${pos}px`; g.style.top = `${top}px`; g.style.height = `${bot - top}px`;
+          } else {
+            const left = Math.min(...span.map((r) => r.l)) - 6, right = Math.max(...span.map((r) => r.l + r.w)) + 6;
+            g.style.top = `${pos}px`; g.style.left = `${left}px`; g.style.width = `${right - left}px`;
+          }
+          zoneEl.append(g);
           guides.push(g);
         };
 

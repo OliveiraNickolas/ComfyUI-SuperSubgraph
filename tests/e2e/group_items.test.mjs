@@ -52,7 +52,7 @@ const rz = pg.locator('.lego-segment-item[data-name="C2"] > .lego-resizer-corner
 const rb = await rz.boundingBox(); const c2 = await box("C2");
 await pg.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2); await pg.mouse.down();
 await pg.mouse.move(rb.x + rb.width / 2 + 243 - c2.width, rb.y + rb.height / 2, { steps: 8 });
-const guides = await pg.locator(".lego-segment-box .lego-align-guide").count();
+const guides = await pg.locator(".lego-sec-controls .lego-align-guide").count();
 await pg.screenshot({ path: path.join(dir, "group_item_guides.png") });
 await pg.mouse.up(); await pg.waitForTimeout(200);
 const ws = await E(() => window.__sn.properties.ui_layout.tabs[0].sections[0].controls[0].items.filter(i => i.kind === "combo").map(i => i.w).join());
@@ -88,6 +88,36 @@ const hs = await E(async () => {
   return out;
 });
 t(`one-row group keeps the same compact height in both modes: ${hs}`, hs.every((h) => h === hs[0]) && hs[0] < 96);
+
+// 6. Itens selecionados em grupos DIFERENTES redimensionam juntos, e a guia
+//    compara com os itens dos outros grupos da zona.
+await E(async () => {
+  const sn = window.__sn; const id = sn.__ssGraph._nodes[0].id;
+  const list = sn.properties.ui_layout.tabs[0].sections[0].controls;
+  list.length = 0;
+  const grp = (n, y) => ({ kind: "segment", name: n, header: n, label: n, x: 16, y, w: 420, h: 57, items: [
+    { kind: "combo", name: n + "C", bind: `${id}/type`, labelPos: "none", w: 160 }, { kind: "label", name: n + "L", text: "Strength", label: "Strength", w: 96 } ] });
+  list.push(grp("GA", 16), grp("GB", 96), grp("GC", 176));
+  // o label de GC é mais largo: alvo da guia
+  list[2].items[1].w = 128;
+  sn.__legoState.edit = true; sn.__legoState.refresh();
+});
+await pg.waitForTimeout(400);
+await pg.keyboard.press("Escape"); await pg.keyboard.press("Escape");
+await pg.keyboard.down("Control");
+for (const n of ["GAL", "GBL"]) { const bb = await box(n); await pg.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); }
+await pg.keyboard.up("Control");
+t("labels of two groups selected", (await E(() => [...window.__sn.__legoState.selectedNames].sort().join())) === "GAL,GBL");
+const rz3 = pg.locator('.lego-segment-item[data-name="GAL"] > .lego-resizer-corner');
+const r3 = await rz3.boundingBox(); const gal = await box("GAL"); const gcl = await box("GCL");
+await pg.mouse.move(r3.x + r3.width / 2, r3.y + r3.height / 2); await pg.mouse.down();
+// até perto da borda direita do label de GC (outro grupo)
+await pg.mouse.move(r3.x + r3.width / 2 + (gcl.x + gcl.width - (gal.x + gal.width)) - 3, r3.y + r3.height / 2, { steps: 8 });
+const g3 = await pg.locator(".lego-sec-controls > .lego-align-guide").count();
+await pg.mouse.up(); await pg.waitForTimeout(300);
+const w3 = await E(() => { const l = window.__sn.properties.ui_layout.tabs[0].sections[0].controls; return l.map((g) => g.items[1].w); });
+t(`guide against an item in another group (${g3})`, g3 >= 1);
+t(`both selected labels resized, snapped to the other group's label: ${w3}`, w3[0] === 128 && w3[1] === 128 && w3[2] === 128);
 
 t("no page errors " + JSON.stringify(errs), !errs.length);
 console.log(`\n${ok} passed, ${fail} failed`);
