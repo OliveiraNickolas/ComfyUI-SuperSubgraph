@@ -11,6 +11,7 @@ import { is2DKind, itemToZoneCtrl, zoneCtrlToItem } from "./drag.js";
 import { makeRowId, sameRow, widthForCount } from "./whole_node.js";
 import { isGroupKind, openInspector, openLegoContextMenu } from "./picker.js";
 import { ensureComponentName, findSelected, selectComponent } from "./inspector.js";
+import { exposeAsInput, hasWireInput, innerOfBind, isSuperNode, removeWireInput } from "./native.js";
 
 /* ── Cores por zona e por componente ─────────────────────────────────────── */
 const LEGO_COLORS = [
@@ -255,6 +256,12 @@ function openComponentContextMenu(e, host, state, ctrl, list) {
     }) });
   }
   entries.push({ icon: "blank", label: "Color…", action: () => openColorMenu(e, ctrl.color, (color) => setComponentColor(host, state, ctrl, color)) });
+  // Fio (entrada nativa do subgrafo): só quando o valor deve vir de FORA.
+  if (!many && isSuperNode(host) && innerOfBind(host, ctrl.bind)) {
+    entries.push(hasWireInput(host, ctrl.bind)
+      ? { icon: "link", label: "Remove node input (wire)", action: () => removeWireInput(host, ctrl.bind) }
+      : { icon: "link", label: "Expose as node input (wire)", action: () => exposeAsInput(host, ctrl.bind) });
+  }
   entries.push(null, { icon: "trash", label: many ? `Remove (${names.size})` : "Remove", hint: "Del", danger: true, action: () => {
     pushUndo(host);
     removeControlsByName(host.properties[PROP], names);

@@ -8,7 +8,7 @@ import { OUTPUTS, notifyOutputViews, recordOutput } from "./ss/outputs.js";
 import { mirrorModeFor } from "./ss/panels.js";
 import { buildWholeNodeCtrl } from "./ss/whole_node.js";
 import { ATTACHED, attach } from "./ss/lifecycle.js";
-import { convertSelectionToSuper, onRunEvent, refreshLayoutLibrary, selectedNodes, superMenuOptions, warnLostComponents } from "./ss/native.js";
+import { convertSelectionToSuper, exposeAsInput, installCardMarks, onRunEvent, refreshLayoutLibrary, removeWireInput, selectedNodes, superMenuOptions, warnLostComponents } from "./ss/native.js";
 
 /**
  * ComfyUI Super-Subgraph — "UI Lego"  v2
@@ -81,6 +81,8 @@ app.registerExtension({
     });
 
     refreshLayoutLibrary();
+    // Dentro do subgrafo: contorno nos parâmetros que estão no cartão.
+    installCardMarks();
     for (const type of ["execution_start", "progress_state", "executing", "execution_error", "execution_interrupted", "execution_success"]) {
       api.addEventListener(type, (e) => { try { onRunEvent(type, e?.detail); } catch (err) { console.warn(LOG, "run feedback", err); } });
     }
@@ -170,6 +172,9 @@ app.registerExtension({
     host.__legoState?.refresh();
     return ctrl;
   },
+  /** Para testes e scripts: cria/tira a entrada nativa (fio) de um parâmetro do cartão. */
+  __exposeAsInput(host, bind) { return exposeAsInput(host, bind); },
+  __removeWireInput(host, bind) { return removeWireInput(host, bind); },
   /** Para testes e scripts: todos os itens do menu, com os de submenus, numa lista só. */
   __flatMenu(items) {
     const out = [];

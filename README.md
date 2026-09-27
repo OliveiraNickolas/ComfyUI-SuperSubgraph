@@ -22,7 +22,9 @@ Quickest way: on an empty card, click **Promote parameters** — the selector op
 - click again to unpick; clicking a parameter of a whole-picked node unpicks just that parameter;
 - **Promote (N)** (or Enter) adds everything at once, arranged side by side in rows that fit the zone (in the order the nodes sit on the canvas, top to bottom and left to right), starting where you opened the selector — or below what the zone already has; **Cancel** (or Esc) leaves without changes. Opened from a group's **+ Add**, the picks become items of that group.
 
-If a promoted parameter disappears (its node was deleted or changed), the component shows **widget missing** with **Rebind** (link it to another parameter) and **Remove**.
+Parameters that are already on the card have a **dashed purple outline** and their node an **on card** badge — inside the SuperSubgraph and in the Target Picker (picking one again just says it's already there). No wires are needed: the card controls the parameter directly.
+
+If a promoted parameter disappears (its node was deleted or changed), the component shows **widget missing** with **Rebind** (link it to another parameter) and **Remove**; coming back from inside, the card also warns you.
 
 ## Editing components
 
@@ -67,9 +69,13 @@ In edit mode, select 2 or more components of a zone (Shift/Ctrl + click, or drag
 align left / center / right, top / middle / bottom, **arrange in a row** or **in a column** (16px apart), distribute horizontally / vertically (3+),
 and same width / height / size (taken from the last one selected). Resizing one of the selected components by its corner resizes all of them by the same amount.
 
-## Promoted parameters
+## Wires (node inputs)
 
-ComfyUI may promote some inner parameters to the subgraph node itself (for example a Load Image's image). A promoted parameter has its own value on each subgraph node and that is the value that runs — the card reads and writes that one automatically.
+A native subgraph promotes a parameter by wiring it to the subgraph's edge. A SuperSubgraph doesn't need that: the card controls the parameter directly, so **Convert Selection to SuperSubgraph** removes the wires ComfyUI would add by itself (seed, prompt, image…) and keeps only the real data connections (IMAGE, MODEL, LATENT…).
+
+When a value should come from **outside** the SuperSubgraph (say, a seed from another node), right-click the component ▸ **Expose as node input (wire)** — or turn on **Node Input** in its Properties. That creates the native input on the node; **Remove node input** takes it away again and keeps the value that was in use. For SuperSubgraphs made before this, **SuperSubgraph ▸ More ▸ Remove unused input wires** clears the automatic ones.
+
+While a parameter has a wire, its value lives on the subgraph node (one per instance) and that is the value that runs — the card reads and writes that one automatically.
 
 ## Installation
 

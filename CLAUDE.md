@@ -98,10 +98,19 @@ against a live ComfyUI: it lists widgets that still fall back to a text box.
   coordinates to card coordinates divide by `domScale()`.
 - A layout object lives in `node.properties.ui_layout`; binds are
   `"widget"` (host) or `"<nodeId>/<widget>"` (a node inside `host.subgraph`).
-- ComfyUI auto-promotes some inner widgets to the subgraph node; a promoted
-  widget has its own value per instance and is what runs. `resolveBind`
-  returns the host's promoted widget for such binds (`promotedHostWidget`) —
-  always read/write through `resolveBind`, never the inner widget directly.
+- Promotion model: the card controls inner widgets directly — no wire.
+  Native wire promotions (a subgraph input linked to the inner widget) are
+  only for values that must come from OUTSIDE: "Expose as node input" /
+  "Remove node input" (`exposeAsInput` / `removeWireInput` in `native.js`).
+  `convertSelectionToSuper` removes the wires ComfyUI auto-promotes (seed,
+  prompt, image…) with `removeUnusedWireInputs`; removing a wire first copies
+  the host value (the one that ran) into the inner widget. Inside a subgraph,
+  widgets on the card are outlined in purple (`installCardMarks`: canvas
+  drawing, plus `data-lego-on-card` for Vue Nodes).
+- While a wire promotion exists, the promoted host widget has its own value
+  per instance and is what runs. `resolveBind` returns it for such binds
+  (`promotedHostWidget`) — always read/write through `resolveBind`, never the
+  inner widget directly.
 - Execution ids of nodes inside a subgraph are `"<hostId>:<innerId>"`.
 - Native subgraph definitions are shared between instances. To make an
   independent copy, clone the definition with new node ids (`copyAsSuper`);

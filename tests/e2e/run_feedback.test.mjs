@@ -35,8 +35,11 @@ await pg.locator('.lego-row[data-name="Stepper1"] .lego-seed-mode').click(); awa
 const mode1 = await E((ids) => ({ btn: document.querySelector('.lego-row[data-name="Stepper1"] .lego-seed-mode')?.textContent, w: window.app.graph.getNodeById(ids.sn).subgraph.getNodeById(ids.ni).widgets.find(w => w.options?.values?.includes?.("randomize")).value }), ids);
 t("click switches the inner control widget to increment: " + JSON.stringify(mode1), mode1.w === "increment" && mode1.btn === "+1");
 
-// executa: o erro do LoadImage aparece no cartão, e a seed de dentro anda +1
-await E((ids) => { window.app.graph.getNodeById(ids.sn).subgraph.getNodeById(ids.li).widgets[0].value = "missing_" + Date.now() + ".png"; }, ids);
+// executa: a seed de dentro anda +1; o erro de um nó de dentro aparece no cartão.
+// (Antes o teste trocava a imagem por um arquivo inexistente; como o Load Image
+// estava promovido com fio, isso não pesava. Agora o cartão controla o nó de
+// dentro direto — sem fio — e um arquivo inexistente barra a execução. O erro
+// é simulado logo abaixo, então a execução em si roda com a imagem válida.)
 await E(async () => { await window.app.queuePrompt(0, 1); });
 await pg.waitForTimeout(1500);
 // Erro de um nó de dentro, no formato de id do subgrafo nativo ("<host>:<dentro>").

@@ -192,6 +192,236 @@ function warnLostComponents(host) {
   showLegoToast(`${host.title || "Super Subgraph"}: ${n} component${n > 1 ? "s" : ""} lost ${n > 1 ? "their" : "its"} node — use Rebind or Remove`, 5000);
 }
 
+/* ── Promoção: cartão (sem fio) e entrada nativa (com fio) ──────────────
+ * O cartão controla o parâmetro de dentro direto — não precisa de fio. O fio
+ * (entrada nativa do subgrafo) fica para quando o valor deve vir de FORA:
+ * "Expose as node input" cria, "Remove node input" tira. Ao tirar, o valor
+ * que valia (o do nó de fora) é copiado para o parâmetro de dentro.
+ */
+
+/** Nó e widget de dentro de um bind "<id>/<widget>" do host; null se não for de dentro. */
+function innerOfBind(host, bind) {
+  if (!host?.subgraph || typeof bind !== "string") return null;
+  const i = bind.indexOf("/");
+  if (i < 1) return null;
+  const node = innerNodesOf(host).find((n) => String(n.id) === bind.slice(0, i));
+  const widget = node?.widgets?.find((w) => w.name === bind.slice(i + 1));
+  return node && widget ? { node, widget } : null;
+}
+
+/** Entrada nativa (com fio) do host que promove `name` do nó de dentro, ou null. */
+function wireInputOf(host, inner, name) {
+  const sg = host?.subgraph;
+  const inp = (inner?.inputs || []).find((x) => x?.link != null && (x.widget?.name === name || x.name === name));
+  if (!sg || !inp) return null;
+  const link = sg.getLink?.(inp.link) ?? sg.links?.get?.(inp.link) ?? sg.links?.[inp.link];
+  if (!link) return null;
+  const ioId = sg.inputNode?.id ?? -10;
+  if (!(link.originIsIoNode || String(link.origin_id) === String(ioId))) return null;
+  return host.inputs?.[link.origin_slot] || null;
+}
+
+const hasWireInput = (host, bind) => {
+  const t = innerOfBind(host, bind);
+  return !!(t && wireInputOf(host, t.node, t.widget.name));
+};
+
+/** Parâmetros de dentro ligados a uma entrada do host (seguindo os fios dela). */
+function wireTargets(host, hin) {
+  const sg = host.subgraph;
+  const slot = hin?._subgraphSlot;
+  const out = [];
+  for (const id of slot?.linkIds || []) {
+    const link = sg.getLink?.(id) ?? sg.links?.get?.(id);
+    const node = link && sg.getNodeById?.(link.target_id);
+    const inp = node?.inputs?.[link.target_slot];
+    const w = inp && (node.getWidgetFromSlot?.(inp) || node.widgets?.find((x) => x.name === (inp.widget?.name || inp.name)));
+    if (w) out.push(w);
+  }
+  return out;
+}
+
+/** Tira a entrada nativa (fio) do host, guardando o valor dela no parâmetro de dentro. */
+function dropWireInput(host, hin) {
+  const slot = hin?._subgraphSlot;
+  if (!slot || typeof host.subgraph?.removeInput !== "function") return false;
+  const hw = (host.widgets || []).find((x) => x?.name === hin.widget?.name);
+  if (hw) {
+    for (const w of wireTargets(host, hin)) {
+      // Nunca troca o tipo do valor (texto num widget de objeto quebra o nó).
+      if (w.value == null || typeof w.value === typeof hw.value) w.value = hw.value;
+    }
+  }
+  host.subgraph.removeInput(slot);
+  return true;
+}
+
+/** "Expose as node input": cria a entrada nativa (com fio) para o parâmetro do componente. */
+function exposeAsInput(host, bind) {
+  const t = innerOfBind(host, bind);
+  const sg = host?.subgraph;
+  if (!t || typeof sg?.addInput !== "function") return false;
+  if (wireInputOf(host, t.node, t.widget.name)) return true;
+  const slot = t.node.getSlotFromWidget?.(t.widget);
+  if (!slot) { showLegoToast("This parameter can't become a node input"); return false; }
+  const names = new Set((sg.inputs || []).map((x) => x.name));
+  let name = t.widget.name, k = 1;
+  while (names.has(name)) name = `${t.widget.name}_${k++}`;
+  const input = sg.addInput(name, String(slot.type ?? t.widget.type ?? "*"));
+  input.label = slot.label || t.widget.label;
+  if (!input.connect(slot, t.node)) {
+    sg.removeInput(input);
+    showLegoToast("Could not create the node input");
+    return false;
+  }
+  afterWireChange(host);
+  return true;
+}
+
+/** "Remove node input": tira o fio; o cartão segue controlando o parâmetro direto. */
+function removeWireInput(host, bind) {
+  const t = innerOfBind(host, bind);
+  const hin = t && wireInputOf(host, t.node, t.widget.name);
+  if (!hin) return false;
+  if (hin.link != null && !confirm(`"${hin.label || hin.name}" is connected outside the subgraph. Remove the input and its connection?`)) return false;
+  dropWireInput(host, hin);
+  afterWireChange(host);
+  return true;
+}
+
+/**
+ * Tira as promoções com fio que ninguém liga por fora (as que o ComfyUI cria
+ * sozinho ao converter: seed, prompt, imagem…). Entradas de dados ligadas lá
+ * fora (IMAGE, MODEL…) ficam. Devolve quantas saíram.
+ */
+function removeUnusedWireInputs(host) {
+  let n = 0;
+  for (const hin of [...(host?.inputs || [])]) {
+    if (hin?.link != null || !hin?.widget || !hin._subgraphSlot) continue;
+    if (!wireTargets(host, hin).length) continue;
+    if (dropWireInput(host, hin)) n++;
+  }
+  if (n) afterWireChange(host);
+  return n;
+}
+
+function afterWireChange(host) {
+  host.__legoState?.refresh();
+  host.setDirtyCanvas?.(true, true);
+  app.canvas?.setDirty?.(true, true);
+}
+
+/* ── Marca "no cartão" dentro do subgrafo ──────────────────────────────────
+ * Lá dentro, todo parâmetro que está no cartão ganha um contorno e o nó um
+ * selo "on card" — no uso normal e no Target Picker. Desenhado no próprio
+ * canvas (segue zoom e pan, não cobre menus).
+ */
+const CARD_MARK = "#a855f7";
+
+/** Parâmetros do grafo `graph` que estão no cartão de algum SS: Map(id do nó -> Set(widget)). */
+function cardBindsIn(graph) {
+  const map = new Map();
+  for (const host of ATTACHED) {
+    if (!graph || host.subgraph !== graph) continue;
+    walkControls(host.properties?.[PROP], (c) => {
+      const t = typeof c.bind === "string" ? c.bind.indexOf("/") : -1;
+      if (t < 1) return;
+      const id = c.bind.slice(0, t);
+      if (!map.has(id)) map.set(id, new Set());
+      map.get(id).add(c.bind.slice(t + 1));
+    });
+  }
+  return map;
+}
+
+/** Retângulo arredondado (navegadores antigos: retângulo simples). */
+function roundRect(ctx, x, y, w, h, r) {
+  if (typeof ctx.roundRect === "function") ctx.roundRect(x, y, w, h, r);
+  else ctx.rect(x, y, w, h);
+}
+
+/**
+ * Nós em HTML (Vue Nodes): o canvas fica por baixo deles, então a marca vai
+ * como atributo nas linhas dos parâmetros (o CSS desenha contorno e selo). O
+ * Vue não mexe em atributos que não são dele.
+ */
+function syncVueMarks(marks) {
+  if (!document.querySelector(".lg-node")) return;
+  const want = new Set();
+  for (const [id, names] of marks) {
+    const nodeEl = document.querySelector(`.lg-node[data-node-id="${String(id).replace(/"/g, "")}"]`);
+    if (!nodeEl) continue;
+    const node = app.canvas?.graph?.getNodeById?.(id);
+    want.add(nodeEl);
+    for (const row of nodeEl.querySelectorAll('[data-testid="node-widget"]')) {
+      const text = row.querySelector('[data-testid="widget-layout-field-label"]')?.textContent?.trim();
+      const w = (node?.widgets || []).find((x) => x.name === text || x.label === text);
+      if (w && names.has(w.name)) want.add(row);
+    }
+  }
+  for (const e of document.querySelectorAll("[data-lego-on-card]")) if (!want.has(e)) e.removeAttribute("data-lego-on-card");
+  for (const e of want) if (!e.hasAttribute("data-lego-on-card")) e.setAttribute("data-lego-on-card", "");
+}
+
+function drawCardMarks(canvas, ctx) {
+  const graph = canvas?.graph;
+  const inside = graph && graph !== (app.rootGraph || app.graph);
+  const marks = inside ? cardBindsIn(graph) : new Map();
+  syncVueMarks(marks);
+  if (!marks.size) return;
+  const LG = liteGraph();
+  const T = LG?.NODE_TITLE_HEIGHT || 30;
+  ctx.save();
+  for (const node of graph._nodes || graph.nodes || []) {
+    const names = marks.get(String(node.id));
+    if (!names) continue;
+    const [x, y] = node.pos;
+    const [w] = node.size;
+    // Selo no título.
+    ctx.font = "600 10px Inter, system-ui, sans-serif";
+    const label = "on card";
+    const tw = ctx.measureText(label).width + 12;
+    ctx.fillStyle = CARD_MARK;
+    ctx.beginPath();
+    // Dentro da barra de título, à direita (em cima dela fica o "#id" do ComfyUI).
+    const py = y - T + (T - 16) / 2;
+    roundRect(ctx, x + w - tw - 8, py, tw, 16, 8);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, x + w - tw - 2, py + 8);
+    if (node.flags?.collapsed) continue;
+    // Contorno em cada parâmetro que está no cartão.
+    // Tracejado: no Target Picker, a borda cheia roxa é "nó inteiro escolhido".
+    ctx.strokeStyle = CARD_MARK;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    for (const wd of node.widgets || []) {
+      if (!names.has(wd.name) || wd.hidden) continue;
+      const wy = wd.y ?? wd.last_y;
+      if (wy == null) continue;
+      const h = wd.computedHeight ?? wd.computeSize?.(w)?.[1] ?? LG?.NODE_WIDGET_HEIGHT ?? 20;
+      ctx.beginPath();
+      roundRect(ctx, x + 4, y + wy - 1, w - 8, h + 2, 6);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+/** Liga o desenho das marcas no canvas (uma vez). */
+function installCardMarks() {
+  const c = app.canvas;
+  if (!c || c.__legoMarks) return;
+  c.__legoMarks = true;
+  const orig = c.onDrawForeground;
+  c.onDrawForeground = function (ctx, area) {
+    const r = orig?.apply(this, arguments);
+    try { drawCardMarks(this, ctx); } catch (e) { /* marca é só visual */ }
+    return r;
+  };
+}
+
 /** Seleção → subgrafo nativo com cartão. */
 function convertSelectionToSuper(nodes = selectedNodes()) {
   const graph = app.canvas?.graph || app.graph;
@@ -210,6 +440,9 @@ function convertSelectionToSuper(nodes = selectedNodes()) {
   }
   const sn = res?.node;
   if (!sn) return null;
+  // O ComfyUI promove sozinho alguns parâmetros com fio (seed, prompt,
+  // imagem…). No Super Subgraph o cartão já os controla: sem esses fios.
+  try { removeUnusedWireInputs(sn); } catch (err) { console.warn(LOG, "remove auto promotions", err); }
   makeSuper(sn, groups, loose);
   app.canvas?.selectItems?.([sn]);
   showLegoToast(`Super Subgraph created with ${nodes.length} node${nodes.length > 1 ? "s" : ""}`);
@@ -538,6 +771,12 @@ function superMenuOptions(node) {
     });
     if (SS_LAYOUTS.length) more.push({ content: "Delete a Saved Card Layout", has_submenu: true, submenu: { options: SS_LAYOUTS.map((name) => ({ content: name, callback: () => deleteLayoutFromLibrary(name) })) } });
   }
+  if (isSS && (node.inputs || []).some((i) => i?.widget && i.link == null && i._subgraphSlot)) {
+    more.push({ content: "Remove unused input wires (the card controls them)", callback: () => {
+      const n = removeUnusedWireInputs(node);
+      showLegoToast(n ? `Removed ${n} input wire${n > 1 ? "s" : ""}` : "No unused input wires");
+    } });
+  }
   // Num Super Subgraph, tirar o cartão devolve o subgrafo clássico nativo.
   if (has) more.push({ content: isSS ? "Turn back into a classic Subgraph (remove card)" : "Remove Card UI", callback: () => detach(node) });
   if (more.length) sub.push({ content: "More", has_submenu: true, submenu: { options: more } });
@@ -700,4 +939,4 @@ function onRunEvent(type, d) {
   }
 }
 
-export { liteGraph, SS_LIB_DIR, isSuperNode, enterSuper, groupsAround, makeSuper, superAutoLayout, remapLayoutIds, rememberNodeRefs, repairInnerBinds, lostComponents, warnLostComponents, convertSelectionToSuper, copyAsSuper, innerNodesOf, hasInnerGraph, emptySuperLayout, selectedNodes, graphGroups, groupRect, nodeInGroup, ownerGroup, sortGroups, isNativeSubgraphNode, safeFileName, SS_LAYOUT_TYPE, SS_LAYOUT_DIR, SS_LAYOUTS, layoutNodeIds, layoutPackage, applyLayoutPackage, refreshLayoutLibrary, saveLayoutToLibrary, loadLayoutFromLibrary, deleteLayoutFromLibrary, exportLayoutToFile, importLayoutFromFile, superMenuOptions, openSuperMenu, openNodeMenuFromCard, RUN, runOf, execPathsOf, innerIdOf, innerTitle, paintRun, onRunEvent };
+export { liteGraph, SS_LIB_DIR, isSuperNode, enterSuper, groupsAround, makeSuper, superAutoLayout, remapLayoutIds, rememberNodeRefs, repairInnerBinds, lostComponents, warnLostComponents, convertSelectionToSuper, copyAsSuper, innerNodesOf, hasInnerGraph, emptySuperLayout, selectedNodes, graphGroups, groupRect, nodeInGroup, ownerGroup, sortGroups, isNativeSubgraphNode, safeFileName, SS_LAYOUT_TYPE, SS_LAYOUT_DIR, SS_LAYOUTS, layoutNodeIds, layoutPackage, applyLayoutPackage, refreshLayoutLibrary, saveLayoutToLibrary, loadLayoutFromLibrary, deleteLayoutFromLibrary, exportLayoutToFile, importLayoutFromFile, superMenuOptions, openSuperMenu, openNodeMenuFromCard, RUN, runOf, execPathsOf, innerIdOf, innerTitle, paintRun, onRunEvent, innerOfBind, wireInputOf, hasWireInput, exposeAsInput, removeWireInput, removeUnusedWireInputs, cardBindsIn, installCardMarks };

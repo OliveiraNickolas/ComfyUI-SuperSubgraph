@@ -12,7 +12,7 @@ import { OUTPUT_KINDS, addItemToSegment, isOutputKind, listOutputSourceTargets }
 import { isMediaKind } from "./drag.js";
 import { buildControl } from "./panels.js";
 import { buildWholeNodeCtrl, detectMediaKind, getNodeAtEvent, listBindableTargets, singleCtrlFor, wholeNodeItems } from "./whole_node.js";
-import { findFreeSpot, packInRows, renameClone } from "./form.js";
+import { findFreeSpot, packInRows, renameClone, walkControls } from "./form.js";
 import { INSPECTOR, INSPECTOR_POS, adaptInspectorWithDialog, ensureComponentName } from "./inspector.js";
 import { resize } from "./lifecycle.js";
 import { liteGraph } from "./native.js";
@@ -194,6 +194,14 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
   }
   window.addEventListener("pointermove", onPickHover, true);
 
+  /** O parâmetro já está no cartão deste host? */
+  const onCardAlready = (node, w) => {
+    const key = bindKey(host, node, w);
+    let found = false;
+    walkControls(host.properties?.[PROP], (c) => { if (c.bind === key) found = true; });
+    return found;
+  };
+
   /** Marca/desmarca: nó inteiro (título/área sem parâmetro) ou só o parâmetro. */
   const togglePick = (node, e) => {
     const key = String(node.id);
@@ -210,6 +218,10 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
       const rest = new Set(usableNames.filter((nm) => nm !== w.name));
       if (rest.size) picks.set(key, { node, whole: false, widgets: rest });
       else picks.delete(key);
+    } else if (!cur?.widgets?.has(w.name) && onCardAlready(node, w)) {
+      // Já está no cartão (contorno roxo): não duplica.
+      showLegoToast(`"${prettify(w.name)}" is already on the card`);
+      return;
     } else {
       const set = cur?.widgets || new Set();
       if (set.has(w.name)) set.delete(w.name); else set.add(w.name);

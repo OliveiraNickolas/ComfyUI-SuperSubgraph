@@ -12,6 +12,7 @@ import { isMediaKind } from "./drag.js";
 import { defaultSizeFor, isPanelKind } from "./panels.js";
 import { openInspector } from "./picker.js";
 import { ALIGN_OPS, TOOLBOX, alignIcon, alignSelected, colorDotButton, makeZone, openColorMenu, removeControlsByName, renderAlignBars, setComponentColor, toolByKind, uniqueComponentName, walkControls } from "./form.js";
+import { exposeAsInput, hasWireInput, innerOfBind, isSuperNode, removeWireInput } from "./native.js";
 
 /* ── Inspetor de Objetos ───────────────────────────────────────────────── */
 
@@ -541,6 +542,15 @@ function renderObjectInspector(host, state, force) {
   // Cor (a mesma bolinha da barra do componente).
   props.append(propRow("Color", colorDotButton("lego-oi-color-btn", ctrl.color, "Color",
     (color) => setComponentColor(host, state, ctrl, color))));
+  // Entrada nativa (fio) no nó do subgrafo: para ligar um valor vindo de fora.
+  if (isSuperNode(host) && innerOfBind(host, ctrl.bind)) {
+    const wire = propToggle(hasWireInput(host, ctrl.bind), (on) => {
+      if (on) exposeAsInput(host, ctrl.bind); else removeWireInput(host, ctrl.bind);
+      renderObjectInspector(host, state, true);
+    });
+    wire.title = "Also show this parameter as an input on the node, to connect a value from outside";
+    props.append(propRow("Node Input", wire));
+  }
 
   const isDivider = ctrl.kind === "hdivider" || ctrl.kind === "vdivider";
   const isLabel = ctrl.kind === "label";
