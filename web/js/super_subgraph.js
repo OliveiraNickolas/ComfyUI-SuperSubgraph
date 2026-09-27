@@ -58,7 +58,7 @@ function showLegoToast(msg) {
   toast.textContent = msg;
   toast.classList.add("visible");
   clearTimeout(toast.__timer);
-  toast.__timer = setTimeout(() => toast.classList.remove("visible"), 1200);
+  toast.__timer = setTimeout(() => toast.classList.remove("visible"), 1800);
 }
 
 /* ── Histórico de Undo / Redo (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y) ── */
@@ -10995,7 +10995,7 @@ function buildCard(host, state) {
           // Fora da edição a zona vazia convida a começar: "Promote parameters"
           // abre o picker direto; 2 cliques entram na edição e abrem a busca.
           const empty = el("div", "lego-empty lego-empty-cta");
-          empty.append(el("div", "", hasSubTabs ? `sub-tab "${activeTarget.name}" empty` : "empty zone"));
+          empty.append(el("div", "", hasSubTabs && s.tabs.length > 1 ? `tab "${activeTarget.name}" is empty` : "empty zone"));
           const cta = glyphTextBtn("lego-promote-cta", "target", "Promote parameters", 14);
           cta.title = "Pick nodes or parameters on the canvas and add them to this card";
           cta.addEventListener("pointerdown", (e) => e.stopPropagation());
@@ -12143,6 +12143,8 @@ function attach(node) {
   }
   widget.onRemove = () => {
     ATTACHED.delete(node);
+    // Nó apagado com o Inspetor aberto nele: o Inspetor sai junto.
+    if (INSPECTOR?.__host === node) closeObjectInspector();
     state.ro?.disconnect();
     showNative(node);
     delete node.__legoState;
@@ -12548,7 +12550,7 @@ async function refreshLayoutLibrary() {
 }
 
 async function saveLayoutToLibrary(host) {
-  const name = prompt("Save this card layout as:", host.properties?.[PROP]?.title || host.title || "Layout");
+  const name = prompt("Save this card layout as:", host.title || host.properties?.[PROP]?.title || "Layout");
   if (name == null || !name.trim()) return false;
   const file = safeFileName(name);
   if (SS_LAYOUTS.includes(file) && !confirm(`Layout "${file}" already exists. Replace it?`)) return false;
@@ -12581,7 +12583,7 @@ async function deleteLayoutFromLibrary(name) {
 }
 
 function exportLayoutToFile(host) {
-  const name = host.properties?.[PROP]?.title || host.title || "Layout";
+  const name = host.title || host.properties?.[PROP]?.title || "Layout";
   const blob = new Blob([JSON.stringify(layoutPackage(host, name), null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);

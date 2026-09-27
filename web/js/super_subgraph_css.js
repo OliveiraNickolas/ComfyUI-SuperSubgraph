@@ -2331,7 +2331,7 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--lego-accent)}
 .lego-palette-hint{font-size:9px;color:var(--lego-dim);font-weight:400;text-transform:none}
 .lego-palette-items{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
-.lego-pal-group{display:flex;align-items:center;gap:6px;padding:3px 7px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:9px}
+.lego-pal-group{display:flex;flex-wrap:wrap;max-width:100%;min-width:0;box-sizing:border-box;align-items:center;gap:6px;padding:3px 7px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:9px}
 .lego-pal-cat-tag{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#38bdf8;padding:0 3px;user-select:none;opacity:1}
 .lego-pal-item{display:flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(255,255,255,0.06);
   border:1px solid var(--lego-line);border-radius:7px;cursor:grab;user-select:none;font-size:10px;font-weight:600;
@@ -2698,27 +2698,28 @@ export const CSS_FORM = `
 
 /* Toast de feedback para ações rápidas de teclado (Undo, Redo, Copy, Paste) */
 .lego-action-toast{
+  /* Embaixo, no centro: o canto direito é dos controles de zoom do ComfyUI. */
   position: fixed;
   bottom: 24px;
-  right: 24px;
-  background: rgba(15, 23, 42, 0.94);
-  border: 1px solid rgba(56, 189, 248, 0.5);
-  color: #38bdf8;
+  left: 50%;
+  background: var(--comfy-menu-bg, rgba(15, 23, 42, 0.94));
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  color: var(--fg-color, #ddd);
   font-family: inherit;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   padding: 6px 14px;
   border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
   pointer-events: none;
   opacity: 0;
-  transform: translateY(8px);
-  transition: all .15s ease;
+  transform: translate(-50%, 8px);
+  transition: opacity .15s ease, transform .15s ease;
   z-index: 10000;
 }
 .lego-action-toast.visible{
   opacity: 1;
-  transform: translateY(0);
+  transform: translate(-50%, 0);
 }
 `;
 
