@@ -1813,8 +1813,10 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   cursor: pointer;
   position: relative;
   border-radius: 5px;
-  /* Sem folga vertical: editar não pode deixar o grupo mais alto que o modo normal. */
-  padding: 0 4px;
+  /* Sem folga nenhuma: editar não pode mudar o tamanho de nada (a borda de
+     destaque fica POR FORA, com outline-offset). */
+  padding: 0;
+  outline-offset: 2px;
   transition: all .12s ease;
   overflow: visible !important;
 }

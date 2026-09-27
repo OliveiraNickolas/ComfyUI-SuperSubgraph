@@ -23,12 +23,19 @@ const r = await pg.evaluate(async () => {
   const items = [...box.querySelectorAll(":scope > .lego-segment-item")];
   const last = items[items.length - 1];
   const spare = box.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom;
+  // editar não muda o tamanho de nada dentro do grupo (rótulo e controle)
+  const sizes = () => [...sn.__legoHost.querySelectorAll(`.lego-row[data-name="${grp.name}"] .lego-segment-item .lego-item-label`)].map(l => `${l.offsetWidth}x${l.offsetHeight}|${l.nextElementSibling?.offsetWidth}x${l.nextElementSibling?.offsetHeight}`).join(" ");
+  const viewSizes = sizes();
+  sn.__legoState.edit = true; sn.__legoState.refresh(); await new Promise(r => setTimeout(r, 300));
+  const editSizes = sizes();
+  sn.__legoState.edit = false; sn.__legoState.refresh(); await new Promise(r => setTimeout(r, 300));
   // o usuário escolhe outra altura: o ajuste automático não a desfaz
   grp.h = grp.h + 80; sn.__legoState.refresh();
   await new Promise(r => setTimeout(r, 500));
-  return { spare, userH: grp.h, estimate: grp.autoH };
+  return { spare, userH: grp.h, estimate: grp.autoH, viewSizes, editSizes };
 });
 t("auto group has no empty space at the bottom (spare " + Math.round(r.spare) + "px)", r.spare < 20);
+t("edit mode doesn't resize labels or controls in the group " + (r.viewSizes === r.editSizes ? "" : JSON.stringify([r.viewSizes, r.editSizes])), r.viewSizes === r.editSizes && r.viewSizes.length > 0);
 t("a height the user chose is kept (" + r.userH + ")", r.userH !== r.estimate);
 t("no extension errors " + JSON.stringify(errs.slice(0, 3)), !errs.length);
 console.log(`\n${ok} passed, ${fail} failed`);
