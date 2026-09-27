@@ -1,5 +1,6 @@
-// Gera tests/.build/mod.mjs: o super_subgraph.js sem os imports do ComfyUI
-// (app/api vêm de globalThis.__app/__api) e com as funções internas exportadas.
+// Gera tests/.build/mod.mjs: o super_subgraph.js e seus módulos (web/js/ss/)
+// juntos num arquivo só, sem os imports (app/api vêm de globalThis.__app/__api),
+// e com as funções internas exportadas.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,13 +17,28 @@ const EXPORTS = [
   "sameUrl", "MEDIA_ELEMENT_CACHE", "OUTPUT_VIEW_CACHE", "renderZoneGuides", "clearZoneGuides",
   "describeWidget", "cardHeight", "usable", "fmtNum", "numDecimals", ];
 
-let src = fs.readFileSync(SRC, "utf8");
+// Ordem dos módulos = ordem do código original (constants primeiro).
+const SS = path.join(path.dirname(SRC), "ss");
+const ORDER = ["constants", "core", "widgets", "controls", "outputs", "drag", "panels", "whole_node",
+  "picker", "form", "inspector", "card", "lifecycle", "native"];
+const onDisk = fs.readdirSync(SS).filter((f) => f.endsWith(".js")).map((f) => f.slice(0, -3)).sort();
+const missing = onDisk.filter((m) => !ORDER.includes(m));
+if (missing.length) throw new Error(`build-module: add ${missing.join(", ")} to ORDER`);
+// Tira imports (uma linha cada) e o `export { … };` final de cada módulo.
+const bare = (file) => fs.readFileSync(file, "utf8")
+  .replace(/^import \{[^}]*\} from "[^"]+";\n/gm, "")
+  .replace(/^export \{[^}]*\};\n?/gm, "");
+let src = [
+  "const app = globalThis.__app;",
+  "const api = globalThis.__api;",
+  'import { CSS, CSS_FORM, CSS_OUTPUT, CSS_DRAG, CSS_CAPTION_ALIGN } from "./super_subgraph_css.js";',
+  ...ORDER.map((m) => bare(path.join(SS, `${m}.js`))),
+  bare(SRC),
+].join("\n");
 const swap = (re, to) => {
   if (!re.test(src)) throw new Error(`build-module: pattern not found: ${re}`);
   src = src.replace(re, to);
 };
-swap(/^import \{ app \} from .*$/m, "const app = globalThis.__app;");
-swap(/^import \{ api \} from .*$/m, "const api = globalThis.__api;");
 swap(/^app\.registerExtension\(/m, "globalThis.__ext = (");
 src += `\nexport { ${EXPORTS.join(", ")} };\n`;
 

@@ -1,10 +1,12 @@
 # ComfyUI-SuperSubgraph
 
-ComfyUI extension, **frontend only**. UI logic lives in `web/js/super_subgraph.js`,
-its CSS in `web/js/super_subgraph_css.js` (code comments are in Portuguese;
-match that). ComfyUI loads every `.js` under `web/` as an extension, so extra
-modules there must only export (no side effects). `__init__.py` only exports
-`WEB_DIRECTORY` (no Python nodes).
+ComfyUI extension, **frontend only**. The UI is split in ES modules under
+`web/js/ss/` (one per area, see the map below); `web/js/super_subgraph.js` is
+the entry point (imports + `app.registerExtension`), its CSS lives in
+`web/js/super_subgraph_css.js`. Code comments are in Portuguese; match that.
+ComfyUI loads every `.js` under `web/` (subfolders too) as an extension, so the
+modules must only declare and export — no code that runs on load.
+`__init__.py` only exports `WEB_DIRECTORY` (no Python nodes).
 
 **A Super Subgraph is a NATIVE ComfyUI subgraph with a card on top.** It has
 no execution engine of its own: execution, entering/breadcrumb/Esc, inputs and
@@ -22,7 +24,7 @@ installed node, any browser, any OS.
 - Deliver every change end to end: commit and **push directly to `main`**
   (no branch or PR needed; the owner asked for this).
 - Before pushing, always run all of these and make them pass:
-  - `node --check web/js/super_subgraph.js && node --check web/js/super_subgraph_css.js`
+  - `for f in web/js/*.js web/js/ss/*.js; do node --check $f; done`
   - `python3 -m py_compile __init__.py`
   - `npm test` (jsdom unit + Chromium browser suites; `npm ci` first if
     `node_modules` is missing)
@@ -36,25 +38,35 @@ installed node, any browser, any OS.
   changes need Ctrl+F5 (a ComfyUI restart only if `__init__.py` changes).
 - The owner is a beginner: explain results in simple Portuguese.
 
-## Map of `super_subgraph.js`
+## Map of the modules (`web/js/ss/`)
 
-Find sections by their banner comment (`grep -n "^/\* ═" -A1`):
-
-| Section | What it holds |
+| File | What it holds |
 | --- | --- |
-| top | constants (`PROP = "ui_layout"`, `GRID`, `MIN_W`, `PAD`), undo/redo, copy/paste, keyboard shortcuts |
-| Inspeção de widgets | `describeWidget`, `usable`, `isHelperWidget`, `isTextDomWidget`, `numDecimals`/`fmtNum` |
-| Binding por name | `resolveBind`, `bindKey`, `writeWidget` |
-| Auto-populate | `autoLayout` (card built from a node's widgets) |
-| Controles | `mkToggle`, `mkSlider`, `mkNumber`, `mkStepNumber`, `mkCombo`, `mkText`, `mkButton`, `mkMediaControl` |
-| Exibição de saídas | Image/Video/Audio Output views |
-| Arraste entre grupos e zonas | group/segment rendering (`buildSegment`), drag between groups and zones |
-| Espelho de interface… | panels: `PANEL_KINDS`, `defaultSizeFor`, `mkSpecialControl`, `mkColor`, `mkCanvasMirror`, `mkDomMount`, `mkPreviewOverride`; then `buildControl` (one loose component) |
-| Nó inteiro como widget | `singleCtrlFor`, `wholeNodeItems`, `buildWholeNodeCtrl`, sizing (`sectionRequiredWidth`, `requiredNodeWidth`), component search dialog / Target Picker (`openInspector`) |
-| FORM MODE | palette, Object Inspector (`renderObjectInspector`), `buildCard`, zones, tabs, resizers |
-| Ciclo de vida | `attach`/`detach`, `state.refresh`, color hooks, `cardHeight` |
-| Super Subgraph = subgrafo nativo + cartão | `isSuperNode`, `enterSuper` (native `openSubgraph`), `convertSelectionToSuper` (native `convertToSubgraph` + card), `copyAsSuper` (independent copy of a classic subgraph), `superAutoLayout`, card layout library, node menu (`superMenuOptions`), run feedback (`onRunEvent`) |
-| Extensão | `app.registerExtension`: menus, events, test hooks |
+| `constants.js` | `EXT`, `PROP = "ui_layout"`, `SCHEMA`, `MIN_W`, `PAD`, `GRID`, `LOG`… (imports nothing) |
+| `core.js` | `showLegoToast`, undo/redo, copy/paste, keyboard shortcuts, `injectCSS` |
+| `widgets.js` | `describeWidget`, `usable`, `isHelperWidget`, `numDecimals`/`fmtNum`; `resolveBind`, `bindKey`, `writeWidget`; `autoLayout` |
+| `controls.js` | `el`, `eatPointer`, glyphs; `mkToggle`, `mkSlider`, `mkNumber`, `mkStepNumber`, `mkCombo`, `mkText`, `mkButton`, `mkMediaControl`; seed mode |
+| `outputs.js` | Image/Video/Audio Output views, `recordOutput`, `latestOutputFor` |
+| `drag.js` | group rendering (`buildSegment`), drag between groups and zones |
+| `panels.js` | `PANEL_KINDS`, `defaultSizeFor`, `mkSpecialControl`, `mkColor`, `mkCanvasMirror`, `mkDomMount`, `mkPreviewOverride`; `buildControl` (one loose component) |
+| `whole_node.js` | `singleCtrlFor`, `wholeNodeItems`, `buildWholeNodeCtrl`; zone widths and node size (`sectionRequiredWidth`, `requiredNodeWidth`) |
+| `picker.js` | Target Picker, component search dialog (`openInspector`), tab modals and menus |
+| `form.js` | colours (`openColorMenu`, `colorDotButton`), palette (FORM MODE), alignment |
+| `inspector.js` | Object Inspector (`renderObjectInspector`), tabs/sub-tabs helpers |
+| `card.js` | `buildCard` (the whole card: header, tabs, zones, resizers) |
+| `lifecycle.js` | `attach`/`detach`, `state.refresh`, sweep, node colour hooks, `cardHeight`, `resize` |
+| `native.js` | Super Subgraph = native subgraph + card: `isSuperNode`, `enterSuper`, `convertSelectionToSuper`, `copyAsSuper`, `superAutoLayout`, pasted-copy rebinding, layout library, node menu (`superMenuOptions`), run feedback (`onRunEvent`) |
+
+`web/js/super_subgraph.js`: the architecture notes and `app.registerExtension`
+(menus, events, test hooks).
+
+Imports between modules: each file ends with `export { … }` of everything it
+declares and starts with `import { … } from "./other.js"` lines. When a
+function starts being used from another file, add it to that file's import
+line (one line per source module). A new module must also be added to
+`ORDER` in `tests/build-module.mjs` (the unit tests join all modules back into
+one file) — the build fails if you forget. Never read another module's
+variable at load time except from `constants.js` (circular imports).
 
 ## How a widget becomes a control
 
