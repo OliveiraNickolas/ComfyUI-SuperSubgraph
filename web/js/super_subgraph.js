@@ -4358,13 +4358,15 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
 
   // Mídia promovida antes com o rótulo automático ("Image"): passa a usar o
   // título dado ao nó ("Load Image 2").
+  // (Widget promovido: o título é o do nó de DENTRO, não o do subgrafo.)
   if (isMediaKind(kind) && (!ctrl.label || ctrl.label === widgetLabel(w))) {
-    const better = promotedLabel(node, w, kind);
+    const better = promotedLabel(hit.inner?.node || node, hit.inner?.widget || w, kind);
     if (better !== ctrl.label) ctrl.label = better;
   }
   // ── Estrutura Visual 100% IDENTICA em Modo Fixo e Modo Edição ──
   const lbl = el("div", "lego-lbl", ctrl.label || prettify(w.name));
-  lbl.title = node === host ? w.name : `${node.title || node.type} #${node.id} → ${w.name}`;
+  const src = hit.inner?.node || node;
+  lbl.title = src === host ? w.name : `${src.title || src.type} #${src.id} → ${w.name}`;
   if (ctrl.labelAlign === "center" || ctrl.labelAlign === "right") row.classList.add(`lbl-align-${ctrl.labelAlign}`);
   if (typeof ctrl.labelW === "number" && ctrl.labelW > 0) {
     lbl.style.flex = "0 0 auto";
@@ -10779,8 +10781,9 @@ function buildCard(host, state) {
         sec.append(resizerH);
       }
 
-      // Se a zona tiver sub-abas, renderiza a barra de sub-abas interna
-      if (hasSubTabs) {
+      // Se a zona tiver sub-abas, renderiza a barra de sub-abas interna. Fora
+      // da edição, uma aba só não precisa de barra (a zona fica limpa).
+      if (hasSubTabs && (state.edit || s.tabs.length > 1)) {
         const subBar = el("div", "lego-subtabs");
         s.tabs.forEach((st, stIdx) => {
           const isSel = stIdx === s.activeTab;
@@ -12007,6 +12010,8 @@ function attach(node) {
   }
   // A escala da UI do cartão foi removida: workflows antigos ainda a trazem.
   delete node.properties[PROP].scale;
+  // Cópia colada: os nós de dentro ganharam ids novos.
+  repairInnerBinds(node);
 
   const host = el("div");
   host.style.width = "100%";
@@ -12063,6 +12068,7 @@ function attach(node) {
       host.replaceChildren(buildCard(node, state));
       paintRun(node);
       renderAlignBars(node, state);
+      rememberNodeRefs(node);
       // Depois do desenho: o `buildControl` normaliza x/y/w/h e nomes.
       node.__legoLastSnap = JSON.stringify(node.properties?.[PROP] || {});
       hideNative(node);
@@ -12262,6 +12268,58 @@ function remapLayoutIds(layout, idMap, hostBinds = new Map()) {
     }
   }
   return layout;
+}
+
+/**
+ * Anota no layout o tipo de cada nó de dentro usado pelos binds
+ * (`layout.nodeRefs`), para religar o cartão quando os ids mudam.
+ */
+function rememberNodeRefs(host) {
+  const layout = host.properties?.[PROP];
+  if (!layout || !hasInnerGraph(host)) return;
+  const refs = {};
+  for (const id of layoutNodeIds(layout)) {
+    const n = innerNodesOf(host).find((x) => String(x.id) === id);
+    if (n) refs[id] = { type: n.type, title: n.title || "" };
+    else if (layout.nodeRefs?.[id]) refs[id] = layout.nodeRefs[id];   // perdido: guarda para religar depois
+  }
+  layout.nodeRefs = refs;
+}
+
+/**
+ * Colar/duplicar um subgrafo faz o ComfyUI clonar a definição com ids NOVOS
+ * nos nós de dentro: os binds do cartão ("<id>/<widget>") ficariam apontando
+ * para os ids antigos. Religa cada id perdido ao nó de dentro de mesmo tipo
+ * (e mesmo título, se houver), na mesma ordem.
+ */
+function repairInnerBinds(host) {
+  const layout = host.properties?.[PROP];
+  const refs = layout?.nodeRefs;
+  if (!refs || !hasInnerGraph(host)) return false;
+  const inner = innerNodesOf(host);
+  const byId = new Map(inner.map((n) => [String(n.id), n]));
+  const used = new Set();
+  const lost = [];
+  for (const id of Object.keys(refs)) {
+    const n = byId.get(id);
+    if (n && n.type === refs[id].type) used.add(n);
+    else lost.push(id);
+  }
+  if (!lost.length) return false;
+  const idMap = new Map();
+  const byNum = (a, b) => (Number(a) - Number(b)) || String(a).localeCompare(String(b));
+  const pool = [...inner].sort((a, b) => byNum(a.id, b.id));
+  for (const id of lost.sort(byNum)) {
+    const same = pool.filter((n) => n.type === refs[id].type && !used.has(n));
+    const pick = same.find((n) => (n.title || "") === refs[id].title) || same[0];
+    if (!pick) continue;
+    idMap.set(id, pick.id);
+    used.add(pick);
+  }
+  if (!idMap.size) return false;
+  remapLayoutIds(layout, idMap);
+  for (const [from, to] of idMap) { refs[String(to)] = refs[from]; delete refs[from]; }
+  return true;
 }
 
 
@@ -12865,6 +12923,21 @@ app.registerExtension({
     if (node?.properties?.[PROP]) {
       try { attach(node); } catch (e) { console.error(LOG, "nodeCreated attach failed", node.id, e); }
     }
+    // Colar (Ctrl+V) e duplicar criam o nó vazio e só DEPOIS aplicam as
+    // propriedades (configure): o cartão entra quando o layout chega.
+    if (!node || node.__legoConfigureHooked) return;
+    node.__legoConfigureHooked = true;
+    const orig = node.onConfigure;
+    node.onConfigure = function () {
+      const r = orig?.apply(this, arguments);
+      if (this.properties?.[PROP] && !this.__legoState) {
+        setTimeout(() => {
+          if (!this.properties?.[PROP] || this.__legoState || !this.graph) return;
+          try { attach(this); } catch (e) { console.error(LOG, "attach failed", this.id, e); }
+        }, 0);
+      }
+      return r;
+    };
   },
 
   async loadedGraphNode(node) {
