@@ -122,3 +122,9 @@ against a live ComfyUI: it lists widgets that still fall back to a text box.
   node)`, `__classify(widget)`.
 - Screenshots go to `tests/.out/` (git-ignored); look at them when changing
   visuals.
+- **Media in tests: only `example.png` (images) and `nothing.mp4` (video).**
+  The owner's `input/` folder has private/NSFW files that must never be
+  shown, loaded or screenshotted. `launch()` in `tests/lib.mjs` makes every
+  new Load Image/Video node start on these files; when you set a media value
+  yourself, use `SAFE_IMAGE` / `SAFE_VIDEO` from there. Never list or open
+  other files in `input/`.

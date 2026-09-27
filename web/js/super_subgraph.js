@@ -5526,10 +5526,14 @@ function buildWholeNodeCtrl(host, node, orientation, pos) {
     w,
     // +16 para o cabeçalho com o nome do nó; em linha, a altura do item mais alto.
     h: 16 + (vertical
-      ? snap(items.reduce((a, it) => a + (it.kind === "label" ? 18 : (it.h || 28)) + 6, 16))
+      // (linha "rótulo à esquerda, controle à direita" mede 27px no cartão)
+      ? snap(items.reduce((a, it) => a + (it.labelPos === "left" && !it.h ? 27 : (it.kind === "label" ? 18 : (it.h || 28)) + 6), 16))
       : (has2D ? snap(Math.max(160, ...items.map((it) => (it.h || 36) + 32))) : 48)),
     items,
   };
+  // Altura estimada: o 1º desenho a acerta pelo conteúdo real (ver
+  // fitGroupToContent) enquanto ninguém mexer nela.
+  group.autoH = group.h;
   return renameClone(layout, group);
 }
 
@@ -8118,10 +8122,14 @@ function fitGroupToContent(host, ctrl, row, onChange) {
   // a do conteúdo — sobra ali é só espaço vazio (e desfaz grupos que
   // engordaram com o arredondamento antigo). Os demais só crescem.
   const oneLine = !vertical && !items.some((c) => c.classList.contains("has-custom-h"));
-  const growH = needH > h0 || (oneLine && needH < h0);
+  // Grupo montado sozinho (nó inteiro promovido) e com a altura ainda
+  // intocada: também encolhe até o conteúdo (a estimativa sobrava embaixo).
+  const auto = typeof ctrl.autoH === "number" && ctrl.autoH === h0;
+  const growH = needH > h0 || ((oneLine || auto) && needH < h0);
   if (overW <= 1 && !growH) return false;
   if (overW > 1) ctrl.w = Math.ceil((w0 + overW + 4) / GRID) * GRID;
   if (growH) ctrl.h = needH;
+  if (auto) ctrl.autoH = ctrl.h;
   row.style.width = `${ctrl.w}px`;
   row.style.height = `${ctrl.h}px`;
   // O ajuste não é uma edição do usuário: não vira entrada de Undo.

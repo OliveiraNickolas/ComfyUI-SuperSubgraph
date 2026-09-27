@@ -43,9 +43,51 @@ function chromePath() {
   return undefined;
 }
 
-export function launch() {
+// Arquivos de mídia neutros do ComfyUI. A pasta input do usuário pode ter
+// qualquer coisa: os testes nunca mostram (nem fotografam) o que está lá.
+export const SAFE_IMAGE = "example.png";
+export const SAFE_VIDEO = "nothing.mp4";
+
+// Roda em toda página antes do ComfyUI: nó novo de carregar imagem/vídeo
+// começa em SAFE_IMAGE/SAFE_VIDEO, nunca no 1º arquivo da pasta input.
+function safeMediaInit([img, vid]) {
+  const IMG = /\.(png|jpe?g|webp|gif|bmp|tiff?)(\s*\[\w+\])?$/i;
+  const VID = /\.(mp4|webm|mov|mkv|avi|m4v)(\s*\[\w+\])?$/i;
+  const fix = (node) => {
+    for (const w of node?.widgets || []) {
+      if (typeof w.value !== "string" || w.value === img || w.value === vid) continue;
+      if (IMG.test(w.value)) w.value = img;
+      else if (VID.test(w.value)) w.value = vid;
+    }
+    return node;
+  };
+  const wrap = () => {
+    const LG = window.LiteGraph;
+    if (!LG?.createNode || LG.createNode.__safeMedia) return !!LG?.createNode;
+    const orig = LG.createNode;
+    LG.createNode = function (...a) { return fix(orig.apply(this, a)); };
+    LG.createNode.__safeMedia = true;
+    return true;
+  };
+  const t = setInterval(() => { if (wrap()) clearInterval(t); }, 5);
+}
+
+export async function launch() {
   const executablePath = chromePath();
-  return chromium.launch(executablePath ? { executablePath } : { channel: "chrome" });
+  const browser = await chromium.launch(executablePath ? { executablePath } : { channel: "chrome" });
+  const newPage = browser.newPage.bind(browser);
+  browser.newPage = async (...a) => {
+    const pg = await newPage(...a);
+    await pg.addInitScript(safeMediaInit, [SAFE_IMAGE, SAFE_VIDEO]);
+    return pg;
+  };
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async (...a) => {
+    const ctx = await newContext(...a);
+    await ctx.addInitScript(safeMediaInit, [SAFE_IMAGE, SAFE_VIDEO]);
+    return ctx;
+  };
+  return browser;
 }
 
 // Servidor estático para as páginas de tests/browser; "/mod.mjs" é o módulo gerado.

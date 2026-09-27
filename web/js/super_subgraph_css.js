@@ -2312,9 +2312,11 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   background: transparent;
   border: 0;
   color: #ffffff;
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 10px;
-  font-weight: 600;
+  /* Como o número de um widget nativo: fonte do ComfyUI, peso normal. */
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
   text-align: center;
   padding: 0 4px;
   outline: none;
