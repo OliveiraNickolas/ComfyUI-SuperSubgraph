@@ -2395,6 +2395,15 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-color-swatch.on{border-color:#fff}
 .lego-color-swatch.none,.lego-color-dot.none{background:repeating-linear-gradient(45deg,rgba(255,255,255,.18) 0 3px,transparent 3px 6px)}
 .lego-color-dot{display:block;width:11px;height:11px;border-radius:50%;border:1px solid rgba(255,255,255,.35)}
+/* Bolinha de cor dentro de um item de grupo: mesmo tamanho do elo e do X. */
+.lego-item-color-btn{width:16px;height:16px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(255,255,255,0.25);background:rgba(18,18,28,0.95);box-shadow:0 2px 4px rgba(0,0,0,0.6);cursor:pointer}
+.lego-item-color-btn .lego-color-dot{width:9px;height:9px}
+.lego-item-color-btn:hover{border-color:var(--lego-accent)}
+/* No Inspetor: a bolinha num campo, como os outros valores. */
+.lego-oi-color-btn{display:flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:4px;cursor:pointer;
+  background:rgba(0,0,0,0.34);border:1px solid rgba(255,255,255,0.14)}
+.lego-oi-color-btn:hover{border-color:var(--lego-accent)}
 .lego-sec.tinted{border-color:color-mix(in srgb,var(--lego-zone-c) 55%,transparent);background:color-mix(in srgb,var(--lego-zone-c) 14%,var(--lego-panel,transparent))}
 .lego-sec.tinted > .lego-sec-h{color:var(--lego-zone-c)}
 .lego-row.tinted,.lego-segment-item.tinted{background-image:linear-gradient(90deg,color-mix(in srgb,var(--lego-c) 55%,transparent),transparent 85%)}

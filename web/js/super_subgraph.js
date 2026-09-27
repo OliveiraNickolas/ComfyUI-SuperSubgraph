@@ -3078,7 +3078,7 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       }, true);
 
       itemWrap.addEventListener("click", (e) => {
-        if (e.target.closest(".lego-item-del-btn") || e.target.closest(".lego-item-link-btn") || e.target.closest(".lego-resizer-corner")) return;
+        if (e.target.closest(".lego-item-actions") || e.target.closest(".lego-resizer-corner")) return;
         e.stopPropagation();
         // Clique simples num item de uma seleção múltipla: fica só ele.
         const isMulti = e.ctrlKey || e.metaKey || e.shiftKey;
@@ -3143,6 +3143,10 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
         });
         actionsWrap.append(dupSubBtn);
       }
+
+      // Cor do item (o mesmo botão dos componentes soltos).
+      actionsWrap.append(colorDotButton("lego-item-color-btn", item.color, "Color",
+        (color) => setComponentColor(host, state, item, color)));
 
       // Botão 'x' (fechar / remover)
       const delSubBtn = glyphBtn("lego-item-del-btn", "close", 10);
@@ -4517,24 +4521,11 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
         toggleGroupOrientation(host, state, ctrl);
       });
       floatingActions.append(flipBtn);
-
-      // Cor do grupo.
-      const colorBtn = el("button", "lego-iconbtn btn-color lego-color-dot-btn");
-      colorBtn.type = "button";
-      colorBtn.title = "Group color";
-      const dot = el("span", `lego-color-dot${ctrl.color ? "" : " none"}`);
-      if (ctrl.color) dot.style.background = ctrl.color;
-      colorBtn.append(dot);
-      colorBtn.addEventListener("pointerdown", eatPointer);
-      colorBtn.addEventListener("click", (e) => {
-        openColorMenu(e, ctrl.color, (color) => {
-          pushUndo(host);
-          if (color) ctrl.color = color; else delete ctrl.color;
-          state.refresh();
-        });
-      });
-      floatingActions.append(colorBtn);
     }
+
+    // Cor: em todo componente (antes só grupos; os demais só pelo botão direito).
+    floatingActions.append(colorDotButton("lego-iconbtn btn-color", ctrl.color, isSegmentLike ? "Group color" : "Color",
+      (color) => setComponentColor(host, state, ctrl, color)));
 
     // Botão de duplicar / copiar em componentes não linkados (ou cosméticos)
     const isUnboundOrCosmetic = !hit || !ctrl.bind || isDivider || isGroup || isLabel;
@@ -4685,6 +4676,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       if (
         e.target.closest(".lego-resizer-corner") ||
         e.target.closest(".lego-floating-actions") ||
+        e.target.closest(".lego-item-actions") ||
         e.target.closest(".lego-item-del-btn") ||
         e.target.closest(".lego-item-link-btn") ||
         e.target.closest(".lego-item-cfg-btn") ||
@@ -8007,6 +7999,32 @@ function openColorMenu(e, current, onPick) {
   return menu;
 }
 
+/**
+ * Bolinha de cor (mostra a cor atual; clique abre as cores). O MESMO botão em
+ * todo lugar que tem cor: componente, item de grupo, zona e Inspetor.
+ */
+function colorDotButton(cls, current, title, onPick) {
+  const btn = el("button", `${cls} lego-color-dot-btn`);
+  btn.type = "button";
+  btn.title = title;
+  const dot = el("span", `lego-color-dot${current ? "" : " none"}`);
+  if (current) dot.style.background = current;
+  btn.append(dot);
+  btn.addEventListener("pointerdown", eatPointer);
+  btn.addEventListener("click", (e) => openColorMenu(e, current || null, onPick));
+  return btn;
+}
+
+/** Pinta o componente — ou todos os selecionados, se ele faz parte da seleção. */
+function setComponentColor(host, state, ctrl, color) {
+  pushUndo(host);
+  const names = selectionFor(state, ctrl);
+  walkControls(host.properties[PROP], (c) => {
+    if (c === ctrl || names.has(c.name)) { if (color) c.color = color; else delete c.color; }
+  });
+  state.refresh();
+}
+
 /** Nomes selecionados (ou só o componente clicado, se ele não está na seleção). */
 function selectionFor(state, ctrl) {
   const names = new Set(state.selectedNames || []);
@@ -8187,11 +8205,7 @@ function openComponentContextMenu(e, host, state, ctrl, list) {
       },
     }) });
   }
-  entries.push({ icon: "blank", label: "Color…", action: () => openColorMenu(e, ctrl.color, (color) => {
-    pushUndo(host);
-    walkControls(host.properties[PROP], (c) => { if (names.has(c.name)) { if (color) c.color = color; else delete c.color; } });
-    state.refresh();
-  }) });
+  entries.push({ icon: "blank", label: "Color…", action: () => openColorMenu(e, ctrl.color, (color) => setComponentColor(host, state, ctrl, color)) });
   entries.push(null, { icon: "trash", label: many ? `Remove (${names.size})` : "Remove", hint: "Del", danger: true, action: () => {
     pushUndo(host);
     removeControlsByName(host.properties[PROP], names);
@@ -9331,6 +9345,9 @@ function renderObjectInspector(host, state, force) {
     state.selectedName = clean;
     state.refresh();
   })));
+  // Cor (a mesma bolinha da barra do componente).
+  props.append(propRow("Color", colorDotButton("lego-oi-color-btn", ctrl.color, "Color",
+    (color) => setComponentColor(host, state, ctrl, color))));
 
   const isDivider = ctrl.kind === "hdivider" || ctrl.kind === "vdivider";
   const isLabel = ctrl.kind === "label";
