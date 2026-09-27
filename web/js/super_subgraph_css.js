@@ -2467,21 +2467,23 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 
 /* ── Visual Workflow Explorer (HUD & Picker) ── */
 
+/* Embaixo, no centro: em cima cobria o breadcrumb e a barra do Run. */
 .lego-picker-hud{
-  position:fixed;top:18px;left:50%;transform:translateX(-50%);
+  position:fixed;bottom:64px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 32px);box-sizing:border-box;
   background:rgba(18,18,24,0.96);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
   border:1.5px solid var(--lego-accent);border-radius:6px;
   padding:6px 14px;box-shadow:0 12px 36px rgba(0,0,0,0.8), 0 0 20px rgba(59,130,246,0.35);
   z-index:99999999;display:flex;align-items:center;gap:6px;color:#fff;font-family:inherit;
   animation:legoSlideDown .2s cubic-bezier(0.16, 1, 0.3, 1);
 }
-@keyframes legoSlideDown{from{top:-40px;opacity:0}to{top:18px;opacity:1}}
+@keyframes legoSlideDown{from{bottom:24px;opacity:0}to{bottom:64px;opacity:1}}
 
 .lego-pulse-icon{display:inline-block;animation:legoPulse 1.4s infinite ease-in-out}
 @keyframes legoPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.22)}}
 
 .lego-picker-cancel-btn{
   background:rgba(239,68,68,0.18);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
   padding:6px 14px;border-radius:7px;font-size:10px;font-weight:600;cursor:pointer;transition:all .15s;
 }
 .lego-picker-cancel-btn:hover{background:#ef4444;color:#fff;border-color:#ef4444}
