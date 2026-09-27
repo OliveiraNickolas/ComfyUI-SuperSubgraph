@@ -51,6 +51,10 @@ function makeSuper(node, groups = [], loose = true) {
   if (!node.title || /^New Subgraph$/i.test(node.title)) node.title = "Super Subgraph";
   // Nome mostrado no breadcrumb nativo (é o do subgrafo, não o título do nó).
   if (node.subgraph && (!node.subgraph.name || /^New Subgraph$/i.test(node.subgraph.name))) node.subgraph.name = node.title;
+  // Sem os fios de promoção (seed, prompt, imagem…): o cartão controla esses
+  // parâmetros direto, e fio + cartão brigariam pelo valor. Vale para
+  // converter, "Turn into" e "Copy as"; conexões de dados ficam.
+  try { removeUnusedWireInputs(node); } catch (err) { console.warn(LOG, "remove promotion wires", err); }
   emptySuperLayout(node, groups.map((g) => ({ title: g.title, color: g.color })), loose);
   attach(node);
   node.setSize?.([Math.max(MIN_W + 160, node.size?.[0] || 0), Math.max(node.size?.[1] || 0, 200)]);
@@ -294,11 +298,25 @@ function removeWireInput(host, bind) {
  * sozinho ao converter: seed, prompt, imagem…). Entradas de dados ligadas lá
  * fora (IMAGE, MODEL…) ficam. Devolve quantas saíram.
  */
+/** Outros nós que usam a MESMA definição de subgrafo (cópias do mesmo subgrafo). */
+function otherInstancesOf(host) {
+  const root = app.rootGraph || host?.graph?.rootGraph || app.graph;
+  const out = [];
+  const visit = (g) => { for (const n of g?._nodes || g?.nodes || []) if (n !== host && n?.subgraph && n.subgraph === host.subgraph) out.push(n); };
+  visit(root);
+  for (const sg of root?.subgraphs?.values?.() || []) visit(sg);
+  return out;
+}
+
 function removeUnusedWireInputs(host) {
   let n = 0;
+  // A entrada é da definição: se outra cópia a usa com fio lá fora, fica.
+  const others = otherInstancesOf(host);
   for (const hin of [...(host?.inputs || [])]) {
     if (hin?.link != null || !hin?.widget || !hin._subgraphSlot) continue;
     if (!wireTargets(host, hin).length) continue;
+    const idx = host.inputs.indexOf(hin);
+    if (others.some((o) => o.inputs?.[idx]?.link != null)) continue;
     if (dropWireInput(host, hin)) n++;
   }
   if (n) afterWireChange(host);
@@ -440,10 +458,7 @@ function convertSelectionToSuper(nodes = selectedNodes()) {
   }
   const sn = res?.node;
   if (!sn) return null;
-  // O ComfyUI promove sozinho alguns parâmetros com fio (seed, prompt,
-  // imagem…). No Super Subgraph o cartão já os controla: sem esses fios.
-  try { removeUnusedWireInputs(sn); } catch (err) { console.warn(LOG, "remove auto promotions", err); }
-  makeSuper(sn, groups, loose);
+  makeSuper(sn, groups, loose);   // (tira os fios que o ComfyUI promoveu sozinho)
   app.canvas?.selectItems?.([sn]);
   showLegoToast(`Super Subgraph created with ${nodes.length} node${nodes.length > 1 ? "s" : ""}`);
   return sn;
@@ -484,6 +499,12 @@ function copyAsSuper(node) {
   sn.pos = [node.pos[0] + (node.size?.[0] || 200) + 60, node.pos[1]];
   sn.title = data.name;
   graph.add(sn);
+  // Os valores em uso no original (parâmetros promovidos, um por nó) vão para
+  // a cópia antes de ela perder os fios — senão ela nasceria com os de dentro.
+  for (const w of sn.widgets || []) {
+    const src = (node.widgets || []).find((x) => x.name === w.name && !x.__lego);
+    if (src && typeof src.value === typeof w.value) w.value = src.value;
+  }
   makeSuper(sn);
   app.canvas?.selectItems?.([sn]);
   showLegoToast("Independent Super Subgraph copy created");

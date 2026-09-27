@@ -102,8 +102,9 @@ against a live ComfyUI: it lists widgets that still fall back to a text box.
   Native wire promotions (a subgraph input linked to the inner widget) are
   only for values that must come from OUTSIDE: "Expose as node input" /
   "Remove node input" (`exposeAsInput` / `removeWireInput` in `native.js`).
-  `convertSelectionToSuper` removes the wires ComfyUI auto-promotes (seed,
-  prompt, image…) with `removeUnusedWireInputs`; removing a wire first copies
+  `makeSuper` (convert, Turn into, Copy as) removes the wires ComfyUI
+  auto-promotes (seed, prompt, image…) with `removeUnusedWireInputs` — unless
+  another instance of the same definition uses that input outside; removing a wire first copies
   the host value (the one that ran) into the inner widget. Inside a subgraph,
   widgets on the card are outlined in purple (`installCardMarks`: canvas
   drawing, plus `data-lego-on-card` for Vue Nodes).

@@ -107,6 +107,33 @@ await pg.locator('.lego-row[data-name="CfgStep"]').click({ button: "right", posi
 const items = await E(() => [...document.querySelectorAll(".lego-ctx-item")].map(e => e.textContent.trim()));
 t("component menu offers 'Expose as node input (wire)'", items.some(x => /Expose as node input/.test(x)));
 await pg.keyboard.press("Escape");
+// "Copy as SuperSubgraph" e "Turn into SuperSubgraph" também tiram os fios de promoção
+const r4 = await E(async () => {
+  const app = window.app; app.graph.clear(); const LG = window.LiteGraph; const g = app.graph;
+  const ext = app.extensions.find(e => e.name === "ComfyUI.SuperSubgraph");
+  const pos = LG.createNode("CLIPTextEncode"); g.add(pos);
+  const ks = LG.createNode("KSampler"); ks.pos = [400, 0]; g.add(ks); pos.connect(0, ks, 1);
+  pos.widgets.find(w => w.name === "text").value = "blue sky";
+  const classic = g.convertToSubgraph(new Set([pos, ks])).node;           // subgrafo clássico (com fios automáticos)
+  const wires = (n) => n.inputs.filter(i => i.widget).map(i => i.name);
+  const out = { classicBefore: wires(classic) };
+  classic.widgets.find(w => w.name === "text").value = "green field";      // o valor em uso é o do nó (promovido)
+  const item = (re) => ext.__flatNode(classic).find(i => i && re.test(i.content));
+  item(/^Copy as SuperSubgraph/).callback();
+  const copy = g.nodes.find(n => n.isSubgraphNode?.() && n !== classic);
+  out.copyWires = wires(copy);
+  out.copyText = copy.subgraph.nodes.find(n => n.type === "CLIPTextEncode").widgets.find(w => w.name === "text").value;
+  out.classicAfterCopy = wires(classic);
+  item(/^Turn into SuperSubgraph/).callback();
+  out.turnedWires = wires(classic);
+  out.turnedText = classic.subgraph.nodes.find(n => n.type === "CLIPTextEncode").widgets.find(w => w.name === "text").value;
+  return out;
+});
+t("a classic subgraph has automatic promotion wires " + JSON.stringify(r4.classicBefore), r4.classicBefore.length > 0);
+t("Copy as SuperSubgraph: the copy has no promotion wires, the classic keeps its own " + JSON.stringify([r4.copyWires, r4.classicAfterCopy]), r4.copyWires.length === 0 && r4.classicAfterCopy.length === r4.classicBefore.length);
+t("the copy starts with the value the classic was using: " + r4.copyText, r4.copyText === "green field");
+t("Turn into SuperSubgraph removes the promotion wires " + JSON.stringify(r4.turnedWires), r4.turnedWires.length === 0);
+t("…and keeps the value that was in use: " + r4.turnedText, r4.turnedText === "green field");
 t("no extension errors " + JSON.stringify(errs.slice(0, 3)), !errs.length);
 console.log(`\n${ok} passed, ${fail} failed`);
 await b.close();

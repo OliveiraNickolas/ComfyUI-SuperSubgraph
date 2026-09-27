@@ -71,7 +71,7 @@ and same width / height / size (taken from the last one selected). Resizing one 
 
 ## Wires (node inputs)
 
-A native subgraph promotes a parameter by wiring it to the subgraph's edge. A SuperSubgraph doesn't need that: the card controls the parameter directly, so **Convert Selection to SuperSubgraph** removes the wires ComfyUI would add by itself (seed, prompt, image…) and keeps only the real data connections (IMAGE, MODEL, LATENT…).
+A native subgraph promotes a parameter by wiring it to the subgraph's edge. A SuperSubgraph doesn't need that: the card controls the parameter directly, so **Convert Selection to SuperSubgraph**, **Turn into SuperSubgraph** and **Copy as SuperSubgraph** remove the wires ComfyUI would add by itself (seed, prompt, image…) and keeps only the real data connections (IMAGE, MODEL, LATENT…).
 
 When a value should come from **outside** the SuperSubgraph (say, a seed from another node), right-click the component ▸ **Expose as node input (wire)** — or turn on **Node Input** in its Properties. That creates the native input on the node; **Remove node input** takes it away again and keeps the value that was in use. For SuperSubgraphs made before this, **SuperSubgraph ▸ More ▸ Remove unused input wires** clears the automatic ones.
 
