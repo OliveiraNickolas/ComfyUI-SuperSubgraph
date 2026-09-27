@@ -108,7 +108,15 @@ against a live ComfyUI: it lists widgets that still fall back to a text box.
 - HTML5 drags need `e.dataTransfer.setData(...)` in `dragstart` (Firefox).
   Prefix `backdrop-filter` with `-webkit-` (Safari). Avoid CSS `zoom`.
 - Keep the look native: numbers use the widget's precision (`fmtNum`),
-  stacked groups show "label left, control right" like a node.
+  stacked groups show "label left, control right" like a node. Labels are
+  `--lego-dim` 11px/500, values `--lego-text` 11px/400, everywhere (loose,
+  vertical and horizontal groups).
+- Colours come from the theme variables (`--lego-text`, `--lego-dim`,
+  `--lego-well`, `--lego-line`…), never hardcoded white: ComfyUI has a light
+  theme. Panels that are always dark (palette, menus, Inspector, dialogs)
+  get their own light-text set in the CSS; a coloured node picks light or
+  dark text from its background (`isDarkColor`). Check changes with
+  `tests/e2e/light_theme.test.mjs`.
 
 ## Tests
 

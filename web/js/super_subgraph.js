@@ -3316,7 +3316,8 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       itemWrap.append(divLine);
     } else if (isLabelItem) {
       const textSpan = el("span", "lego-item-label-text", item.text || item.label || "Label");
-      textSpan.style.cssText = "font-size:12px; font-weight:600; color:var(--lego-fg, #e2e8f0); user-select:none; display:flex; width:100%;";
+      // Mesmo visual dos rótulos do grupo empilhado (e de um widget nativo).
+      textSpan.style.cssText = "font-size:11px; font-weight:500; color:var(--lego-dim, #a0a0a0); user-select:none; display:flex; width:100%;";
       applyLabelStyle(textSpan, item);
       if (state?.edit) {
         // Duplo clique (como o rótulo solto): o clique simples só seleciona.
@@ -7236,7 +7237,7 @@ function openInspector({ host, layout, section, ctrl, state, defaultKind, insert
       } else if (t.kind === "label") {
         previewContainer.innerHTML = `
           <div style="padding: 18px 12px; display:flex; align-items:center;">
-            <span style="font-size:14px; font-weight:600; color:var(--lego-fg, #e2e8f0); letter-spacing:0.02em;">Sample Section Label</span>
+            <span style="font-size:14px; font-weight:600; color:var(--lego-text); letter-spacing:0.02em;">Sample Section Label</span>
           </div>
         `;
       } else if (t.kind === "textarea") {
@@ -11794,6 +11795,19 @@ const DEFAULT_NODE_COLORS = {
   black:     { color: "#222",    bgcolor: "#000",    groupcolor: "#444" },
 };
 
+/** A cor (#rgb, #rrggbb, rgb()) é escura? null se não der para saber. */
+function isDarkColor(c) {
+  const str = String(c || "").trim();
+  let r, g, b;
+  let m = /^#([0-9a-f]{3})$/i.exec(str);
+  if (m) [r, g, b] = [...m[1]].map((h) => parseInt(h + h, 16));
+  else if ((m = /^#([0-9a-f]{6})/i.exec(str))) [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
+  else if ((m = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i.exec(str))) [r, g, b] = [m[1], m[2], m[3]].map(Number);
+  else return null;
+  // Luminância percebida (0–255).
+  return 0.299 * r + 0.587 * g + 0.114 * b < 140;
+}
+
 /**
  * Aplica as cores do nó (color, bgcolor, groupcolor) ao cartão Super Subgraph.
  * Quando o usuário seleciona uma cor no seletor de nós do ComfyUI, atualiza as variáveis
@@ -11820,6 +11834,8 @@ function applyNodeColorTheme(node, card) {
     root.style.removeProperty("--lego-accent");
     root.style.removeProperty("--lego-node-color");
     root.style.removeProperty("--lego-node-bgcolor");
+    root.style.removeProperty("--lego-text");
+    root.style.removeProperty("--lego-dim");
     return;
   }
 
@@ -11840,6 +11856,13 @@ function applyNodeColorTheme(node, card) {
   const groupColor = matchedPreset?.groupcolor || null;
 
   root.classList.add("has-node-color");
+  // O texto segue o FUNDO do nó, não o tema: no tema claro, um nó vermelho
+  // escuro com texto escuro deixava os valores invisíveis.
+  const dark = isDarkColor(effectiveBg);
+  if (dark != null) {
+    root.style.setProperty("--lego-text", dark ? "#f1f1f1" : "#1a1a1a");
+    root.style.setProperty("--lego-dim", dark ? "rgba(255,255,255,0.62)" : "rgba(0,0,0,0.6)");
+  }
   root.style.setProperty("--lego-node-color", effectiveHead);
   root.style.setProperty("--lego-node-bgcolor", effectiveBg);
   root.style.setProperty("--lego-bg", effectiveBg);

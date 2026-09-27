@@ -793,6 +793,21 @@ export const CSS = `
 }
 .lego-card *{box-sizing:border-box}
 
+/* Superfícies sempre escuras (paleta, menus, Inspetor, diálogos, pop-ups):
+   texto e campos claros nelas, mesmo com o tema claro do ComfyUI (senão o
+   texto do tema — escuro — sumia no fundo escuro). */
+.lego-palette, .lego-ctx-menu, .lego-oi, .lego-list-pop, .lego-comfy-backdrop,
+.lego-ins-backdrop, .lego-node-picker-popup, .lego-picker-hud, .lego-drag-ghost{
+  --lego-text: #e8e8ef;
+  --lego-dim: #a0a0a8;
+  --lego-well: rgba(0, 0, 0, 0.34);
+  --lego-line: rgba(255, 255, 255, 0.14);
+  --lego-surface: rgba(255, 255, 255, 0.06);
+  --lego-surface-hover: rgba(255, 255, 255, 0.1);
+  --lego-panel: #18181d;
+  color: var(--lego-text);
+}
+
 .lego-card.has-node-color {
   background: var(--lego-bg);
   border-color: var(--lego-line);
@@ -819,7 +834,7 @@ export const CSS = `
 .lego-head-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .lego-title-row{display:flex;align-items:center;gap:5px;min-width:0}
 .lego-title{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--lego-text)}
 .lego-title.editable{cursor:pointer;transition:color .15s ease}
 .lego-title.editable:hover{color:var(--lego-accent,#38bdf8)}
 .lego-title-edit-btn{flex:none;width:22px;height:18px;border-radius:5px;
@@ -842,7 +857,7 @@ export const CSS = `
   border-bottom:2.5px solid transparent;margin-bottom:-2px;white-space:nowrap;user-select:none;
   font-size:11px;font-weight:600;transition:all .15s ease}
 .lego-tab:hover{color:var(--lego-text)}
-.lego-tab.sel{color:#fff;border-bottom-color:var(--lego-accent);font-weight:700}
+.lego-tab.sel{color:var(--lego-text);border-bottom-color:var(--lego-accent);font-weight:700}
 .lego-tab-add{flex:none;padding:5px 8px;cursor:pointer;color:var(--lego-dim);
   border-bottom:2.5px solid transparent;margin-bottom:-2px;font-size:12px;font-weight:700}
 .lego-tab-add:hover{color:var(--lego-accent)}
@@ -974,7 +989,7 @@ export const CSS = `
 .lego-canvas-label{
   font-size: 11px;
   font-weight: 600;
-  color: var(--lego-fg, #e2e8f0);
+  color: var(--lego-text);
   width: 100%;
   height: 100%;
   display: flex;
@@ -1306,7 +1321,8 @@ export const CSS = `
   transition:background .15s ease,border-color .15s ease}
 .lego-card.editing .lego-row:hover{background:var(--lego-panel-hover);border-color:rgba(59,130,246,0.45)}
 .lego-card:not(.editing) .lego-row.selected::before{display:none}
-.lego-row .lego-lbl{flex:0 0 auto;width:auto;max-width:60%;min-width:0;color:var(--lego-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+/* Rótulo: cinza, valor em branco — como num widget nativo (e igual nos grupos). */
+.lego-row .lego-lbl{flex:0 0 auto;width:auto;max-width:60%;min-width:0;color:var(--lego-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   font-size:11px;font-weight:500}
 .lego-row .lego-in, .lego-row .lego-slider, .lego-row .lego-combo-btn{flex:1 1 0;min-width:0}
 .lego-row .lego-sw{flex:none}
@@ -1318,7 +1334,7 @@ export const CSS = `
 .lego-row.missing .lego-lbl{color:#ef4444;text-decoration:line-through}
 .lego-missing-box{display:flex;align-items:center;gap:6px;min-width:0}
 .lego-missing-txt{opacity:.55;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
-.lego-missing-btn{flex:none;padding:2px 8px;border-radius:5px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:#e5e7eb;font:600 9px/14px system-ui,sans-serif;cursor:pointer}
+.lego-missing-btn{flex:none;padding:2px 8px;border-radius:5px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:var(--lego-text);font:600 9px/14px system-ui,sans-serif;cursor:pointer}
 .lego-missing-btn:hover{background:rgba(168,85,247,.3);border-color:rgba(168,85,247,.7)}
 .lego-missing-btn.danger:hover{background:rgba(239,68,68,.3);border-color:rgba(239,68,68,.7)}
 .lego-grip{cursor:grab;color:var(--lego-dim);padding:0 4px;user-select:none;font-size:11px}
@@ -1337,15 +1353,15 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   cursor:pointer;min-width:32px;box-sizing:border-box}
 .lego-fill{position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--lego-accent)}
 .lego-knob{position:absolute;top:50%;width:10px;height:10px;border-radius:50%;
-  background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.6);transform:translate(-50%,-50%);pointer-events:none;transition:transform .08s}
+  background:var(--lego-text, #ffffff);box-shadow:0 1px 3px rgba(0,0,0,0.6);transform:translate(-50%,-50%);pointer-events:none;transition:transform .08s}
 .lego-track:hover .lego-knob{transform:translate(-50%,-50%) scale(1.15)}
-.lego-num{flex:none;width:52px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;box-sizing:border-box;height:22px;line-height:20px;padding:2px 6px;font-size:10px}
+.lego-num{flex:none;width:52px;text-align:right;font-variant-numeric:tabular-nums;font-weight:400;box-sizing:border-box;height:22px;line-height:20px;padding:2px 6px;font-size:11px}
 
 /* ── Slider Empilhado / Responsivo quando estreito ou alto ── */
 .lego-row.is-slider{box-sizing:border-box}
 .lego-row.is-slider.slider-stacked{flex-direction:column !important;align-items:stretch !important;justify-content:center !important;gap:4px !important;padding:4px 8px !important}
 .lego-row.is-slider.slider-stacked > .lego-row-top{display:flex !important;align-items:center !important;justify-content:space-between !important;width:100% !important;min-width:0 !important;gap:5px !important}
-.lego-row.is-slider.slider-stacked > .lego-row-top > .lego-lbl{flex:1 !important;min-width:0 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;font-size:10px !important}
+.lego-row.is-slider.slider-stacked > .lego-row-top > .lego-lbl{flex:1 !important;min-width:0 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;font-size:11px !important}
 .lego-row.is-slider.slider-stacked > .lego-slider{width:100% !important;display:flex !important;align-items:center !important;gap:5px !important}
 .lego-row.is-slider.slider-stacked > .lego-slider > .lego-track{width:100% !important;flex:1 !important}
 
@@ -1566,7 +1582,7 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   border-radius: 6px;
   background: rgba(59,130,246,0.18);
   border: 1px solid rgba(59,130,246,0.4);
-  color: #fff;
+  color:var(--lego-text);
   cursor: pointer;
   transition: all .15s ease;
   box-sizing: border-box;
@@ -1918,7 +1934,7 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 }
 .lego-item-label{
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--lego-dim, #94a3b8);
   white-space: nowrap;
   flex: none;
@@ -2275,8 +2291,9 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-step-number{
   display: inline-flex;
   align-items: center;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  /* Mesmo fundo/borda dos outros campos (seguem o tema e a cor do nó). */
+  background: var(--lego-well, rgba(0, 0, 0, 0.34));
+  border: 1px solid var(--lego-line);
   border-radius: 4px;
   overflow: hidden;
   height: 22px;
@@ -2284,11 +2301,12 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   box-sizing: border-box;
 }
 .lego-step-btn{
+  font-family: inherit;
   width: 20px;
   height: 100%;
   background: rgba(255, 255, 255, 0.05);
   border: 0;
-  color: #cbd5e1;
+  color: var(--lego-dim);
   font-size: 11px;
   font-weight: 700;
   display: flex;
@@ -2311,7 +2329,7 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   height: 100%;
   background: transparent;
   border: 0;
-  color: #ffffff;
+  color: var(--lego-text);
   /* Como o número de um widget nativo: fonte do ComfyUI, peso normal. */
   font-family: inherit;
   font-size: 11px;
@@ -2347,7 +2365,7 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-tab:hover .lego-tab-actions{opacity:1}
 .lego-tab-btn{background:transparent;border:0;padding:2px 4px;border-radius:4px;cursor:pointer;
   font-size:9px;color:var(--lego-dim);line-height:1;transition:all .12s}
-.lego-tab-btn:hover{color:#fff;background:rgba(255,255,255,0.12)}
+.lego-tab-btn:hover{color:var(--lego-text);background:rgba(255,255,255,0.12)}
 .lego-tab-btn.del:hover{color:#ef4444;background:rgba(239,68,68,0.18)}
 
 .lego-subtab-title{flex:1;white-space:nowrap}
@@ -2355,7 +2373,7 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-subtab:hover .lego-subtab-actions{opacity:1}
 .lego-subtab-btn{background:transparent;border:0;padding:2px 4px;border-radius:4px;cursor:pointer;
   font-size:8.5px;color:var(--lego-dim);line-height:1;transition:all .12s}
-.lego-subtab-btn:hover{color:#fff;background:rgba(255,255,255,0.12)}
+.lego-subtab-btn:hover{color:var(--lego-text);background:rgba(255,255,255,0.12)}
 .lego-subtab-btn.del:hover{color:#ef4444;background:rgba(239,68,68,0.18)}
 
 .lego-ctx-menu{position:fixed;background:#1a1a24;border:1px solid var(--lego-line);border-radius:6px;
@@ -2401,7 +2419,7 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   border-bottom:2.5px solid transparent;margin-bottom:-2px;white-space:nowrap;user-select:none;
   font-size:10px;font-weight:600;transition:all .15s ease;background:transparent;border-radius:0}
 .lego-subtab:hover{color:var(--lego-text)}
-.lego-subtab.sel{color:#fff;border-bottom-color:var(--lego-accent);font-weight:700;background:transparent}
+.lego-subtab.sel{color:var(--lego-text);border-bottom-color:var(--lego-accent);font-weight:700;background:transparent}
 .lego-subtab-add{flex:none;padding:7px 12px;cursor:pointer;color:var(--lego-dim);
   border-bottom:2.5px solid transparent;margin-bottom:-2px;font-size:12px;font-weight:700;transition:all .15s;background:transparent}
 .lego-subtab-add:hover{color:var(--lego-accent)}
@@ -2413,14 +2431,14 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-zone-add{width:100%;flex:1 1 100%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:5px;padding:5px 8px;
   border:2px dashed var(--lego-line);border-radius:9px;background:rgba(255,255,255,0.02);
   color:var(--lego-dim);font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;transition:all .15s;margin-top:8px}
-.lego-zone-add:hover{border-color:var(--lego-accent);color:#fff;background:rgba(59,130,246,0.12);transform:scale(1.005)}
+.lego-zone-add:hover{border-color:var(--lego-accent);color:var(--lego-text);background:rgba(59,130,246,0.12);transform:scale(1.005)}
 .lego-zone-dropzone{padding:6px;border:1.5px dashed rgba(255,255,255,0.1);border-radius:6px;display:flex;align-items:center;
   justify-content:center;gap:5px;font-size:10px;color:var(--lego-dim);font-style:italic}
 
 /* ── Botões e Inspector Modal ── */
 .lego-btn{padding:7px 16px;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;
   border:1px solid var(--lego-line);background:rgba(255,255,255,0.06);color:var(--lego-text);transition:all .15s}
-.lego-btn:hover{background:rgba(255,255,255,0.12);color:#fff}
+.lego-btn:hover{background:rgba(255,255,255,0.12);color:var(--lego-text)}
 .lego-btn-primary{background:var(--lego-accent);border-color:var(--lego-accent);color:#fff}
 .lego-btn-primary:hover{background:#2563eb}
 
@@ -2454,7 +2472,7 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-btn-ctrl:hover{
   background:rgba(255,255,255,0.14) !important;
   border-color:var(--lego-accent, #3b82f6) !important;
-  color:#ffffff !important;
+  color:var(--lego-text) !important;
 }
 .lego-btn-ctrl:active, .lego-btn-ctrl.lego-btn-clicked{
   transform:scale(0.96) translateY(1.5px) !important;
