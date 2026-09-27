@@ -823,6 +823,12 @@ export const CSS = `
 
 .lego-head{display:flex;align-items:center;gap:6px}
 .lego-head.compact{justify-content:flex-end;gap:6px;margin-bottom:2px}
+/* Botões do topo do cartão (entrar, menu, editar): são os principais do
+   cartão — maiores e com contraste, como os botões do próprio ComfyUI. */
+.lego-head > .lego-iconbtn{width:28px;height:22px;border-radius:6px;color:var(--lego-text);opacity:.78;
+  background:var(--lego-surface);border-color:var(--lego-line)}
+.lego-head > .lego-iconbtn:hover{opacity:1}
+.lego-head > .lego-iconbtn.on{opacity:1}
 /* Cartão fundido ao nó: sem moldura própria, o título fica só na barra do nó. */
 .lego-card.merged,.lego-card.merged.has-node-color{border:0;box-shadow:none;background:transparent;padding:4px 2px 2px}
 /* Num grupo horizontal o rótulo nunca fica menor que o próprio texto: sem

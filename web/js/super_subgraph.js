@@ -48,7 +48,7 @@ const LOG = "[SuperSubgraph]";
 
 /* Estilos: web/js/super_subgraph_css.js */
 
-function showLegoToast(msg) {
+function showLegoToast(msg, ms = 1800) {
   let toast = document.getElementById("lego-action-toast");
   if (!toast) {
     toast = el("div", "lego-action-toast");
@@ -58,7 +58,7 @@ function showLegoToast(msg) {
   toast.textContent = msg;
   toast.classList.add("visible");
   clearTimeout(toast.__timer);
-  toast.__timer = setTimeout(() => toast.classList.remove("visible"), 1800);
+  toast.__timer = setTimeout(() => toast.classList.remove("visible"), ms);
 }
 
 /* ── Histórico de Undo / Redo (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y) ── */
@@ -12374,6 +12374,30 @@ function repairInnerBinds(host) {
 }
 
 
+/** Componentes do cartão cujo nó de dentro sumiu (apagado lá dentro). */
+function lostComponents(host) {
+  const lost = [];
+  walkControls(host.properties?.[PROP], (c) => {
+    if (typeof c.bind === "string" && c.bind.includes("/") && !resolveBind(host, c.bind)) lost.push(c);
+  });
+  return lost;
+}
+
+/**
+ * Voltando de dentro de um subgrafo: se algum componente do cartão perdeu o
+ * nó (apagado lá dentro), avisa uma vez — antes só aparecia o componente
+ * vermelho, e só quando alguém olhava.
+ */
+function warnLostComponents(host) {
+  const lost = lostComponents(host);
+  const sig = lost.map((c) => c.name).sort().join(",");
+  if (sig === (host.__legoLostSig || "")) return;
+  host.__legoLostSig = sig;
+  if (!lost.length) return;
+  const n = lost.length;
+  showLegoToast(`${host.title || "Super Subgraph"}: ${n} component${n > 1 ? "s" : ""} lost ${n > 1 ? "their" : "its"} node — use Rebind or Remove`, 5000);
+}
+
 /** Seleção → subgrafo nativo com cartão. */
 function convertSelectionToSuper(nodes = selectedNodes()) {
   const graph = app.canvas?.graph || app.graph;
@@ -12991,7 +13015,12 @@ app.registerExtension({
     sweep();
     setTimeout(sweep, 500);
     // Voltando de dentro de um subgrafo, os cartões do grafo de fora se refazem.
-    window.addEventListener("litegraph:set-graph", () => setTimeout(sweep, 50));
+    window.addEventListener("litegraph:set-graph", () => setTimeout(() => {
+      sweep();
+      // Cartões que ficaram visíveis de novo: algum componente perdeu o nó?
+      const cur = app.canvas?.graph;
+      for (const host of ATTACHED) if (host.graph === cur && host.__legoState) warnLostComponents(host);
+    }, 50));
   },
 
   nodeCreated(node) {
