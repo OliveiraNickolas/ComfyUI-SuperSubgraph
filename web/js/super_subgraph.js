@@ -2398,12 +2398,13 @@ function latestOutputFor(host, ctrl, media) {
   const src = ctrl.source != null && ctrl.source !== "" ? String(ctrl.source) : "";
   let match;
   // Ids de execução: o subgrafo nativo prefixa os nós de dentro com "<host>:".
+  // (Host dentro de outro subgrafo: "<pai>:<host>:" — ver execPathsOf.)
+  const paths = execPathsOf(host);
   if (!src) {
-    const pre = `${host.id}:`;
-    match = host.subgraph ? (k) => k.startsWith(pre) : (k) => k === String(host.id);
+    match = host.subgraph ? (k) => paths.some((p) => k.startsWith(`${p}:`)) : (k) => paths.includes(k);
   } else {
-    const base = isInsideHost(host, src) ? `${host.id}:${src}` : src;
-    match = (k) => k === base || k.startsWith(`${base}:`);
+    const bases = isInsideHost(host, src) ? paths.map((p) => `${p}:${src}`) : [src];
+    match = (k) => bases.some((base) => k === base || k.startsWith(`${base}:`));
   }
 
   let best = null;
@@ -12718,9 +12719,31 @@ function runOf(host) {
   return r;
 }
 
-function innerIdOf(host, id) {
-  const s = String(id ?? ""), h = String(host.id);
-  if (s.startsWith(`${h}:`)) return s.slice(h.length + 1).split(":")[0];
+/**
+ * Ids de execução do próprio host: "<id>" quando está no workflow; dentro de
+ * outro subgrafo, "<pai>:<id>" (um por instância do pai — a definição pode
+ * estar em vários lugares).
+ */
+function execPathsOf(host, depth = 0) {
+  const h = String(host?.id);
+  const g = host?.graph;
+  const root = app.rootGraph || app.graph;
+  if (!g || g === root || g.isRootGraph || depth > 8) return [h];
+  const out = [];
+  const visit = (graph) => {
+    for (const n of graph?._nodes || graph?.nodes || []) {
+      if (n?.subgraph === g) for (const p of execPathsOf(n, depth + 1)) out.push(`${p}:${h}`);
+    }
+  };
+  visit(root);
+  for (const sg of root?.subgraphs?.values?.() || []) visit(sg);
+  return out.length ? out : [h];
+}
+
+/** Id (no subgrafo do host) do nó de dentro que gerou o evento `id`; null se não é dele. */
+function innerIdOf(host, id, paths = execPathsOf(host)) {
+  const s = String(id ?? "");
+  for (const p of paths) if (s.startsWith(`${p}:`)) return s.slice(p.length + 1).split(":")[0];
   return null;
 }
 
@@ -12771,7 +12794,9 @@ function paintRun(node) {
 function onRunEvent(type, d) {
   for (const host of ATTACHED) {
     const r = runOf(host);
-    const h = String(host.id);
+    const paths = execPathsOf(host);
+    const self = (id) => paths.includes(String(id));
+    const innerIdOf_ = (id) => innerIdOf(host, id, paths);
     let changed = false;
     if (type === "execution_start") {
       r.running = false; r.done.clear(); r.cur = null; r.value = r.max = 0; r.err = null;
@@ -12779,8 +12804,8 @@ function onRunEvent(type, d) {
     } else if (type === "progress_state") {
       for (const n of Object.values(d?.nodes || {})) {
         const id = String(n.node_id ?? "");
-        const iid = innerIdOf(host, id);
-        if (id !== h && !iid) continue;
+        const iid = innerIdOf_(id);
+        if (!self(id) && !iid) continue;
         changed = true;
         if (n.state === "running") {
           r.running = true;
@@ -12792,11 +12817,11 @@ function onRunEvent(type, d) {
       }
     } else if (type === "executing") {
       if (d == null) { if (r.running) { r.running = false; r.cur = null; changed = true; } }
-      else if (String(d) === h || innerIdOf(host, d)) { if (!r.running) { r.running = true; changed = true; } }
+      else if (self(d) || innerIdOf_(d)) { if (!r.running) { r.running = true; changed = true; } }
     } else if (type === "execution_error") {
       const id = String(d?.node_id ?? "");
-      if (id === h || innerIdOf(host, id)) {
-        r.err = { msg: String(d.exception_message || d.exception_type || "failed").trim(), where: innerIdOf(host, id) || r.cur };
+      if (self(id) || innerIdOf_(id)) {
+        r.err = { msg: String(d.exception_message || d.exception_type || "failed").trim(), where: innerIdOf_(id) || r.cur };
         r.running = false;
         changed = true;
       }
