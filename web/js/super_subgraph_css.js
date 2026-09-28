@@ -2397,7 +2397,15 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-ctx-item:hover{background:var(--lego-accent);color:#fff}
 .lego-ctx-item.danger:hover{background:#ef4444;color:#fff}
 .lego-ctx-label{flex:1}
-.lego-align-bar{display:inline-flex;align-items:center;gap:2px;padding:2px 4px;border-radius:7px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.3);letter-spacing:0;order:0}
+/* Barra de alinhamento: flutua acima da zona, fora do fluxo (não muda a altura de nada). */
+.lego-sec-h{position:relative}
+.lego-align-bar{position:absolute;left:0;bottom:calc(100% + 6px);z-index:60;display:inline-flex;align-items:center;gap:2px;padding:3px 5px;border-radius:8px;
+  background:rgba(15,23,42,.96);border:1px solid rgba(56,189,248,.45);box-shadow:0 6px 18px rgba(0,0,0,.45);letter-spacing:0;white-space:nowrap;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.lego-align-gap{display:inline-flex;align-items:center;gap:1px;color:#7dd3fc;font-size:10px;font-weight:600}
+.lego-align-gap-lbl{margin:0 3px 0 1px;opacity:.8;text-transform:none;letter-spacing:0}
+.lego-align-gap-val{min-width:18px;text-align:center;font-variant-numeric:tabular-nums;color:#e0f2fe}
+.lego-align-gap .lego-align-btn{width:18px;font-size:13px;font-weight:600}
 .lego-align-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:18px;padding:0;border:0;border-radius:5px;background:transparent;color:#7dd3fc;cursor:pointer}
 .lego-align-btn:hover:not(:disabled){background:rgba(56,189,248,.22);color:#fff}
 .lego-align-btn:disabled{opacity:.3;cursor:default}

@@ -686,8 +686,11 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     ? ctrl.h
     : (ctrl.kind === "hdivider" ? 16 : (ctrl.kind === "vdivider" ? 160 : (ctrl.kind === "vsegment" ? 160 : (ctrl.kind === "label" ? 24 : (hasMediaItem ? 144 : (ctrl.kind === "textarea" ? 96 : 32))))));
 
-  ctrl.x = Math.max(0, Math.round(curX / GRID) * GRID);
-  ctrl.y = Math.max(0, Math.round(curY / GRID) * GRID);
+  // Posição só em pixel inteiro: arrastar já encaixa na grade, e o alinhamento
+  // "em linha/coluna" pode usar um espaço menor que ela (gap de 4, 8…), que o
+  // arredondamento para a grade aqui desfazia.
+  ctrl.x = Math.max(0, Math.round(curX));
+  ctrl.y = Math.max(0, Math.round(curY));
   ctrl.w = Math.max(ctrlMinW, Math.round(curW / GRID) * GRID);
   // Grupo tem a altura exata do conteúdo (fitGroupToContent): arredondar para
   // a grade aqui o engordava um pouco a cada redesenho (57 → 64…).

@@ -1272,8 +1272,10 @@ function buildCard(host, state) {
               rowH = 0;
             }
           }
-          c.x = Math.max(0, Math.round(c.x / GRID) * GRID);
-          c.y = Math.max(0, Math.round(c.y / GRID) * GRID);
+          // Posição em pixel inteiro (não na grade): o alinhamento em linha/coluna
+          // pode usar um espaço menor que a grade; arrastar continua encaixando.
+          c.x = Math.max(0, Math.round(c.x));
+          c.y = Math.max(0, Math.round(c.y));
           if (!c.w) c.w = autoCols > 1 ? autoColW : (hasMedia(c) ? 288 : 256);
           c.w = Math.max(hasMedia(c) ? 160 : 80, Math.round(c.w / GRID) * GRID);
           if (!c.h) c.h = hasMedia(c) ? 144 : (c.kind === "textarea" ? 96 : 46);

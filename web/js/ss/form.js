@@ -491,7 +491,9 @@ function walkControls(layout, fn) {
  * grupo não têm x/y: quem os posiciona é o grupo). Com 2+ selecionados,
  * os botões aparecem no topo da zona, ao lado do título.
  */
-const ALIGN_GAP = GRID;
+const ALIGN_GAP = GRID;   // espaço padrão entre componentes em linha/coluna
+/** Espaço (px) usado por "em linha"/"em coluna" neste cartão (ajustável na barra). */
+const alignGapOf = (layout) => (Number.isFinite(layout?.alignGap) ? layout.alignGap : ALIGN_GAP);
 
 /** Componentes soltos selecionados, agrupados pela lista (zona) onde moram. */
 function selectedLooseByList(layout, state) {
@@ -512,7 +514,7 @@ const axH = (c) => (typeof c.h === "number" ? c.h : 46);
 const snapG = (v) => Math.max(0, Math.round(v / GRID) * GRID);
 
 /** Aplica uma operação de alinhamento/arranjo/tamanho em `ctrls`. */
-function alignControls(ctrls, op, ref = null) {
+function alignControls(ctrls, op, ref = null, gap = ALIGN_GAP) {
   if (ctrls.length < 2) return false;
   const minX = Math.min(...ctrls.map(axX)), minY = Math.min(...ctrls.map(axY));
   const maxR = Math.max(...ctrls.map((c) => axX(c) + axW(c))), maxB = Math.max(...ctrls.map((c) => axY(c) + axH(c)));
@@ -527,15 +529,16 @@ function alignControls(ctrls, op, ref = null) {
     case "bottom": ctrls.forEach((c) => { c.y = snapG(maxB - axH(c)); }); break;
     case "vcenter": ctrls.forEach((c) => { c.y = snapG(midY - axH(c) / 2); }); break;
     case "row": {
-      // Em linha: da esquerda para a direita, topos alinhados, espaço fixo.
+      // Em linha: da esquerda para a direita, topos alinhados, com o espaço
+      // escolhido (sem arredondar para a grade: senão um espaço pequeno sumia).
       let x = minX;
-      [...ctrls].sort((a, b) => axX(a) - axX(b) || axY(a) - axY(b)).forEach((c) => { c.x = x; c.y = minY; x = snapG(x + axW(c) + ALIGN_GAP); });
+      [...ctrls].sort((a, b) => axX(a) - axX(b) || axY(a) - axY(b)).forEach((c) => { c.x = x; c.y = minY; x = Math.round(x + axW(c) + gap); });
       break;
     }
     case "column": {
-      // Em coluna: de cima para baixo, esquerdas alinhadas, espaço fixo.
+      // Em coluna: de cima para baixo, esquerdas alinhadas, com o espaço escolhido.
       let y = minY;
-      [...ctrls].sort((a, b) => axY(a) - axY(b) || axX(a) - axX(b)).forEach((c) => { c.y = y; c.x = minX; y = snapG(y + axH(c) + ALIGN_GAP); });
+      [...ctrls].sort((a, b) => axY(a) - axY(b) || axX(a) - axX(b)).forEach((c) => { c.y = y; c.x = minX; y = Math.round(y + axH(c) + gap); });
       break;
     }
     case "hdist": {
@@ -573,8 +576,10 @@ function alignSelected(host, state, op) {
   for (const ctrls of selectedLooseByList(layout, state).values()) {
     if (ctrls.length < 2) continue;
     if (!did) pushUndo(host);
-    did = alignControls(ctrls, op, ref) || did;
+    did = alignControls(ctrls, op, ref, alignGapOf(layout)) || did;
   }
+  // Mudar o espaço refaz a última arrumação em linha/coluna.
+  if (op === "row" || op === "column") state.lastArrange = op;
   if (did) state.refresh();
   return did;
 }
@@ -593,6 +598,7 @@ const ALIGN_OPS = [
 function alignIcon(op) {
   const R = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1" fill="currentColor"/>`;
   const L = (x1, y1, x2, y2) => `<path d="M${x1} ${y1}L${x2} ${y2}" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`;
+  const O = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/>`;
   const body = {
     left: L(2, 1, 2, 15) + R(4, 3, 9, 4) + R(4, 9, 6, 4),
     hcenter: L(8, 1, 8, 15) + R(3, 3, 10, 4) + R(5, 9, 6, 4),
@@ -604,9 +610,11 @@ function alignIcon(op) {
     column: R(5, 1, 6, 4) + R(5, 6, 6, 4) + R(5, 11, 6, 4),
     hdist: L(1, 2, 1, 14) + L(15, 2, 15, 14) + R(3, 4, 3, 8) + R(10, 4, 3, 8),
     vdist: L(2, 1, 14, 1) + L(2, 15, 14, 15) + R(4, 3, 8, 3) + R(4, 10, 8, 3),
-    samew: L(2, 2, 14, 2) + R(2, 5, 12, 3) + R(2, 10, 12, 3),
-    sameh: L(2, 2, 2, 14) + R(5, 2, 3, 12) + R(10, 2, 3, 12),
-    samesize: R(2, 2, 5, 5) + R(9, 2, 5, 5) + R(2, 9, 5, 5) + R(9, 9, 5, 5),
+    // Mesmo tamanho (estilo ComfyUI-Align): o retângulo encosta nas duas
+    // linhas-guia — laterais = largura, cima/baixo = altura, cantos = os dois.
+    samew: L(1.5, 2, 1.5, 14) + L(14.5, 2, 14.5, 14) + O(3.5, 5, 9, 6),
+    sameh: L(2, 1.5, 14, 1.5) + L(2, 14.5, 14, 14.5) + O(5, 3.5, 6, 9),
+    samesize: `<path d="M1.5 5V1.5H5M11 1.5H14.5V5M14.5 11V14.5H11M5 14.5H1.5V11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>` + O(4, 4, 8, 8),
   }[op] || "";
   return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">${body}</svg>`;
 }
@@ -636,11 +644,31 @@ function renderAlignBars(host, state) {
       b.addEventListener("click", (e) => { e.stopPropagation(); alignSelected(host, state, op); });
       bar.append(b);
     }
-    // No topo da zona, ao lado do título (antes das ações da zona).
+    // Espaço entre os componentes de "em linha"/"em coluna" (de 4 em 4 px).
+    bar.append(el("span", "lego-align-sep"));
+    const layout = host.properties[PROP];
+    const gapBox = el("span", "lego-align-gap");
+    gapBox.title = "Space between components when arranged in a row or column";
+    const setGap = (v) => {
+      layout.alignGap = Math.max(0, Math.min(64, v));
+      if (state.lastArrange) alignSelected(host, state, state.lastArrange);
+      else state.refresh();
+    };
+    const minus = el("button", "lego-align-btn", "\u2212");
+    minus.type = "button";
+    minus.title = "Less space";
+    minus.addEventListener("click", (e) => { e.stopPropagation(); setGap(alignGapOf(layout) - 4); });
+    const plus = el("button", "lego-align-btn", "+");
+    plus.type = "button";
+    plus.title = "More space";
+    plus.addEventListener("click", (e) => { e.stopPropagation(); setGap(alignGapOf(layout) + 4); });
+    gapBox.append(el("span", "lego-align-gap-lbl", "gap"), minus, el("span", "lego-align-gap-val", String(alignGapOf(layout))), plus);
+    bar.append(gapBox);
+    // Flutua ACIMA da zona, fora do fluxo: dentro do cabeçalho ela deixava a
+    // zona mais alta no modo edição e mudava a noção do layout final.
     const head = box.closest(".lego-sec")?.querySelector(":scope > .lego-sec-h");
     if (!head) continue;
-    const actions = head.querySelector(":scope > .lego-sec-actions");
-    if (actions) head.insertBefore(bar, actions); else head.append(bar);
+    head.append(bar);
   }
 }
 
@@ -876,4 +904,4 @@ function dropArmedTool(host, state, section, x, y, keepArmed, forcedKind) {
   return true;
 }
 
-export { LEGO_COLORS, openColorMenu, colorDotButton, setComponentColor, selectionFor, groupSelectedComponents, ungroupComponent, toggleGroupOrientation, fitGroupToContent, compatibleKinds, KIND_LABEL, openComponentContextMenu, makeZone, createNewZone, openAddZoneModal, addZoneBelow, addZoneBeside, MIN_CTRL_W, MIN_CTRL_H, TOOLBOX_CATEGORIES, TOOLBOX, toolByKind, walkControls, ALIGN_GAP, selectedLooseByList, axX, axY, axW, axH, snapG, alignControls, alignSelected, ALIGN_OPS, alignIcon, renderAlignBars, removeControlsByName, uniqueComponentName, renameClone, activeTabOf, visibleControlsOf, activeSectionOf, packInRows, findFreeSpot, makeComponent, buildToolPalette, dropArmedTool };
+export { alignGapOf, LEGO_COLORS, openColorMenu, colorDotButton, setComponentColor, selectionFor, groupSelectedComponents, ungroupComponent, toggleGroupOrientation, fitGroupToContent, compatibleKinds, KIND_LABEL, openComponentContextMenu, makeZone, createNewZone, openAddZoneModal, addZoneBelow, addZoneBeside, MIN_CTRL_W, MIN_CTRL_H, TOOLBOX_CATEGORIES, TOOLBOX, toolByKind, walkControls, ALIGN_GAP, selectedLooseByList, axX, axY, axW, axH, snapG, alignControls, alignSelected, ALIGN_OPS, alignIcon, renderAlignBars, removeControlsByName, uniqueComponentName, renameClone, activeTabOf, visibleControlsOf, activeSectionOf, packInRows, findFreeSpot, makeComponent, buildToolPalette, dropArmedTool };
