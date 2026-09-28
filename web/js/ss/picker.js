@@ -11,7 +11,7 @@ import { GLYPHS, eatPointer, el, esc, glyph, glyphBtn, glyphTextBtn } from "./co
 import { OUTPUT_KINDS, addItemToSegment, isOutputKind, listOutputSourceTargets } from "./outputs.js";
 import { isMediaKind } from "./drag.js";
 import { buildControl } from "./panels.js";
-import { buildWholeNodeCtrl, detectMediaKind, getNodeAtEvent, listBindableTargets, singleCtrlFor, wholeNodeItems } from "./whole_node.js";
+import { buildWholeNodeCtrl, detectMediaKind, getNodeAtEvent, listBindableTargets, outputKindOfNode, singleCtrlFor, wholeNodeItems } from "./whole_node.js";
 import { findFreeSpot, packInRows, renameClone, walkControls } from "./form.js";
 import { INSPECTOR, INSPECTOR_POS, adaptInspectorWithDialog, ensureComponentName } from "./inspector.js";
 import { resize } from "./lifecycle.js";
@@ -211,7 +211,7 @@ function startVisualWorkflowPicker({ host, backdrop, onSelect, pickNode = false,
     const cur = picks.get(key);
     if (!w) {
       if (cur?.whole) picks.delete(key);
-      else if (usableNames.length) picks.set(key, { node, whole: true, widgets: new Set() });
+      else if (usableNames.length || outputKindOfNode(node)) picks.set(key, { node, whole: true, widgets: new Set() });
       else showLegoToast("This node has no parameters to promote");
     } else if (cur?.whole) {
       // Nó inteiro marcado: clicar num parâmetro tira só ele.

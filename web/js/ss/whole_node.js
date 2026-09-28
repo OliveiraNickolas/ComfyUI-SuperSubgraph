@@ -65,9 +65,34 @@ function singleCtrlFor(host, node, w) {
   return c;
 }
 
+/**
+ * Nó de saída (Preview/Save Image, Save Video, Video Combine, Preview/Save
+ * Audio…): o tipo do componente de saída que mostra o que ele gera, ou null.
+ * Esses nós quase não têm parâmetros — o que importa neles é a imagem.
+ */
+function outputKindOfNode(node) {
+  if (!node) return null;
+  const t = String(node.comfyClass || node.type || "");
+  const isOut = !!node.constructor?.nodeData?.output_node || /preview|save|videocombine/i.test(t);
+  if (!isOut) return null;
+  const ins = (node.inputs || []).map((i) => String(i.type || "").toUpperCase());
+  if (/audio/i.test(t) || ins.includes("AUDIO")) return "outaudio";
+  if (/video|videocombine/i.test(t) || ins.includes("VIDEO")) return "outvideo";
+  if (/image/i.test(t) || ins.includes("IMAGE")) return "outimage";
+  return null;
+}
+
+/** Componente de saída ligado a este nó (mostra o que ele gerou por último). */
+function outputCtrlFor(node) {
+  const kind = outputKindOfNode(node);
+  if (!kind) return null;
+  return { kind, source: String(node.id), label: node.title || node.type || "Output", ...defaultSizeFor(kind) };
+}
+
 /** Itens (label + controle) que representam os widgets do nó (todos, ou só `onlyNames`). */
 function wholeNodeItems(host, node, onlyNames) {
   const items = [];
+  const outCtrl = onlyNames ? null : outputCtrlFor(node);
   const mp = mediaNodeParts(node);
   for (const w of (node.widgets || []).filter(usable)) {
     if (onlyNames && !onlyNames.has(w.name)) continue;
@@ -96,6 +121,8 @@ function wholeNodeItems(host, node, onlyNames) {
     if (kind !== "button") items.push({ kind: "label", text, label: text });
     items.push(control);
   }
+  // Nó de saída: a imagem (vídeo, áudio) que ele gera entra junto.
+  if (outCtrl) items.push({ kind: outCtrl.kind, source: outCtrl.source, label: outCtrl.label, labelPos: "none", h: 160 });
   return items;
 }
 
@@ -126,6 +153,11 @@ function buildWholeNodeCtrl(host, node, orientation, pos) {
   const mp = mediaNodeParts(node);
   // Nó que desenha o próprio painel (Resolution Master): o painel já é o nó
   // inteiro — vira um componente só, espelhado, sem grupo em volta.
+  // Nó de saída sem parâmetros (Preview Image): só o componente de saída.
+  const outCtrl = outputCtrlFor(node);
+  if (outCtrl && !(node.widgets || []).some(usable)) {
+    return renameClone(layout, { ...outCtrl, x: pos?.x ?? 16, y: pos?.y ?? 16 });
+  }
   const panel = (node.widgets || []).find((w) => usable(w) && mirrorModeFor(w) === "node");
   if (panel || (mp && !mp.rest.length)) {
     const c = { ...singleCtrlFor(host, node, panel || mp.media), x: pos?.x ?? 16, y: pos?.y ?? 16 };
@@ -134,7 +166,8 @@ function buildWholeNodeCtrl(host, node, orientation, pos) {
     return renameClone(layout, c);
   }
   const items = wholeNodeItems(host, node);
-  let vertical = orientation === "column";
+  // Nó de saída com parâmetros (Save Image): empilhado, a imagem embaixo.
+  let vertical = orientation === "column" || !!outCtrl;
   const has2D = items.some((it) => is2DKind(it.kind));
   // Largura do cartão (nunca menor que o mínimo que ele assume ao ser montado).
   const avail = Math.max(320, Math.round(Math.max(MIN_W, host.size?.[0] || 0) - 80));
@@ -661,4 +694,4 @@ function getNodeAtEvent(canvas, e) {
   return null;
 }
 
-export { widgetLabel, customNodeTitle, promotedLabel, singleCtrlFor, wholeNodeItems, mediaNodeParts, buildWholeNodeCtrl, uploadMediaKind, detectMediaKind, listBindableTargets, widthToCss, snapWidth, colWidthCss, getContiguousRow, widthForCount, renderZoneGuides, clearZoneGuides, sectionRequiredWidth, sectionRequiredHeight, sameRow, makeRowId, groupSectionsLayout, requiredNodeWidth, getDropDirection, getNodeAtEvent };
+export { widgetLabel, customNodeTitle, promotedLabel, singleCtrlFor, outputKindOfNode, outputCtrlFor, wholeNodeItems, mediaNodeParts, buildWholeNodeCtrl, uploadMediaKind, detectMediaKind, listBindableTargets, widthToCss, snapWidth, colWidthCss, getContiguousRow, widthForCount, renderZoneGuides, clearZoneGuides, sectionRequiredWidth, sectionRequiredHeight, sameRow, makeRowId, groupSectionsLayout, requiredNodeWidth, getDropDirection, getNodeAtEvent };
