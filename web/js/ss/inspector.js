@@ -6,7 +6,7 @@ import { CSS } from "../super_subgraph_css.js";
 import { GRID, PROP } from "./constants.js";
 import { copySelectedComponents, duplicateComponent, pasteComponents, pushUndo } from "./core.js";
 import { findNodeInHostScope, prettify, resolveBind } from "./widgets.js";
-import { el, esc, glyph, glyphBtn, glyphTextBtn, mkToggle, openDropdown } from "./controls.js";
+import { el, esc, glyph, glyphBtn, glyphTextBtn, mkToggle, openDropdown, seedModeShown } from "./controls.js";
 import { getComponentMinDimensions, isOutputKind, openOutputSourceDialog, outputSourceLabel } from "./outputs.js";
 import { isMediaKind } from "./drag.js";
 import { defaultSizeFor, isPanelKind } from "./panels.js";
@@ -550,6 +550,21 @@ function renderObjectInspector(host, state, force) {
     });
     wire.title = "Also show this parameter as an input on the node, to connect a value from outside";
     props.append(propRow("Node Input", wire));
+  }
+
+  // Botão de modo (FIX / +1 / −1 / aleatório): padrão só em seed; liga em qualquer número.
+  if (ctrl.kind === "number" && ctrl.bind) {
+    const hit = resolveBind(host, ctrl.bind);
+    if (hit?.widget) {
+      const sw = propToggle(seedModeShown(hit.node, hit.widget, ctrl), (on) => {
+        pushUndo(host);
+        ctrl.seedMode = on;
+        state.refresh();
+        renderObjectInspector(host, state, true);
+      });
+      sw.title = "Show the FIX / +1 / \u22121 / random button: what happens to this value after each run";
+      props.append(propRow("Run Mode", sw));
+    }
   }
 
   const isDivider = ctrl.kind === "hdivider" || ctrl.kind === "vdivider";

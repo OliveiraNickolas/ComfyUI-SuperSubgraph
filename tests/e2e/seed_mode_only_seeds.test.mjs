@@ -1,6 +1,8 @@
-// O botão FIX/+1/−1/dado só aparece em seed (ou onde o nó declara
+// O botão FIX/+1/−1/dado aparece por padrão só em seed (ou onde o nó declara
 // control_after_generate). O Primitive node dá esse combo a TODO número —
-// ligado a um width, o stepper do cartão não pode mostrar o botão.
+// ligado a um width, o stepper do cartão não mostra o botão por padrão.
+// Mas o usuário pode ligar em qualquer stepper (e desligar na seed); sem o
+// combo do ComfyUI, o cartão aplica o modo depois de cada Run.
 import { launch, COMFY_URL } from "../lib.mjs";
 const b = await launch();
 const pg = await b.newPage({ viewport: { width: 1400, height: 900 } });
@@ -34,6 +36,29 @@ t("the Primitive node really has a control combo (the case being tested) " + JSO
 t("width from a Primitive node: no FIX button", r.width === false);
 t("plain height: no FIX button", r.height === false);
 t("KSampler seed keeps the FIX button", r.seed === true);
+// liga no Height (sem o combo do ComfyUI), escolhe +1 e simula um Run
+const r2 = await pg.evaluate(async () => {
+  const sn = window.app.graph.nodes.find(n => n.isSubgraphNode?.());
+  const list = sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls;
+  const E = sn.subgraph.nodes.find(n => n.type === "EmptyImage"); const hw = E.widgets.find(w => w.name === "height");
+  list.find(c => c.name === "Height").seedMode = true;
+  list.find(c => c.name === "Seed").seedMode = false;
+  sn.__legoState.refresh(); await new Promise(r => setTimeout(r, 300));
+  const btn = () => sn.__legoHost.querySelector('.lego-row[data-name="Height"] .lego-seed-mode');
+  const out = { shown: !!btn(), seedHidden: !sn.__legoHost.querySelector('.lego-row[data-name="Seed"] .lego-seed-mode') };
+  btn().click(); await new Promise(r => setTimeout(r, 100));
+  out.mode = btn().dataset.mode; out.saved = list.find(c => c.name === "Height").runMode;
+  hw.value = 512;
+  window.comfyAPI.api.api.dispatchCustomEvent("promptQueued", { number: 1, batchCount: 1 });
+  await new Promise(r => setTimeout(r, 200));
+  out.after = hw.value;
+  out.shownValue = sn.__legoHost.querySelector('.lego-row[data-name="Height"] input')?.value;
+  return out;
+});
+t("run mode turned on for a plain stepper shows the button " + JSON.stringify(r2), r2.shown);
+t("…and turned off on the seed hides it", r2.seedHidden);
+t("click picks +1, saved on the component", r2.mode === "increment" && r2.saved === "increment");
+t("after a run the value moves one step (512 -> " + r2.after + "), and the card shows it", r2.after > 512 && Number(r2.shownValue) === r2.after);
 t("no page errors " + JSON.stringify(errs.slice(0, 3)), !errs.length);
 console.log(`\n${ok} passed, ${fail} failed`);
 await b.close();

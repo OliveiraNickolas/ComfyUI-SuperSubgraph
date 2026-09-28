@@ -8,7 +8,7 @@ import { OUTPUTS, notifyOutputViews, recordOutput } from "./ss/outputs.js";
 import { mirrorModeFor } from "./ss/panels.js";
 import { buildWholeNodeCtrl } from "./ss/whole_node.js";
 import { ATTACHED, attach } from "./ss/lifecycle.js";
-import { convertSelectionToSuper, exposeAsInput, installCardMarks, onRunEvent, refreshLayoutLibrary, removeWireInput, selectedNodes, superMenuOptions, warnLostComponents } from "./ss/native.js";
+import { applyCardRunModes, convertSelectionToSuper, exposeAsInput, installCardMarks, onRunEvent, refreshLayoutLibrary, removeWireInput, selectedNodes, superMenuOptions, warnLostComponents } from "./ss/native.js";
 
 /**
  * ComfyUI Super-Subgraph — "UI Lego"  v2
@@ -83,6 +83,8 @@ app.registerExtension({
     refreshLayoutLibrary();
     // Dentro do subgrafo: contorno nos parâmetros que estão no cartão.
     installCardMarks();
+    // Modo +1/−1/aleatório guardado no cartão: anda depois de cada Run.
+    api.addEventListener("promptQueued", () => { try { applyCardRunModes(); } catch (err) { console.warn(LOG, "run modes", err); } });
     for (const type of ["execution_start", "progress_state", "executing", "execution_error", "execution_interrupted", "execution_success"]) {
       api.addEventListener(type, (e) => { try { onRunEvent(type, e?.detail); } catch (err) { console.warn(LOG, "run feedback", err); } });
     }

@@ -436,11 +436,12 @@ function controlWidgetOf(node, w) {
   return isCtl(next) ? next : null;
 }
 /**
- * O botão de modo só aparece onde o ComfyUI o oferece de propósito: o nó
- * declara "control_after_generate" para o parâmetro (seed do KSampler,
+ * Por padrão o botão de modo só aparece onde o ComfyUI o oferece de propósito:
+ * o nó declara "control_after_generate" para o parâmetro (seed do KSampler,
  * Primitive Int…) ou o parâmetro é uma seed. O Primitive node e algumas
- * entradas promovidas ganham esse combo em TODO número (width, height…), e
- * lá o FIX/+1/−1 só atrapalhava.
+ * entradas promovidas ganham esse combo em TODO número (width, height…), e lá
+ * o FIX/+1/−1 só atrapalhava. O usuário liga/desliga em qualquer stepper
+ * (`ctrl.seedMode`, no Object Inspector ou no menu do componente).
  */
 const RE_SEED_NAME = /(^|[_\s])seed$/i;
 function wantsSeedMode(node, w) {
@@ -448,18 +449,49 @@ function wantsSeedMode(node, w) {
   const s = spec?.required?.[w?.name] || spec?.optional?.[w?.name];
   if (s?.[1]?.control_after_generate) return true;
   const names = [w?.name, w?.label];
-  // Primitive node: o widget se chama "value"; vale o parâmetro ligado a ele.
+  // Primitive node: vale o parâmetro ligado a ele.
   if (node?.type === "PrimitiveNode") names.push(node.outputs?.[0]?.widget?.name, node.title);
   return names.some((n) => typeof n === "string" && RE_SEED_NAME.test(n.trim()));
 }
-function seedModeButton(node, w, state) {
+/** O botão de modo aparece neste componente? (escolha do usuário ou o padrão acima) */
+function seedModeShown(node, w, ctrl) {
+  if (typeof ctrl?.seedMode === "boolean") return ctrl.seedMode;
+  return !!controlWidgetOf(node, w) && wantsSeedMode(node, w);
+}
+const RUN_MODES = ["fixed", "increment", "decrement", "randomize"];
+const RANDOM_CAP = 1125899906842624;   // o mesmo teto do "randomize" do ComfyUI
+/** Próximo valor de um número para o modo (+1, −1, aleatório), dentro do min/max do widget. */
+function nextRunValue(w, mode) {
+  const o = w?.options || {};
+  const step = realStep(o) || 1;
+  const isInt = isIntWidget(o, step, w);
+  const lo = Number.isFinite(o.min) ? o.min : 0;
+  const hi = Number.isFinite(o.max) ? Math.min(o.max, lo + RANDOM_CAP) : lo + RANDOM_CAP;
+  const v = Number(w?.value) || 0;
+  let n = v;
+  if (mode === "increment") n = v + step;
+  else if (mode === "decrement") n = v - step;
+  else if (mode === "randomize") n = isInt ? lo + Math.floor(Math.random() * (hi - lo + 1)) : lo + Math.round((Math.random() * (hi - lo)) / step) * step;
+  if (Number.isFinite(o.min)) n = Math.max(o.min, n);
+  if (Number.isFinite(o.max)) n = Math.min(o.max, n);
+  return isInt ? Math.round(n) : Number(n.toFixed(numDecimals(o, step, isInt)));
+}
+/**
+ * Botão do modo. Com o combo "control after generate" do ComfyUI, é ele que
+ * o botão troca (e o ComfyUI aplica). Sem ele, o modo fica guardado no
+ * componente (`ctrl.runMode`) e o cartão aplica depois de cada Run
+ * (applyCardRunModes).
+ */
+function seedModeButton(node, w, state, ctrl = null) {
+  if (!seedModeShown(node, w, ctrl)) return null;
   const cw = controlWidgetOf(node, w);
-  if (!cw || !wantsSeedMode(node, w)) return null;
+  if (!cw && !ctrl) return null;
   const b = el("button", "lego-seed-mode");
   b.type = "button";
-  const modes = () => (Array.isArray(cw.options?.values) && cw.options.values.length ? cw.options.values : Object.keys(SEED_MODE_INFO));
+  const modes = () => (cw && Array.isArray(cw.options?.values) && cw.options.values.length ? cw.options.values : RUN_MODES);
+  const current = () => String((cw ? cw.value : ctrl.runMode) ?? "fixed");
   const paint = () => {
-    const v = String(cw.value ?? "fixed");
+    const v = current();
     const [txt, tip] = SEED_MODE_INFO[v] || [v, v];
     b.dataset.mode = v;
     b.innerHTML = v === "randomize" ? glyph("dice", 13) : esc(txt);
@@ -470,11 +502,13 @@ function seedModeButton(node, w, state) {
   b.addEventListener("click", (e) => {
     e.stopPropagation();
     const list = modes();
-    const next = list[(list.indexOf(cw.value) + 1) % list.length];
-    writeWidget(node, cw, next);
+    const next = list[(list.indexOf(current()) + 1) % list.length];
+    if (cw) writeWidget(node, cw, next);
+    else if (next === "fixed") delete ctrl.runMode;
+    else ctrl.runMode = next;
     paint();
   });
-  state.watch(cw, paint);
+  if (cw) state.watch(cw, paint);
   return b;
 }
 
@@ -519,7 +553,7 @@ function mkNumber(node, w, ctrl, state) {
     });
     wrap.append(die);
   }
-  const seedMode = seedModeButton(node, w, state);
+  const seedMode = seedModeButton(node, w, state, ctrl);
   if (seedMode) wrap.append(seedMode);
 
   state.watch(w, paint);
@@ -1409,11 +1443,11 @@ function mkStepNumber(node, w, ctrl, state) {
     paint(true);
   });
 
-  const seedMode = seedModeButton(node, w, state);
+  const seedMode = seedModeButton(node, w, state, ctrl);
   if (seedMode) wrap.append(seedMode);
 
   state.watch(w, paint);
   return wrap;
 }
 
-export { el, esc, PILL, GLYPHS, shortLabel, glyph, glyphEl, glyphBtn, glyphTextBtn, selectOnFocus, eatPointer, mkToggle, mkSlider, SEED_MODE_INFO, controlWidgetOf, wantsSeedMode, seedModeButton, mkNumber, DROPDOWN_OPEN, openDropdown, mkCombo, mkText, mkButton, MEDIA_VERSIONS, MEDIA_ELEMENT_CACHE, sameUrl, viewURL, openMaskEditorFor, uploadTo, mkMediaControl, mkStepNumber };
+export { el, esc, PILL, GLYPHS, shortLabel, glyph, glyphEl, glyphBtn, glyphTextBtn, selectOnFocus, eatPointer, mkToggle, mkSlider, SEED_MODE_INFO, controlWidgetOf, wantsSeedMode, seedModeShown, RUN_MODES, nextRunValue, seedModeButton, mkNumber, DROPDOWN_OPEN, openDropdown, mkCombo, mkText, mkButton, MEDIA_VERSIONS, MEDIA_ELEMENT_CACHE, sameUrl, viewURL, openMaskEditorFor, uploadTo, mkMediaControl, mkStepNumber };

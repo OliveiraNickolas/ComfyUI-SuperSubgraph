@@ -5,7 +5,7 @@
 import { GRID, PROP } from "./constants.js";
 import { copySelectedComponents, pasteComponents, pushUndo, showLegoToast } from "./core.js";
 import { resolveBind } from "./widgets.js";
-import { eatPointer, el, glyphEl } from "./controls.js";
+import { eatPointer, el, glyphEl, seedModeShown } from "./controls.js";
 import { addItemToSegment, getComponentMinDimensions, isOutputKind } from "./outputs.js";
 import { is2DKind, itemToZoneCtrl, zoneCtrlToItem } from "./drag.js";
 import { makeRowId, sameRow, widthForCount } from "./whole_node.js";
@@ -256,6 +256,16 @@ function openComponentContextMenu(e, host, state, ctrl, list) {
     }) });
   }
   entries.push({ icon: "blank", label: "Color…", action: () => openColorMenu(e, ctrl.color, (color) => setComponentColor(host, state, ctrl, color)) });
+  // Botão de modo (FIX / +1 / −1 / aleatório) em qualquer número.
+  const runHit = !many && ctrl.kind === "number" && ctrl.bind ? resolveBind(host, ctrl.bind) : null;
+  if (runHit?.widget) {
+    const on = seedModeShown(runHit.node, runHit.widget, ctrl);
+    entries.push({ icon: "blank", label: on ? "Hide run mode (FIX / +1 / \u22121)" : "Show run mode (FIX / +1 / \u22121)", action: () => {
+      pushUndo(host);
+      ctrl.seedMode = !on;
+      state.refresh();
+    } });
+  }
   // Fio (entrada nativa do subgrafo): só quando o valor deve vir de FORA.
   if (!many && isSuperNode(host) && innerOfBind(host, ctrl.bind)) {
     entries.push(hasWireInput(host, ctrl.bind)

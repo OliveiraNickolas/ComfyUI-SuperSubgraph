@@ -6,8 +6,8 @@ import { app } from "../../../../scripts/app.js";
 import { api } from "../../../../scripts/api.js";
 import { LOG, MIN_W, PROP, SCHEMA } from "./constants.js";
 import { pushUndo, showLegoToast } from "./core.js";
-import { autoLayout, findNodeInHostScope, resolveBind, usable } from "./widgets.js";
-import { eatPointer, el, glyphBtn } from "./controls.js";
+import { autoLayout, findNodeInHostScope, resolveBind, usable, writeWidget } from "./widgets.js";
+import { controlWidgetOf, eatPointer, el, glyphBtn, nextRunValue } from "./controls.js";
 import { buildWholeNodeCtrl } from "./whole_node.js";
 import { makeZone, walkControls } from "./form.js";
 import { closeObjectInspector, leaveEditMode } from "./inspector.js";
@@ -919,6 +919,22 @@ function paintRun(node) {
   }
 }
 
+/**
+ * Depois de cada Run: os steppers com o modo guardado no cartão (+1, −1,
+ * aleatório — parâmetros sem o "control after generate" do ComfyUI) andam,
+ * como a seed. Quem tem o combo do ComfyUI já é tratado por ele.
+ */
+function applyCardRunModes() {
+  for (const host of ATTACHED) {
+    walkControls(host.properties?.[PROP], (c) => {
+      if (c.seedMode !== true || !c.runMode || c.runMode === "fixed" || !c.bind) return;
+      const hit = resolveBind(host, c.bind);
+      if (!hit?.widget || controlWidgetOf(hit.node, hit.widget)) return;
+      writeWidget(hit.node, hit.widget, nextRunValue(hit.widget, c.runMode));
+    });
+  }
+}
+
 function onRunEvent(type, d) {
   for (const host of ATTACHED) {
     const r = runOf(host);
@@ -960,4 +976,4 @@ function onRunEvent(type, d) {
   }
 }
 
-export { liteGraph, SS_LIB_DIR, isSuperNode, enterSuper, groupsAround, makeSuper, superAutoLayout, remapLayoutIds, rememberNodeRefs, repairInnerBinds, lostComponents, warnLostComponents, convertSelectionToSuper, copyAsSuper, innerNodesOf, hasInnerGraph, emptySuperLayout, selectedNodes, graphGroups, groupRect, nodeInGroup, ownerGroup, sortGroups, isNativeSubgraphNode, safeFileName, SS_LAYOUT_TYPE, SS_LAYOUT_DIR, SS_LAYOUTS, layoutNodeIds, layoutPackage, applyLayoutPackage, refreshLayoutLibrary, saveLayoutToLibrary, loadLayoutFromLibrary, deleteLayoutFromLibrary, exportLayoutToFile, importLayoutFromFile, superMenuOptions, openSuperMenu, openNodeMenuFromCard, RUN, runOf, execPathsOf, innerIdOf, innerTitle, paintRun, onRunEvent, innerOfBind, wireInputOf, hasWireInput, exposeAsInput, removeWireInput, removeUnusedWireInputs, cardBindsIn, installCardMarks };
+export { applyCardRunModes, liteGraph, SS_LIB_DIR, isSuperNode, enterSuper, groupsAround, makeSuper, superAutoLayout, remapLayoutIds, rememberNodeRefs, repairInnerBinds, lostComponents, warnLostComponents, convertSelectionToSuper, copyAsSuper, innerNodesOf, hasInnerGraph, emptySuperLayout, selectedNodes, graphGroups, groupRect, nodeInGroup, ownerGroup, sortGroups, isNativeSubgraphNode, safeFileName, SS_LAYOUT_TYPE, SS_LAYOUT_DIR, SS_LAYOUTS, layoutNodeIds, layoutPackage, applyLayoutPackage, refreshLayoutLibrary, saveLayoutToLibrary, loadLayoutFromLibrary, deleteLayoutFromLibrary, exportLayoutToFile, importLayoutFromFile, superMenuOptions, openSuperMenu, openNodeMenuFromCard, RUN, runOf, execPathsOf, innerIdOf, innerTitle, paintRun, onRunEvent, innerOfBind, wireInputOf, hasWireInput, exposeAsInput, removeWireInput, removeUnusedWireInputs, cardBindsIn, installCardMarks };
