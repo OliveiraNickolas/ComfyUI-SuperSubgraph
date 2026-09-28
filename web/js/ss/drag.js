@@ -356,6 +356,9 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
     if (typeof item.w === "number") {
       itemWrap.style.flex = "none";
       itemWrap.style.width = `${Math.max(itemMinW, item.w)}px`;
+      // Num grupo horizontal a largura escolhida é a preferida: se o grupo
+      // ficar mais estreito, o item encolhe até o mínimo do próprio conteúdo
+      // (ver CSS) em vez de empurrar o grupo de volta.
       itemWrap.classList.add("has-custom-w");
     }
     const isMediaItem = isMediaKind(item.kind);

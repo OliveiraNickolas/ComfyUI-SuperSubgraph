@@ -506,7 +506,7 @@ function buildCard(host, state) {
         });
       }
 
-      const titleSpan = el("span", null, s.header || "");
+      const titleSpan = el("span", "lego-sec-title", s.header || "");
       if (state.edit) {
         titleSpan.title = "Double-click to rename this card";
         titleSpan.style.cursor = "pointer";
@@ -1180,7 +1180,20 @@ function buildCard(host, state) {
             moveSubTab(host, state, d.sec, d.idx, s, s.tabs.length);
           });
         }
-        sec.append(subBar);
+        // Uma aba só: fora da edição a barra some, então na edição ela fica na
+        // linha do cabeçalho (não ocupa espaço) — o conteúdo não pula ao sair.
+        if (s.tabs.length > 1) sec.append(subBar);
+        else {
+          subBar.classList.add("inline");
+          // Só o botão "nova aba" (ícone de aba com +): o nome da aba única não
+          // aparece fora da edição, e o cabeçalho de zonas estreitas não tem espaço.
+          const add = subBar.querySelector(".lego-subtab-add");
+          if (add) {
+            add.innerHTML = '<svg width="14" height="12" viewBox="0 0 16 14" aria-hidden="true"><path d="M1.5 12.5V3.5h5l1.5-2h6.5v11z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 6v4.5M5.75 8.25h4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+            add.title = "Add a tab to this zone";
+          }
+          h.append(subBar);
+        }
       }
 
       // ── ÁREA DE CANVAS 2D DA ZONA (SEM TEXTURA DE BOLINHAS, TOTALMENTE DISCRETO) ──

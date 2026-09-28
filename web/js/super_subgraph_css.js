@@ -962,15 +962,23 @@ export const CSS = `
   border-radius: 3px;
 }
 
-/* In edit mode, subtle dashed border marks the canvas area */
+/* A área dos componentes vai até a borda da zona (dos lados e embaixo), na
+   edição e fora dela: o limite que se vê na edição é o mesmo do resultado. */
+.lego-sec > .lego-sec-controls{
+  width: auto;
+  max-width: none;
+  margin: 0 -8px -8px;
+}
+/* In edit mode, subtle dashed outline marks the canvas area (outline, not
+   border: não ocupa espaço, os componentes ficam no mesmo lugar). */
 .lego-sec-controls.in-edit{
   background: rgba(0, 0, 0, 0.15);
-  border: 1.5px dashed rgba(255, 255, 255, 0.12);
-  padding: 6px;
+  outline: 1.5px dashed rgba(255, 255, 255, 0.12);
+  outline-offset: -1.5px;
   min-height: 44px;
 }
 .lego-sec-controls.in-edit:hover, .lego-sec-controls.in-edit.over{
-  border-color: var(--lego-accent);
+  outline-color: var(--lego-accent);
   background: rgba(59, 130, 246, 0.06);
 }
 
@@ -1319,6 +1327,17 @@ export const CSS = `
 .lego-sec-h{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;letter-spacing:.06em;
   text-transform:uppercase;color:var(--lego-dim)}
 .lego-sec-h::after{content:"";flex:1;height:1px;background:var(--lego-line)}
+/* Mesma altura com ou sem os botões da edição (o conteúdo não pula). */
+.lego-sec-h{min-height:18px}
+/* Zona estreita: o título encolhe (com "…") e os botões continuam todos visíveis. */
+.lego-sec-h > .lego-sec-title{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lego-sec-h > :not(.lego-sec-title){flex-shrink:0}
+/* Aba única na edição: a barra de abas mora no cabeçalho. */
+.lego-sec-h > .lego-subtabs.inline{order:2;margin:0;border-bottom:0;letter-spacing:0;text-transform:none;flex:none}
+.lego-sec-h > .lego-subtabs.inline .lego-subtab{display:none}
+.lego-sec-h > .lego-subtabs.inline .lego-subtab-add{width:22px;height:18px;padding:0;margin:0;border:0;border-radius:5px;
+  display:grid;place-items:center;background:rgba(255,255,255,0.04)}
+.lego-sec-h > .lego-subtabs.inline .lego-subtab-add:hover{background:var(--lego-panel-hover)}
 .lego-sec-h .lego-iconbtn{width:22px;height:18px;font-size:10px;border-radius:5px}
 
 /* ── Internal widgets container ── */
@@ -2085,6 +2104,9 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-segment-item.has-custom-w{
   flex: none !important;
 }
+.lego-segment-box.horizontal > .lego-segment-item.has-custom-w:not(.is-label){
+  flex: 0 1 auto !important;
+}
 .lego-segment-box.vertical .lego-segment-item.has-custom-w{
   flex: none !important;
   max-width: 100%;
@@ -2450,6 +2472,8 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   border-bottom:2.5px solid transparent;margin-bottom:-2px;white-space:nowrap;user-select:none;
   font-size:10px;font-weight:600;transition:all .15s ease;background:transparent;border-radius:0}
 .lego-subtab:hover{color:var(--lego-text)}
+/* Os botões da aba (editar/fechar) não aumentam a aba: mesma altura fora da edição. */
+.lego-subtab > .lego-subtab-actions{margin-top:-4px;margin-bottom:-4px}
 .lego-subtab.sel{color:var(--lego-text);border-bottom-color:var(--lego-accent);font-weight:700;background:transparent}
 .lego-subtab-add{flex:none;padding:7px 12px;cursor:pointer;color:var(--lego-dim);
   border-bottom:2.5px solid transparent;margin-bottom:-2px;font-size:12px;font-weight:700;transition:all .15s;background:transparent}

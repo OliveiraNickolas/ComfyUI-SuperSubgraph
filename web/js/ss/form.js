@@ -547,7 +547,8 @@ function alignControls(ctrls, op, ref = null, gap = ALIGN_GAP) {
       const free = (maxR - minX) - list.reduce((a, c) => a + axW(c), 0);
       const gap = free / (list.length - 1);
       let x = minX;
-      list.forEach((c) => { c.x = snapG(x); x += axW(c) + gap; });
+      // Pixel inteiro, não grade: arredondar para 16 deixava os espaços desiguais.
+      list.forEach((c) => { c.x = Math.round(x); x += axW(c) + gap; });
       break;
     }
     case "vdist": {
@@ -556,7 +557,7 @@ function alignControls(ctrls, op, ref = null, gap = ALIGN_GAP) {
       const free = (maxB - minY) - list.reduce((a, c) => a + axH(c), 0);
       const gap = free / (list.length - 1);
       let y = minY;
-      list.forEach((c) => { c.y = snapG(y); y += axH(c) + gap; });
+      list.forEach((c) => { c.y = Math.round(y); y += axH(c) + gap; });
       break;
     }
     case "samew": ctrls.forEach((c) => { c.w = Math.max(minDim(c).minW, axW(key)); }); break;
