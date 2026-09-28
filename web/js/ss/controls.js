@@ -435,9 +435,26 @@ function controlWidgetOf(node, w) {
   const next = list[list.indexOf(w) + 1];
   return isCtl(next) ? next : null;
 }
+/**
+ * O botão de modo só aparece onde o ComfyUI o oferece de propósito: o nó
+ * declara "control_after_generate" para o parâmetro (seed do KSampler,
+ * Primitive Int…) ou o parâmetro é uma seed. O Primitive node e algumas
+ * entradas promovidas ganham esse combo em TODO número (width, height…), e
+ * lá o FIX/+1/−1 só atrapalhava.
+ */
+const RE_SEED_NAME = /(^|[_\s])seed$/i;
+function wantsSeedMode(node, w) {
+  const spec = node?.constructor?.nodeData?.input;
+  const s = spec?.required?.[w?.name] || spec?.optional?.[w?.name];
+  if (s?.[1]?.control_after_generate) return true;
+  const names = [w?.name, w?.label];
+  // Primitive node: o widget se chama "value"; vale o parâmetro ligado a ele.
+  if (node?.type === "PrimitiveNode") names.push(node.outputs?.[0]?.widget?.name, node.title);
+  return names.some((n) => typeof n === "string" && RE_SEED_NAME.test(n.trim()));
+}
 function seedModeButton(node, w, state) {
   const cw = controlWidgetOf(node, w);
-  if (!cw) return null;
+  if (!cw || !wantsSeedMode(node, w)) return null;
   const b = el("button", "lego-seed-mode");
   b.type = "button";
   const modes = () => (Array.isArray(cw.options?.values) && cw.options.values.length ? cw.options.values : Object.keys(SEED_MODE_INFO));
@@ -1399,4 +1416,4 @@ function mkStepNumber(node, w, ctrl, state) {
   return wrap;
 }
 
-export { el, esc, PILL, GLYPHS, shortLabel, glyph, glyphEl, glyphBtn, glyphTextBtn, selectOnFocus, eatPointer, mkToggle, mkSlider, SEED_MODE_INFO, controlWidgetOf, seedModeButton, mkNumber, DROPDOWN_OPEN, openDropdown, mkCombo, mkText, mkButton, MEDIA_VERSIONS, MEDIA_ELEMENT_CACHE, sameUrl, viewURL, openMaskEditorFor, uploadTo, mkMediaControl, mkStepNumber };
+export { el, esc, PILL, GLYPHS, shortLabel, glyph, glyphEl, glyphBtn, glyphTextBtn, selectOnFocus, eatPointer, mkToggle, mkSlider, SEED_MODE_INFO, controlWidgetOf, wantsSeedMode, seedModeButton, mkNumber, DROPDOWN_OPEN, openDropdown, mkCombo, mkText, mkButton, MEDIA_VERSIONS, MEDIA_ELEMENT_CACHE, sameUrl, viewURL, openMaskEditorFor, uploadTo, mkMediaControl, mkStepNumber };
