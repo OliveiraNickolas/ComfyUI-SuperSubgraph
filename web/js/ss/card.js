@@ -1188,9 +1188,14 @@ function buildCard(host, state) {
       ctrlsBox.__legoList = list;   // alvo de arraste (ver zoneDropTargetAt)
       ctrlsBox.style.minWidth = "0";
 
+      // Abas da mesma zona têm a mesma altura: a área usa o conteúdo mais alto
+      // entre TODAS as abas, não só a ativa (senão a zona pulava ao trocar de aba).
+      const tabLists = hasSubTabs && s.tabs.length > 1
+        ? s.tabs.map((t) => (t === activeTarget ? list : (t.controls || [])))
+        : [list];
       function updateControlsBounds() {
         let maxY = 70;
-        for (const item of list) {
+        for (const item of tabLists.flat()) {
           const iy = typeof item.y === "number" ? item.y : 16;
           const isM = isMediaKind(item.kind);
           const ih = typeof item.h === "number" ? item.h : (isM ? 144 : 46);
@@ -1240,6 +1245,8 @@ function buildCard(host, state) {
           empty.append(cta, el("div", "lego-empty-hint", "or double-click to edit"));
           ctrlsBox.append(empty);
         }
+        // Aba vazia numa zona com outras abas: mesma altura das outras.
+        if (tabLists.length > 1) updateControlsBounds();
       } else {
         // Inicializa coordenadas 2D automáticas nos controles que ainda não têm (X, Y).
         // Zona com `grid: N` distribui em N colunas — é o que faz as 9 referências
