@@ -2375,6 +2375,10 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   padding: 0 4px;
   outline: none;
 }
+/* Stepper com largura escolhida (item de grupo redimensionado): ocupa a
+   largura toda, como o dropdown e o texto — o número cresce no meio. */
+.lego-segment-item.has-custom-w .lego-step-number{flex:1 1 auto;width:100%;min-width:0}
+.lego-segment-item.has-custom-w .lego-step-input{flex:1 1 0;width:auto;min-width:0}
 .lego-step-input:focus{
   background: rgba(255, 255, 255, 0.08);
 }

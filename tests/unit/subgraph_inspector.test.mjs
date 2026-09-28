@@ -342,8 +342,10 @@ const secWithControls = {
     { name: "C2", x: 50, w: 320, y: 60, h: 40 }
   ]
 };
-// Max extent 50 + 320 = 370; right margin = left margin (minX 20) + 8 = 398px
-t("sectionRequiredWidth uses a right margin equal to the left one", M.sectionRequiredWidth(secWithControls) === 398);
+// Max extent 50 + 320 = 370; right margin = left margin (minX 20) + 2 (zone border) = 392px.
+// (Era +8 quando a área dos componentes tinha respiro dentro da zona; agora ela
+// vai até a borda — mudança intencional, a margem direita fica igual à esquerda.)
+t("sectionRequiredWidth uses a right margin equal to the left one", M.sectionRequiredWidth(secWithControls) === 392);
 
 const secWithSubTabs = {
   header: "SUBTABS",
@@ -352,8 +354,8 @@ const secWithSubTabs = {
     { name: "T2", controls: [{ name: "S2", x: 30, w: 400 }] }
   ]
 };
-// Subtab T2 has 30 + 400 = 430, + minX 10 + 8 = 448px
-t("sectionRequiredWidth checks sub-tabs controls", M.sectionRequiredWidth(secWithSubTabs) === 448);
+// Subtab T2 has 30 + 400 = 430, + minX 10 + 2 = 442px (era +8: ver acima)
+t("sectionRequiredWidth checks sub-tabs controls", M.sectionRequiredWidth(secWithSubTabs) === 442);
 
 // Check top pivot and adaptive containment
 node.properties.ui_layout.tabs[0].sections = [
@@ -361,15 +363,15 @@ node.properties.ui_layout.tabs[0].sections = [
   { header: "SUB", width: "50%", controls: [{ name: "S1", x: 10, w: 50 }] }
 ];
 st.refresh();
-t("top pivot sets requiredNodeWidth baseline", M.requiredNodeWidth(node, node) >= 398);
+t("top pivot sets requiredNodeWidth baseline", M.requiredNodeWidth(node, node) >= 392);
 const renderedCtrlsBox = node.__legoHost.querySelector(".lego-sec-controls");
 t("controls box has safe containment without rigid minWidth", renderedCtrlsBox.style.minWidth === "0px" || renderedCtrlsBox.style.minWidth === "0");
 
 // ── 11. TEST REQUIRED NODE WIDTH & SIDE-BY-SIDE CONTAINMENT ──
 const sideBySideTab = {
   sections: [
-    { header: "Z1", width: "50%", controls: [{ name: "A", x: 16, w: 256 }] }, // reqW = 16+256+32 = 304
-    { header: "Z2", width: "50%", controls: [{ name: "B", x: 16, w: 304 }] }  // reqW = 16+304+32 = 352
+    { header: "Z1", width: "50%", controls: [{ name: "A", x: 16, w: 256 }] }, // reqW = 16+256+16+2 = 290
+    { header: "Z2", width: "50%", controls: [{ name: "B", x: 16, w: 304 }] }  // reqW = 16+304+16+2 = 338
   ]
 };
 const testNode = {
@@ -381,9 +383,11 @@ const testNode = {
     }
   }
 };
-// 296 + 344 + 12 (gap) + 36 (card pad) = 688
+// 290 + 338 + 12 (gap) + 24 (card pad) = 664. Mudança intencional: zona =
+// conteúdo + margem igual + 2 de borda, nó = zona + 24 (medido); antes sobravam
+// 18px e a margem direita ficava maior que a esquerda.
 const reqW = M.requiredNodeWidth(testNode, null);
-t("requiredNodeWidth sums side-by-side zones in row plus gaps and card padding", reqW === 688);
+t("requiredNodeWidth sums side-by-side zones in row plus gaps and card padding", reqW === 664);
 
 // Test LiteGraph onResize clamping
 testNode.widgets = [];
@@ -437,7 +441,7 @@ const pivotOnlyNode = {
       scale: 1,
       tabs: [{
         sections: [
-          { header: "TOP PIVOT", width: "100%", controls: [{ name: "P", x: 20, w: 650 }] }, // 650 + 20 + 32 = 702 (> MIN_W 600)
+          { header: "TOP PIVOT", width: "100%", controls: [{ name: "P", x: 20, w: 650 }] }, // 650 + 20 + 20 + 2 = 692 (> MIN_W)
           { header: "HUGE SUB 1", width: "50%", col: 0, controls: [{ name: "S1", x: 20, w: 800 }] },
           { header: "HUGE SUB 2", width: "50%", col: 1, controls: [{ name: "S2", x: 20, w: 800 }] }
         ]
@@ -446,7 +450,8 @@ const pivotOnlyNode = {
   }
 };
 const pReqW = M.requiredNodeWidth(pivotOnlyNode, null);
-t("requiredNodeWidth pivots strictly on first row without sub-row inflation", pReqW === 698 + 36);
+// 20 + 650 + 20 + 2 = 692, + 24 do cartão (era 698 + 36; ver acima)
+t("requiredNodeWidth pivots strictly on first row without sub-row inflation", pReqW === 692 + 24);
 
 // Test sameUrl normalization
 const urlA = "/api/view?filename=nothing.png&type=input&subfolder=";

@@ -1297,7 +1297,7 @@ function buildCard(host, state) {
           c.x = Math.max(0, Math.round(c.x));
           c.y = Math.max(0, Math.round(c.y));
           if (!c.w) c.w = autoCols > 1 ? autoColW : (hasMedia(c) ? 288 : 256);
-          c.w = Math.max(hasMedia(c) ? 160 : 80, Math.round(c.w / GRID) * GRID);
+          c.w = Math.max(hasMedia(c) ? 160 : 80, Math.round(c.w));
           if (!c.h) c.h = hasMedia(c) ? 144 : (c.kind === "textarea" ? 96 : 46);
           // Grupos guardam a altura exata do conteúdo (sem grade), ver buildControl.
           if (!isGroupKind(c.kind)) c.h = Math.max(hasMedia(c) ? 64 : 36, Math.round(c.h / GRID) * GRID);

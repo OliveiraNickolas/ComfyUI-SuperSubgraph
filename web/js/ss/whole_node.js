@@ -483,9 +483,10 @@ function sectionRequiredWidth(s) {
       if (Array.isArray(t.controls)) t.controls.forEach(checkItem);
     });
   }
-  // Margem direita = a esquerda (x do item mais à esquerda), mais as bordas e
-  // o respiro da zona (8px): o conteúdo fica centrado na linha pontilhada.
-  return maxX > 0 ? Math.max(200, maxX + Math.min(minX, 32) + 8) : 200;
+  // Margem direita = a esquerda (x do item mais à esquerda), mais a borda da
+  // zona (1px de cada lado): a área dos componentes vai até a borda. Sobrar
+  // mais que isso deixava a margem direita maior que a esquerda.
+  return maxX > 0 ? Math.max(200, maxX + Math.min(minX, 32) + 2) : 200;
 }
 
 /** Altura mínima necessária para uma seção conter todos os seus controles internos. */
@@ -591,7 +592,8 @@ function requiredNodeWidth(node, host) {
     if (sections.length) {
       const firstSec = sections[0];
       if (!firstSec.width || firstSec.width === "100%") {
-        layoutW = Math.max(MIN_W, sectionRequiredWidth(firstSec) + 36);
+        // Nó = zona + 24 (moldura do cartão 10+10, corpo 2+2).
+        layoutW = Math.max(MIN_W, sectionRequiredWidth(firstSec) + 24);
       } else {
         const colMap = new Map();
         let i = 0;
@@ -610,7 +612,7 @@ function requiredNodeWidth(node, host) {
           colSum += maxInCol;
         });
         const numCols = colMap.size;
-        const rowWidth = colSum + Math.max(0, numCols - 1) * 12 + 36;
+        const rowWidth = colSum + Math.max(0, numCols - 1) * 12 + 24;
         layoutW = Math.max(MIN_W, rowWidth);
       }
     }

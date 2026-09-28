@@ -691,7 +691,9 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   // arredondamento para a grade aqui desfazia.
   ctrl.x = Math.max(0, Math.round(curX));
   ctrl.y = Math.max(0, Math.round(curY));
-  ctrl.w = Math.max(ctrlMinW, Math.round(curW / GRID) * GRID);
+  // Largura em pixel inteiro: o redimensionar já encaixa na grade, e o ímã
+  // (borda de outro componente, margem igual à da esquerda) cai fora dela.
+  ctrl.w = Math.max(ctrlMinW, Math.round(curW));
   // Grupo tem a altura exata do conteúdo (fitGroupToContent): arredondar para
   // a grade aqui o engordava um pouco a cada redesenho (57 → 64…).
   ctrl.h = isGroup ? Math.max(ctrlMinH, Math.round(curH)) : Math.max(ctrlMinH, Math.round(curH / GRID) * GRID);
@@ -1679,8 +1681,24 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
           }
         }
 
+        // Borda direita da zona com a MESMA margem da esquerda (a menor x dos
+        // componentes da zona): senão a largura na grade de 16 deixava a
+        // margem direita maior que a esquerda.
+        let edgeX = null;
+        const boxW = parentContainer?.clientWidth || 0;
+        if (boxW) {
+          const leftMargin = Math.min(ctrlX, ...(sectionCtrls || []).map((c) => (typeof c.x === "number" ? c.x : 16)));
+          const cand = boxW - leftMargin;
+          const diff = Math.abs(rawRight - cand);
+          if (cand > ctrlX + ctrlMinW && diff <= SNAP_TOLERANCE * 2 && diff <= bestDiffX) {
+            bestDiffX = diff;
+            bestTargetValX = edgeX = cand;
+          }
+        }
+
         if (bestTargetValX !== null) {
           finalW = Math.max(ctrlMinW, Math.round(bestTargetValX - ctrlX));
+          if (edgeX !== null) matchedGuideX.push({ x: edgeX, tY: 0, tH: parentContainer.clientHeight || ctrlY + finalH });
           for (const t of targetCtrls) {
             const tW = t.w || 256;
             const tH = t.h || 46;
