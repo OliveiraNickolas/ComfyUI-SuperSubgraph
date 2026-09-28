@@ -573,6 +573,13 @@ function mkNumber(node, w, ctrl, state) {
 const DROPDOWN_OPEN = new Set();
 
 function openDropdown(anchorEl, values, current, onPick) {
+  // Segundo clique no mesmo botão fecha a lista: o mousedown dele já a fechou
+  // (clique fora, logo abaixo) e marcou o botão — o clique que vem em seguida
+  // não reabre.
+  if (anchorEl && anchorEl.__legoDropClosedAt && performance.now() - anchorEl.__legoDropClosedAt < 600) {
+    anchorEl.__legoDropClosedAt = 0;
+    return;
+  }
   document.querySelectorAll(".lego-list-pop").forEach((e) => e.remove());
 
   const pop = el("div", "lego-list-pop");
@@ -587,7 +594,11 @@ function openDropdown(anchorEl, values, current, onPick) {
     document.removeEventListener("mousedown", onOutside, true);
     window.removeEventListener("keydown", onKey, true);
   };
-  const onOutside = (e) => { if (!pop.contains(e.target)) closePopup(); };
+  const onOutside = (e) => {
+    if (pop.contains(e.target)) return;
+    if (anchorEl?.contains?.(e.target)) anchorEl.__legoDropClosedAt = performance.now();
+    closePopup();
+  };
   const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); closePopup(); } };
 
   const entryOf = (v) => {
