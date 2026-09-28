@@ -64,6 +64,28 @@ await pg.waitForFunction(() => document.querySelectorAll(".lego-out-stage img").
 const imgs = await E(() => [...document.querySelectorAll(".lego-out-stage img")].map(i => i.src.includes("/view?") && i.src.includes("type=temp")));
 t("after running, the Preview Image output shows the image " + JSON.stringify(imgs), imgs.length === 1 && imgs[0]);
 await pg.screenshot({ path: path.join(dir, "preview_output.png") });
+
+// 4. Image Output automático (sem origem escolhida): com um Save Image dentro,
+// mostra só o resultado final, não a prévia. Eventos simulados (nada é gravado).
+const auto = await E(async (ids) => {
+  const sn = window.__sn; const api = window.comfyAPI.api.api;
+  const S = sn.subgraph.getNodeById(ids.S); S.mode = 0;
+  const list = sn.properties.ui_layout.tabs[0].sections[0].tabs[0].controls;
+  list.length = 0; list.push({ name: "AutoOut", kind: "outimage", x: 16, y: 16, w: 256, h: 224 });
+  sn.__legoState.refresh();
+  const fire = (id, filename, type) => api.dispatchCustomEvent("executed", { node: `${sn.id}:${id}`, prompt_id: "t", output: { images: [{ filename, subfolder: "", type }] } });
+  const shown = () => document.querySelector('.lego-row[data-name="AutoOut"] .lego-out-stage img')?.src || "";
+  const out = {};
+  fire(ids.S, "final_result.png", "output"); await new Promise(r => setTimeout(r, 200));
+  fire(ids.P, "just_a_preview.png", "temp"); await new Promise(r => setTimeout(r, 200));
+  out.withSave = shown();
+  S.mode = 4;   // Save Image desligado: a prévia volta a valer
+  fire(ids.P, "just_a_preview.png", "temp"); await new Promise(r => setTimeout(r, 200));
+  out.saveBypassed = shown();
+  return out;
+}, ids);
+t("auto Image Output shows the final Save Image result, not the preview", /final_result\.png/.test(auto.withSave));
+t("with Save Image bypassed, it falls back to the preview", /just_a_preview\.png/.test(auto.saveBypassed));
 t("no extension errors " + JSON.stringify(errs.slice(0, 3)), !errs.length);
 console.log(`\n${ok} passed, ${fail} failed`);
 await b.close();

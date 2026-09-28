@@ -10,7 +10,7 @@ import { RE_AUDIO, RE_IMAGE, RE_VIDEO, findNodeInHostScope } from "./widgets.js"
 import { eatPointer, el, glyph, glyphEl, sameUrl } from "./controls.js";
 import { is2DKind, isMediaKind } from "./drag.js";
 import { isPanelKind } from "./panels.js";
-import { listBindableTargets } from "./whole_node.js";
+import { listBindableTargets, outputKindOfNode } from "./whole_node.js";
 import { openInspector } from "./picker.js";
 import { toolByKind } from "./form.js";
 import { ensureComponentName, renderObjectInspector } from "./inspector.js";
@@ -101,6 +101,24 @@ function latestOutputFor(host, ctrl, media) {
   } else {
     const bases = isInsideHost(host, src) ? paths.map((p) => `${p}:${src}`) : [src];
     match = (k) => bases.some((base) => k === base || k.startsWith(`${base}:`));
+  }
+
+  // Automático com um nó de saída final dentro (Save Image, Save Video…): as
+  // prévias (Preview Image) não entram — só o resultado final. Sem nó final
+  // (só Preview), a prévia é o que há para mostrar.
+  if (!src) {
+    const inner = innerNodesOf(host);
+    const cls = (n) => String(n.comfyClass || n.type || "");
+    const isPreview = (n) => /preview/i.test(cls(n));
+    // Nó final do MESMO tipo de mídia (Save Image para imagem, Save Video
+    // para vídeo…): um Save Audio não esconde a prévia de uma imagem.
+    const isFinal = (n) => n.mode !== 2 && n.mode !== 4 && !isPreview(n)
+      && OUTPUT_KINDS[outputKindOfNode(n)] === media;
+    if (inner.some(isFinal)) {
+      const previewIds = new Set(inner.filter(isPreview).map((n) => String(n.id)));
+      const base = match;
+      match = (k) => base(k) && !previewIds.has(k.split(":").pop());
+    }
   }
 
   let best = null;
