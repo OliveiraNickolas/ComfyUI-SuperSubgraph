@@ -379,6 +379,22 @@ function syncVueMarks(marks) {
   }
   for (const e of document.querySelectorAll("[data-lego-on-card]")) if (!want.has(e)) e.removeAttribute("data-lego-on-card");
   for (const e of want) if (!e.hasAttribute("data-lego-on-card")) e.setAttribute("data-lego-on-card", "");
+  // Selo "on card" DENTRO da linha do cabeçalho, logo depois do título: ocupa
+  // o próprio espaço e os botões do cabeçalho (wireless do AllmaNodes etc.)
+  // ficam ao lado, não embaixo dele. O Vue pode refazer o cabeçalho: cada
+  // desenho do canvas confere de novo.
+  for (const b of document.querySelectorAll(".lego-oncard-badge")) {
+    if (!want.has(b.closest(".lg-node"))) b.remove();
+  }
+  for (const nodeEl of want) {
+    if (!nodeEl.classList?.contains("lg-node")) continue;
+    const id = nodeEl.getAttribute("data-node-id");
+    const row = nodeEl.querySelector(`[data-testid="node-header-${String(id).replace(/"/g, "")}"]`)?.firstElementChild;
+    if (!row || row.querySelector(":scope > .lego-oncard-badge")) continue;
+    const badge = el("span", "lego-oncard-badge", "on card");
+    badge.title = "Parameters of this node are on the Super Subgraph card";
+    row.insertBefore(badge, row.children[1] || null);
+  }
 }
 
 function drawCardMarks(canvas, ctx) {
@@ -395,19 +411,22 @@ function drawCardMarks(canvas, ctx) {
     if (!names) continue;
     const [x, y] = node.pos;
     const [w] = node.size;
-    // Selo no título.
+    // Selo no título, logo depois do texto do título: a ponta direita da barra
+    // é dos botões de título (o wireless do AllmaNodes, por exemplo).
+    ctx.font = canvas.title_text_font || `${LG?.NODE_TEXT_SIZE || 14}px Arial`;
+    const titleW = ctx.measureText(String(node.getTitle?.() ?? node.title ?? "")).width;
     ctx.font = "600 10px Inter, system-ui, sans-serif";
     const label = "on card";
     const tw = ctx.measureText(label).width + 12;
+    const bx = Math.min(x + T + titleW + 8, x + w - tw - 8);
     ctx.fillStyle = CARD_MARK;
     ctx.beginPath();
-    // Dentro da barra de título, à direita (em cima dela fica o "#id" do ComfyUI).
     const py = y - T + (T - 16) / 2;
-    roundRect(ctx, x + w - tw - 8, py, tw, 16, 8);
+    roundRect(ctx, bx, py, tw, 16, 8);
     ctx.fill();
     ctx.fillStyle = "#fff";
     ctx.textBaseline = "middle";
-    ctx.fillText(label, x + w - tw - 2, py + 8);
+    ctx.fillText(label, bx + 6, py + 8);
     if (node.flags?.collapsed) continue;
     // Contorno em cada parâmetro que está no cartão.
     // Tracejado: no Target Picker, a borda cheia roxa é "nó inteiro escolhido".

@@ -796,7 +796,8 @@ export const CSS = `
 /* Dentro do subgrafo, nós em HTML (Vue Nodes): parâmetro que está no cartão
    ganha contorno roxo e o nó o selo "on card" (no canvas é desenhado). */
 .lg-node-widget[data-lego-on-card]{outline:1.5px dashed #a855f7;outline-offset:1px;border-radius:6px}
-.lg-node[data-lego-on-card]::after{content:"on card";position:absolute;top:6px;right:34px;z-index:5;pointer-events:none;
+/* O selo fica dentro da linha do cabeçalho (depois do título), não por cima dos botões dele. */
+.lego-oncard-badge{flex:none;align-self:center;margin:0 4px;pointer-events:none;white-space:nowrap;
   padding:1px 7px;border-radius:8px;background:#a855f7;color:#fff;font:600 10px/14px Inter,system-ui,sans-serif}
 
 /* Superfícies sempre escuras (paleta, menus, Inspetor, diálogos, pop-ups):
