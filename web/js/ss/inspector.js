@@ -6,10 +6,10 @@ import { CSS } from "../super_subgraph_css.js";
 import { GRID, PROP } from "./constants.js";
 import { copySelectedComponents, duplicateComponent, pasteComponents, pushUndo } from "./core.js";
 import { findNodeInHostScope, prettify, resolveBind } from "./widgets.js";
-import { el, esc, glyph, glyphBtn, glyphTextBtn, mkToggle, openDropdown, seedModeShown } from "./controls.js";
+import { balanceRange, el, esc, glyph, glyphBtn, glyphTextBtn, mkToggle, openDropdown, seedModeShown } from "./controls.js";
 import { getComponentMinDimensions, isOutputKind, openOutputSourceDialog, outputSourceLabel } from "./outputs.js";
 import { isMediaKind } from "./drag.js";
-import { defaultSizeFor, isPanelKind } from "./panels.js";
+import { defaultSizeFor, isPanelKind, pickBalanceLink } from "./panels.js";
 import { openInspector } from "./picker.js";
 import { ALIGN_OPS, TOOLBOX, alignIcon, alignSelected, colorDotButton, makeZone, openColorMenu, removeControlsByName, renderAlignBars, setComponentColor, toolByKind, uniqueComponentName, walkControls } from "./form.js";
 import { exposeAsInput, hasWireInput, innerOfBind, isSuperNode, removeWireInput } from "./native.js";
@@ -543,7 +543,7 @@ function renderObjectInspector(host, state, force) {
   props.append(propRow("Color", colorDotButton("lego-oi-color-btn", ctrl.color, "Color",
     (color) => setComponentColor(host, state, ctrl, color))));
   // Entrada nativa (fio) no nó do subgrafo: para ligar um valor vindo de fora.
-  if (isSuperNode(host) && innerOfBind(host, ctrl.bind)) {
+  if (ctrl.kind !== "balance" && isSuperNode(host) && innerOfBind(host, ctrl.bind)) {
     const wire = propToggle(hasWireInput(host, ctrl.bind), (on) => {
       if (on) exposeAsInput(host, ctrl.bind); else removeWireInput(host, ctrl.bind);
       renderObjectInspector(host, state, true);
@@ -565,6 +565,23 @@ function renderObjectInspector(host, state, force) {
       sw.title = "Show the FIX / +1 / \u22121 / random button: what happens to this value after each run";
       props.append(propRow("Run Mode", sw));
     }
+  }
+
+  // Balance Slider: intervalo, passo e o nome de cada lado.
+  if (ctrl.kind === "balance") {
+    const { min, max, step } = balanceRange(ctrl);
+    const propFloat = (value, onChange) => propText(String(value), (v) => {
+      const n = parseFloat(String(v).replace(",", "."));
+      if (Number.isFinite(n)) onChange(n);
+      else renderObjectInspector(host, state, true);
+    });
+    const setNum = (key) => (n) => { pushUndo(host); ctrl[key] = n; state.refresh(); renderObjectInspector(host, state, true); };
+    props.append(propRow("Min", propFloat(min, setNum("min"))));
+    props.append(propRow("Max", propFloat(max, setNum("max"))));
+    props.append(propRow("Step", propFloat(step, (n) => { if (n > 0) setNum("step")(n); })));
+    const setText = (key) => (v) => { pushUndo(host); const t = String(v).trim(); if (t) ctrl[key] = t; else delete ctrl[key]; state.refresh(); };
+    props.append(propRow("Label A", propText(ctrl.labelA || "", setText("labelA"))));
+    props.append(propRow("Label B", propText(ctrl.labelB || "", setText("labelB"))));
   }
 
   const isDivider = ctrl.kind === "hdivider" || ctrl.kind === "vdivider";
@@ -954,7 +971,18 @@ function renderObjectInspector(host, state, force) {
     return;
   }
 
-  const hit = ctrl.bind ? resolveBind(host, ctrl.bind) : null;
+  // Balance Slider: dois elos (A à esquerda, B à direita).
+  const linkRow = (label, key) => {
+    const b = ctrl[key];
+    const h = b ? resolveBind(host, b) : null;
+    const btn = el("button", `lego-oi-fn${b ? (h ? " bound" : " broken") : ""}`);
+    const txt = !b ? "(not linked)" : h ? `#${h.node.id} ${h.widget.name}` : `${b} (missing)`;
+    btn.innerHTML = `${glyph(b && h ? "link" : "blank", 12)}<span>${esc(txt)}</span>`;
+    btn.title = "Click to choose the parameter for this side";
+    btn.addEventListener("click", (e) => { e.stopPropagation(); pickBalanceLink(host, ctrl, state, list, key); });
+    return propRow(label, btn);
+  };
+  const hit = ctrl.kind !== "balance" && ctrl.bind ? resolveBind(host, ctrl.bind) : null;
   const fnBtn = el("button", `lego-oi-fn${ctrl.bind ? (hit ? " bound" : " broken") : ""}`);
   const fnText = !ctrl.bind
     ? "(unbound)"
@@ -983,7 +1011,8 @@ function renderObjectInspector(host, state, force) {
       },
     });
   });
-  ev.append(propRow("OnChange", fnBtn));
+  if (ctrl.kind === "balance") ev.append(linkRow("Link A (left)", "bind"), linkRow("Link B (right)", "bind2"));
+  else ev.append(propRow("OnChange", fnBtn));
   INSPECTOR.append(ev);
 
   /* ── rodapé ── */
@@ -995,11 +1024,12 @@ function renderObjectInspector(host, state, force) {
   });
   foot.append(dup);
 
-  if (ctrl.bind) {
+  if (ctrl.bind || ctrl.bind2) {
     const unbind = glyphTextBtn("lego-btn", "close", "Unbind", 12);
     unbind.addEventListener("click", () => {
       pushUndo(host);
       ctrl.bind = "";
+      if (ctrl.kind === "balance") ctrl.bind2 = "";
       state.refresh();
     });
     foot.append(unbind);

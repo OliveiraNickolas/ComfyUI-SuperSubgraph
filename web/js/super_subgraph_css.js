@@ -1389,6 +1389,23 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-track:hover .lego-knob{transform:translate(-50%,-50%) scale(1.15)}
 .lego-num{flex:none;width:52px;text-align:right;font-variant-numeric:tabular-nums;font-weight:400;box-sizing:border-box;height:22px;line-height:20px;padding:2px 6px;font-size:11px}
 
+/* ── Balance Slider: um total dividido entre dois parâmetros ──
+   Parte A (à esquerda da alça) na cor de destaque; parte B no tom apagado
+   (vem do tema: funciona no claro e no escuro). Rótulo/valor com a mesma
+   escala dos outros componentes. */
+.lego-row.is-balance{padding:4px 8px}
+.lego-balance{display:flex;flex-direction:column;justify-content:center;gap:5px;width:100%;height:100%;min-width:0;box-sizing:border-box}
+.lego-balance-head{display:flex;justify-content:space-between;align-items:center;gap:8px;min-width:0}
+.lego-balance-side{display:flex;align-items:center;gap:5px;min-width:0}
+.lego-balance-lbl{color:var(--lego-dim);font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.lego-balance-lbl.off{font-style:italic;opacity:.65}
+.lego-balance-num{flex:none;width:48px;text-align:center;font-variant-numeric:tabular-nums;font-weight:400;box-sizing:border-box;height:20px;line-height:18px;padding:1px 4px;font-size:11px}
+.lego-balance-track{position:relative;height:4px;border-radius:99px;cursor:pointer;min-width:32px;box-sizing:border-box;
+  background:color-mix(in srgb, var(--lego-dim) 45%, transparent)}
+.lego-balance-track::before{content:"";position:absolute;inset:-7px 0}   /* área de clique maior que a trilha */
+.lego-balance-fill{position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--lego-accent)}
+.lego-balance-track:hover .lego-knob{transform:translate(-50%,-50%) scale(1.15)}
+
 /* ── Slider Empilhado / Responsivo quando estreito ou alto ── */
 .lego-row.is-slider{box-sizing:border-box}
 .lego-row.is-slider.slider-stacked{flex-direction:column !important;align-items:stretch !important;justify-content:center !important;gap:4px !important;padding:4px 8px !important}

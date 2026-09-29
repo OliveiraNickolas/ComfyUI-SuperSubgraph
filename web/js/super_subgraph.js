@@ -8,7 +8,7 @@ import { OUTPUTS, notifyOutputViews, recordOutput } from "./ss/outputs.js";
 import { mirrorModeFor } from "./ss/panels.js";
 import { buildWholeNodeCtrl } from "./ss/whole_node.js";
 import { ATTACHED, attach } from "./ss/lifecycle.js";
-import { applyCardRunModes, convertSelectionToSuper, exposeAsInput, installCardMarks, onRunEvent, refreshLayoutLibrary, removeWireInput, selectedNodes, superMenuOptions, warnLostComponents } from "./ss/native.js";
+import { applyCardRunModes, cardBindsIn, convertSelectionToSuper, exposeAsInput, installCardMarks, onRunEvent, refreshLayoutLibrary, removeWireInput, selectedNodes, superMenuOptions, warnLostComponents } from "./ss/native.js";
 
 /**
  * ComfyUI Super-Subgraph — "UI Lego"  v2
@@ -173,6 +173,10 @@ app.registerExtension({
     list.push(ctrl);
     host.__legoState?.refresh();
     return ctrl;
+  },
+  /** Para testes e scripts: parâmetros de `graph` que estão em algum cartão ({id: [widgets]}). */
+  __cardBindsIn(graph) {
+    return Object.fromEntries([...cardBindsIn(graph)].map(([id, names]) => [id, [...names]]));
   },
   /** Para testes e scripts: cria/tira a entrada nativa (fio) de um parâmetro do cartão. */
   __exposeAsInput(host, bind) { return exposeAsInput(host, bind); },

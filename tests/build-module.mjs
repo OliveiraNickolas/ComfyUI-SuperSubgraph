@@ -15,7 +15,7 @@ const EXPORTS = [
   "widthForCount", "createNewZone", "viewURL",
   "sectionRequiredWidth", "requiredNodeWidth", "groupSectionsLayout", "addZoneBelow", "addZoneBeside",
   "sameUrl", "MEDIA_ELEMENT_CACHE", "OUTPUT_VIEW_CACHE", "renderZoneGuides", "clearZoneGuides",
-  "describeWidget", "cardHeight", "usable", "fmtNum", "numDecimals", ];
+  "describeWidget", "cardHeight", "usable", "fmtNum", "numDecimals", "balanceRange", "balanceSplit", ];
 
 // Ordem dos módulos = ordem do código original (constants primeiro).
 const SS = path.join(path.dirname(SRC), "ss");

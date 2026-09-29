@@ -474,6 +474,18 @@ const RAW_UI_ELEMENTS = [
   },
   {
     isRaw: true,
+    kind: "balance",
+    category: "Inputs",
+    name: "Balance Slider",
+    label: "Balance Slider",
+    detail: "One slider split between two parameters",
+    scope: "UI Element",
+    desc: "Splits a total between two parameters: the value left of the handle goes to Link A, the rest to Link B (0–1: A 0.3 → B 0.7). Raising one lowers the other.",
+    defaultW: 320,
+    defaultH: 48
+  },
+  {
+    isRaw: true,
     kind: "number",
     category: "Inputs",
     name: "Stepper",

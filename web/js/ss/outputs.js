@@ -357,6 +357,7 @@ function getComponentMinDimensions(ctrl) {
   if (isMediaKind(k)) return { minW: 140, minH: 64 };
   if (k === "textarea") return { minW: 80, minH: 48 };
   if (k === "slider") return { minW: 72, minH: 28 };
+  if (k === "balance") return { minW: 160, minH: 44 };
   if (k === "toggle") return { minW: 36, minH: 24 };
   if (k === "number") return { minW: 64, minH: 24 };
   if (k === "combo") return { minW: 64, minH: 24 };

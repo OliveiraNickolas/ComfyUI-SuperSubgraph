@@ -6,7 +6,7 @@ import { app } from "../../../../scripts/app.js";
 import { api } from "../../../../scripts/api.js";
 import { LOG } from "./constants.js";
 import { showLegoToast } from "./core.js";
-import { RE_AUDIO, RE_IMAGE, RE_VIDEO, fmtNum, isAudioCombo, isIntWidget, isVideoCombo, numDecimals, prettify, realStep, valuesOf, writeWidget } from "./widgets.js";
+import { RE_AUDIO, RE_IMAGE, RE_VIDEO, fmtNum, isAudioCombo, isIntWidget, isVideoCombo, numDecimals, prettify, realStep, resolveBind, valuesOf, writeWidget } from "./widgets.js";
 import { applyLabelStyle } from "./panels.js";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -557,6 +557,119 @@ function mkNumber(node, w, ctrl, state) {
   if (seedMode) wrap.append(seedMode);
 
   state.watch(w, paint);
+  return wrap;
+}
+
+/* ── Balance Slider ───────────────────────────────────────────────────
+ * Um slider que divide um total entre DOIS parâmetros: o valor à esquerda da
+ * alça vai para o Link A (`ctrl.bind`) e o que sobra à direita para o Link B
+ * (`ctrl.bind2`). Com o intervalo 0–1, A = 0.3 dá B = 0.7 — subir um desce o
+ * outro, e a soma é sempre o total. Intervalo em `ctrl.min`/`ctrl.max`
+ * (padrão 0–1) e passo em `ctrl.step`.
+ */
+function balanceRange(ctrl) {
+  const min = Number.isFinite(ctrl?.min) ? ctrl.min : 0;
+  const max = Number.isFinite(ctrl?.max) && ctrl.max > min ? ctrl.max : min + 1;
+  const step = Number.isFinite(ctrl?.step) && ctrl.step > 0 ? ctrl.step : ((max - min <= 1) ? 0.01 : ((max - min <= 10) ? 0.1 : 1));
+  const dec = Math.min(6, Math.max(0, (String(step).split(".")[1] || "").length));
+  return { min, max, step, dec };
+}
+/** Os dois valores (A, B) para a posição `p` da alça. */
+function balanceSplit(ctrl, p) {
+  const { min, max, step, dec } = balanceRange(ctrl);
+  const a = Math.min(max, Math.max(min, Math.round((p - min) / step) * step + min));
+  const fix = (v) => Number(v.toFixed(dec));
+  return { a: fix(a), b: fix(min + max - a) };
+}
+function mkBalance(host, ctrl, state) {
+  const { min, max, dec } = balanceRange(ctrl);
+  const hitA = ctrl.bind ? resolveBind(host, ctrl.bind) : null;
+  const hitB = ctrl.bind2 ? resolveBind(host, ctrl.bind2) : null;
+  const nameOf = (hit, fallback) => hit ? prettify(hit.widget.label || hit.widget.name) : fallback;
+  const labelA = ctrl.labelA || nameOf(hitA, "Link A");
+  const labelB = ctrl.labelB || nameOf(hitB, "Link B");
+
+  const wrap = el("div", "lego-balance");
+  const head = el("div", "lego-balance-head");
+  const sideA = el("div", "lego-balance-side a");
+  const sideB = el("div", "lego-balance-side b");
+  const numA = el("input", "lego-in lego-balance-num");
+  const numB = el("input", "lego-in lego-balance-num");
+  for (const n of [numA, numB]) { n.type = "text"; selectOnFocus(n); n.addEventListener("pointerdown", eatPointer); n.addEventListener("keydown", (e) => e.stopPropagation()); }
+  sideA.append(el("span", `lego-balance-lbl${hitA ? "" : " off"}`, labelA), numA);
+  sideB.append(numB, el("span", `lego-balance-lbl${hitB ? "" : " off"}`, labelB));
+  head.append(sideA, sideB);
+  const track = el("div", "lego-balance-track");
+  const fillA = el("div", "lego-balance-fill a");
+  const knob = el("div", "lego-knob");
+  track.append(fillA, knob);
+  wrap.append(head, track);
+  wrap.title = `${labelA} + ${labelB} = ${fmtNum(min + max, dec)}`;
+
+  // Posição atual: vem de A; sem A, do espelho de B; sem nenhum, o meio.
+  const pos = () => {
+    if (hitA) return Number(hitA.widget.value) || 0;
+    if (hitB) return min + max - (Number(hitB.widget.value) || 0);
+    return Number.isFinite(ctrl.value) ? ctrl.value : (min + max) / 2;
+  };
+  const paint = (force = false) => {
+    const { a, b: split } = balanceSplit(ctrl, pos());
+    // O número de B é o valor REAL do parâmetro B: se alguém mudar A direto no
+    // nó, o cartão não finge que B acompanhou (só o slider mexe nos dois).
+    const b = hitB && hitA ? Number(Number(hitB.widget.value).toFixed(dec)) : split;
+    const pct = ((a - min) / (max - min)) * 100;
+    fillA.style.width = `${pct}%`;
+    knob.style.left = `${pct}%`;
+    if (force === true || document.activeElement !== numA) numA.value = fmtNum(a, dec);
+    if (force === true || document.activeElement !== numB) numB.value = fmtNum(b, dec);
+  };
+  const setPos = (p) => {
+    const { a, b } = balanceSplit(ctrl, p);
+    if (hitA) writeWidget(hitA.node, hitA.widget, a);
+    if (hitB) writeWidget(hitB.node, hitB.widget, b);
+    if (!hitA && !hitB) ctrl.value = a;
+    paint();
+  };
+  paint();
+
+  // Proporção do ponteiro na trilha: a razão não depende do zoom do canvas.
+  const fromX = (clientX) => {
+    const r = track.getBoundingClientRect();
+    const t = r.width ? (clientX - r.left) / r.width : 0;
+    return min + Math.min(1, Math.max(0, t)) * (max - min);
+  };
+  let dragging = false;
+  track.addEventListener("pointerdown", (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    dragging = true;
+    track.setPointerCapture(e.pointerId);
+    setPos(fromX(e.clientX));
+  });
+  track.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    e.stopPropagation();
+    setPos(fromX(e.clientX));
+  });
+  const stop = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    try { track.releasePointerCapture(e.pointerId); } catch {}
+  };
+  track.addEventListener("pointerup", stop);
+  track.addEventListener("pointercancel", stop);
+  numA.addEventListener("change", () => {
+    const v = parseFloat(numA.value);
+    if (Number.isFinite(v)) setPos(v);
+    paint(true);
+  });
+  numB.addEventListener("change", () => {
+    const v = parseFloat(numB.value);
+    if (Number.isFinite(v)) setPos(min + max - v);
+    paint(true);
+  });
+  if (hitA) state.watch(hitA.widget, paint);
+  if (hitB) state.watch(hitB.widget, paint);
   return wrap;
 }
 
@@ -1461,4 +1574,4 @@ function mkStepNumber(node, w, ctrl, state) {
   return wrap;
 }
 
-export { el, esc, PILL, GLYPHS, shortLabel, glyph, glyphEl, glyphBtn, glyphTextBtn, selectOnFocus, eatPointer, mkToggle, mkSlider, SEED_MODE_INFO, controlWidgetOf, wantsSeedMode, seedModeShown, RUN_MODES, nextRunValue, seedModeButton, mkNumber, DROPDOWN_OPEN, openDropdown, mkCombo, mkText, mkButton, MEDIA_VERSIONS, MEDIA_ELEMENT_CACHE, sameUrl, viewURL, openMaskEditorFor, uploadTo, mkMediaControl, mkStepNumber };
+export { el, esc, PILL, GLYPHS, shortLabel, glyph, glyphEl, glyphBtn, glyphTextBtn, selectOnFocus, eatPointer, mkToggle, mkSlider, SEED_MODE_INFO, controlWidgetOf, wantsSeedMode, seedModeShown, RUN_MODES, nextRunValue, seedModeButton, balanceRange, balanceSplit, mkBalance, mkNumber, DROPDOWN_OPEN, openDropdown, mkCombo, mkText, mkButton, MEDIA_VERSIONS, MEDIA_ELEMENT_CACHE, sameUrl, viewURL, openMaskEditorFor, uploadTo, mkMediaControl, mkStepNumber };

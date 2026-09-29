@@ -6,11 +6,11 @@ import { app } from "../../../../scripts/app.js";
 import { GRID, LOG, PROP } from "./constants.js";
 import { duplicateComponent, pushUndo, pushUndoSnapshot } from "./core.js";
 import { RE_AUDIO, RE_VIDEO, describeWidget, findNodeInHostScope, isAudioCombo, isImageCombo, isVideoCombo, prettify, resolveBind, writeWidget } from "./widgets.js";
-import { eatPointer, el, glyph, glyphBtn, mkButton, mkCombo, mkMediaControl, mkNumber, mkSlider, mkStepNumber, mkText, mkToggle } from "./controls.js";
+import { eatPointer, el, glyph, glyphBtn, mkBalance, mkButton, mkCombo, mkMediaControl, mkNumber, mkSlider, mkStepNumber, mkText, mkToggle } from "./controls.js";
 import { getComponentMinDimensions, isOutputKind, mkOutputView, openOutputSourceDialog, outputSourceLabel } from "./outputs.js";
 import { buildSegment, clearDropFeedback, domScale, groupDropTargetAt, isMediaKind, placeInList, showGroupDrop, tabDropTargetAt, zoneCtrlToItem, zoneDropTargetAt } from "./drag.js";
 import { promotedLabel, widgetLabel } from "./whole_node.js";
-import { openInspector } from "./picker.js";
+import { openInspector, openLegoContextMenu } from "./picker.js";
 import { MIN_CTRL_W, axH, axW, colorDotButton, fitGroupToContent, openComponentContextMenu, removeControlsByName, setComponentColor, toggleGroupOrientation } from "./form.js";
 import { ensureComponentName, renderObjectInspector, selectComponent } from "./inspector.js";
 import { resize } from "./lifecycle.js";
@@ -37,6 +37,7 @@ function defaultSizeFor(kind) {
   if (kind === "canvas_widget") return { w: 320, h: 32 };
   if (isMediaKind(kind)) return { w: 288, h: 144 };
   if (isOutputKind(kind)) return { w: 320, h: 240 };
+  if (kind === "balance") return { w: 320, h: 48 };
   if (kind === "textarea") return { w: 320, h: 96 };
   return { w: 256, h: 32 };
 }
@@ -576,6 +577,38 @@ function ghostControl(kind, ctrl) {
   return box;
 }
 
+/**
+ * Escolhe o parâmetro de um dos lados do Balance Slider (`which`: "bind" = A,
+ * à esquerda; "bind2" = B, à direita) pela janela de busca de sempre.
+ */
+function pickBalanceLink(host, ctrl, state, sectionCtrls, which) {
+  openInspector({
+    host,
+    layout: host.properties[PROP],
+    section: { controls: sectionCtrls || [] },
+    ctrl,
+    state,
+    forFilterKind: "inputs",
+    targetCallback: (target) => {
+      if (!target || target.isRaw) return;
+      pushUndo(host);
+      ctrl[which] = target.bind;
+      state.refresh();
+    },
+  });
+}
+/** Itens de menu dos dois elos do Balance Slider. */
+function balanceLinkEntries(host, ctrl, state, sectionCtrls) {
+  const name = (b) => {
+    const hit = b ? resolveBind(host, b) : null;
+    return hit ? `${hit.node.title || hit.node.type} \u203a ${prettify(hit.widget.label || hit.widget.name)}` : "not linked";
+  };
+  return [
+    { icon: "link", label: `Link A (left): ${name(ctrl.bind)}`, action: () => pickBalanceLink(host, ctrl, state, sectionCtrls, "bind") },
+    { icon: "link", label: `Link B (right): ${name(ctrl.bind2)}`, action: () => pickBalanceLink(host, ctrl, state, sectionCtrls, "bind2") },
+  ];
+}
+
 function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBoundsFn) {
   // Grupos (famílias dinâmicas: image+upload, on+lora+strength...) montam o
   // próprio conteúdo, mas daqui para baixo seguem o MESMO caminho dos demais:
@@ -588,7 +621,9 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   const isCosmetic = isDivider || isLabel;
   const isGroup = ctrl.kind === "group" || isSegmentLike;
   const isOutput = isOutputKind(ctrl.kind);
-  const hit = (isGroup || isCosmetic || isOutput) ? null : resolveBind(host, ctrl.bind);
+  // Balance Slider: DOIS parâmetros (bind e bind2), monta o próprio conteúdo.
+  const isBalance = ctrl.kind === "balance";
+  const hit = (isGroup || isCosmetic || isOutput || isBalance) ? null : resolveBind(host, ctrl.bind);
   const isMediaLike = (k) => isMediaKind(k) || isPanelKind(k);
   const isHitMedia = isImageCombo(hit?.widget) || isVideoCombo(hit?.widget) || isAudioCombo(hit?.widget) || (hit && isPanelKind(describeWidget(hit.widget).kind));
   const isMedia = isMediaLike(ctrl.kind) || isHitMedia;
@@ -659,6 +694,11 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     }
     row.title = `${ctrl.name || ctrl.kind} — ${outputSourceLabel(host, ctrl)}`;
     row.append(mkOutputView(host, ctrl, state));
+  } else if (isBalance) {
+    row = el("div", "lego-row is-balance");
+    const bound = [ctrl.bind, ctrl.bind2].filter((b) => b && resolveBind(host, b)).length;
+    if (bound < 2) row.classList.add("unbound");
+    row.append(mkBalance(host, ctrl, state));
   } else if (isGroup) {
     row = buildGroup(host, ctrl, state, sectionCtrls);
   } else {
@@ -719,7 +759,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
 
   let applySliderResponsiveLayout = null;
 
-  if (!isGroup && !isDivider && !isLabel && !isOutput) {
+  if (!isGroup && !isDivider && !isLabel && !isOutput && !isBalance) {
 
   if (!hit) {
     if (ctrl.bind === "" || !ctrl.bind) {
@@ -1041,6 +1081,17 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
         openOutputSourceDialog(host, ctrl, state, sectionCtrls);
       });
       floatingActions.append(srcBtn);
+    } else if (isBalance) {
+      // Dois elos: o menu escolhe qual (A = esquerda, B = direita).
+      const ok = [ctrl.bind, ctrl.bind2].every((b) => b && resolveBind(host, b));
+      const linkBtn = glyphBtn(`lego-iconbtn btn-link ${ok ? "is-bound" : "is-unbound"}`, "link", 10);
+      linkBtn.title = `Link A: ${ctrl.bind || "none"} · Link B: ${ctrl.bind2 || "none"} (click to change)`;
+      linkBtn.addEventListener("pointerdown", eatPointer);
+      linkBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openLegoContextMenu(e, balanceLinkEntries(host, ctrl, state, sectionCtrls));
+      });
+      floatingActions.append(linkBtn);
     } else if (!isDivider && !isGroup && !isLabel) {
       const isBound = !!hit;
       const linkBtn = glyphBtn(
@@ -1839,4 +1890,4 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   return row;
 }
 
-export { CONTROL_KINDS, controlKindFor, PANEL_KINDS, isPanelKind, defaultSizeFor, mkSpecialControl, mkColor, NODE_UI_WIDGET_TYPES, STANDARD_WIDGET_TYPES, isCanvasWidget, mirrorModeFor, CANVAS_MIRRORS, mirrorLoop, runMirrorLoop, mkCanvasMirror, mkDomMount, mkPreviewOverride, buildBare, buildGroup, applyLabelStyle, ghostControl, buildControl };
+export { pickBalanceLink, balanceLinkEntries, CONTROL_KINDS, controlKindFor, PANEL_KINDS, isPanelKind, defaultSizeFor, mkSpecialControl, mkColor, NODE_UI_WIDGET_TYPES, STANDARD_WIDGET_TYPES, isCanvasWidget, mirrorModeFor, CANVAS_MIRRORS, mirrorLoop, runMirrorLoop, mkCanvasMirror, mkDomMount, mkPreviewOverride, buildBare, buildGroup, applyLabelStyle, ghostControl, buildControl };

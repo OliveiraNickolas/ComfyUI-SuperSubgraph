@@ -107,6 +107,7 @@ function remapLayoutIds(layout, idMap, hostBinds = new Map()) {
   const fix = (c) => {
     if (!c || typeof c !== "object") return;
     if ("bind" in c) c.bind = mapBind(c.bind);
+    if ("bind2" in c) c.bind2 = mapBind(c.bind2);   // 2º elo do Balance Slider
     if (c.source != null && mapId(c.source)) c.source = mapId(c.source);
     for (const it of c.items || []) fix(it);
   };
@@ -176,7 +177,8 @@ function repairInnerBinds(host) {
 function lostComponents(host) {
   const lost = [];
   walkControls(host.properties?.[PROP], (c) => {
-    if (typeof c.bind === "string" && c.bind.includes("/") && !resolveBind(host, c.bind)) lost.push(c);
+    const gone = (b) => typeof b === "string" && b.includes("/") && !resolveBind(host, b);
+    if (gone(c.bind) || gone(c.bind2)) lost.push(c);
   });
   return lost;
 }
@@ -342,11 +344,13 @@ function cardBindsIn(graph) {
   for (const host of ATTACHED) {
     if (!graph || host.subgraph !== graph) continue;
     walkControls(host.properties?.[PROP], (c) => {
-      const t = typeof c.bind === "string" ? c.bind.indexOf("/") : -1;
-      if (t < 1) return;
-      const id = c.bind.slice(0, t);
-      if (!map.has(id)) map.set(id, new Set());
-      map.get(id).add(c.bind.slice(t + 1));
+      for (const b of [c.bind, c.bind2]) {
+        const t = typeof b === "string" ? b.indexOf("/") : -1;
+        if (t < 1) continue;
+        const id = b.slice(0, t);
+        if (!map.has(id)) map.set(id, new Set());
+        map.get(id).add(b.slice(t + 1));
+      }
     });
   }
   return map;
@@ -637,7 +641,7 @@ let SS_LAYOUTS = [];
 function layoutNodeIds(layout) {
   const ids = new Set();
   walkControls(layout, (c) => {
-    if (typeof c.bind === "string" && c.bind.includes("/")) ids.add(c.bind.slice(0, c.bind.indexOf("/")));
+    for (const b of [c.bind, c.bind2]) if (typeof b === "string" && b.includes("/")) ids.add(b.slice(0, b.indexOf("/")));
     if (c.source != null && c.source !== "") ids.add(String(c.source));
   });
   return ids;

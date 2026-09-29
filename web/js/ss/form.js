@@ -8,6 +8,7 @@ import { resolveBind } from "./widgets.js";
 import { eatPointer, el, glyphEl, seedModeShown } from "./controls.js";
 import { addItemToSegment, getComponentMinDimensions, isOutputKind } from "./outputs.js";
 import { is2DKind, itemToZoneCtrl, zoneCtrlToItem } from "./drag.js";
+import { balanceLinkEntries } from "./panels.js";
 import { makeRowId, sameRow, widthForCount } from "./whole_node.js";
 import { isGroupKind, openInspector, openLegoContextMenu } from "./picker.js";
 import { ensureComponentName, findSelected, selectComponent } from "./inspector.js";
@@ -242,7 +243,9 @@ function openComponentContextMenu(e, host, state, ctrl, list) {
     const kinds = compatibleKinds(host, ctrl).filter((k) => k !== ctrl.kind);
     for (const k of kinds) entries.push({ icon: k === "number" ? "number" : k, label: `Change to ${KIND_LABEL[k] || k}`, action: () => { pushUndo(host); ctrl.kind = k; state.refresh(); } });
   }
-  if (!many && !isGroupKind(ctrl.kind) && ctrl.kind !== "label" && ctrl.kind !== "hdivider" && ctrl.kind !== "vdivider" && !isOutputKind(ctrl.kind)) {
+  // Balance Slider: dois elos (A e B) em vez de um "Bind…".
+  if (!many && ctrl.kind === "balance") entries.push(...balanceLinkEntries(host, ctrl, state, list));
+  if (!many && !isGroupKind(ctrl.kind) && ctrl.kind !== "label" && ctrl.kind !== "hdivider" && ctrl.kind !== "vdivider" && !isOutputKind(ctrl.kind) && ctrl.kind !== "balance") {
     entries.push({ icon: "link", label: ctrl.bind ? "Rebind…" : "Bind…", action: () => openInspector({
       host, layout: host.properties[PROP], section: { controls: list }, ctrl, state,
       forFilterKind: ctrl.kind === "text" ? "" : ctrl.kind,
@@ -267,7 +270,7 @@ function openComponentContextMenu(e, host, state, ctrl, list) {
     } });
   }
   // Fio (entrada nativa do subgrafo): só quando o valor deve vir de FORA.
-  if (!many && isSuperNode(host) && innerOfBind(host, ctrl.bind)) {
+  if (!many && ctrl.kind !== "balance" && isSuperNode(host) && innerOfBind(host, ctrl.bind)) {
     entries.push(hasWireInput(host, ctrl.bind)
       ? { icon: "link", label: "Remove node input (wire)", action: () => removeWireInput(host, ctrl.bind) }
       : { icon: "link", label: "Expose as node input (wire)", action: () => exposeAsInput(host, ctrl.bind) });
@@ -425,6 +428,7 @@ const TOOLBOX_CATEGORIES = [
       { kind: "text",     icon: "text",     label: "Text Input",        prefix: "Input",    w: MIN_CTRL_W, h: MIN_CTRL_H },
       { kind: "textarea", icon: "textarea", label: "Text Multiline",    prefix: "Multiline",w: 96,         h: 80 },
       { kind: "slider",   icon: "slider",   label: "Slider",            prefix: "Slider",   w: MIN_CTRL_W, h: MIN_CTRL_H },
+      { kind: "balance",  icon: "slider",   label: "Balance Slider",    prefix: "Balance",  w: 320,        h: 48 },
       { kind: "number",   icon: "number",   label: "Stepper",           prefix: "Stepper",  w: MIN_CTRL_W, h: MIN_CTRL_H },
       { kind: "toggle",   icon: "toggle",   label: "Switch",            prefix: "Switch",   w: MIN_CTRL_W, h: MIN_CTRL_H },
       { kind: "combo",    icon: "combo",    label: "Dropdown",          prefix: "Dropdown", w: MIN_CTRL_W, h: MIN_CTRL_H },

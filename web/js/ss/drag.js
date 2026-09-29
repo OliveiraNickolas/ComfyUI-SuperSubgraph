@@ -6,10 +6,10 @@ import { app } from "../../../../scripts/app.js";
 import { GRID, PROP } from "./constants.js";
 import { duplicateComponent, pushUndo, pushUndoSnapshot } from "./core.js";
 import { findNodeInHostScope, prettify, resolveBind } from "./widgets.js";
-import { el, glyphBtn, mkButton, mkCombo, mkMediaControl, mkNumber, mkSlider, mkStepNumber, mkText, mkToggle } from "./controls.js";
+import { el, glyphBtn, mkBalance, mkButton, mkCombo, mkMediaControl, mkNumber, mkSlider, mkStepNumber, mkText, mkToggle } from "./controls.js";
 import { addItemToSegment, getComponentMinDimensions, isOutputKind, mkOutputView, openOutputSourceDialog, outputSourceLabel } from "./outputs.js";
-import { applyLabelStyle, buildControl, ghostControl, isPanelKind, mkSpecialControl } from "./panels.js";
-import { isGroupKind, openInspector } from "./picker.js";
+import { applyLabelStyle, balanceLinkEntries, buildControl, ghostControl, isPanelKind, mkSpecialControl } from "./panels.js";
+import { isGroupKind, openInspector, openLegoContextMenu } from "./picker.js";
 import { colorDotButton, findFreeSpot, setComponentColor, toolByKind, walkControls } from "./form.js";
 import { ensureComponentName, selectComponent } from "./inspector.js";
 import { resize } from "./lifecycle.js";
@@ -333,9 +333,10 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
     const isContainerItem = item.kind === "group" || item.kind === "segment" || item.kind === "vsegment";
     const isCosmeticItem = isDividerItem || isLabelItem;
     const isOutputItem = isOutputKind(item.kind);
-    const hit = (!isCosmeticItem && !isContainerItem && !isOutputItem && item.bind) ? resolveBind(host, item.bind) : null;
+    const isBalanceItem = item.kind === "balance";
+    const hit = (!isCosmeticItem && !isContainerItem && !isOutputItem && !isBalanceItem && item.bind) ? resolveBind(host, item.bind) : null;
     const isBound = !!hit;
-    const isUnbound = !isCosmeticItem && !isContainerItem && !isOutputItem && !isBound;
+    const isUnbound = !isCosmeticItem && !isContainerItem && !isOutputItem && !isBalanceItem && !isBound;
     const isSelected = !!state?.edit && ((state?.selectedName && state.selectedName === item.name) || (state?.selectedNames && state.selectedNames.has(item.name)));
 
     const itemWrap = el(
@@ -436,6 +437,15 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
           openOutputSourceDialog(host, item, state, ctrl.items);
         });
         actionsWrap.append(srcSubBtn);
+      } else if (isBalanceItem) {
+        const ok = [item.bind, item.bind2].every((b) => b && resolveBind(host, b));
+        const balBtn = glyphBtn(`lego-item-link-btn ${ok ? "is-bound" : "is-unbound"}`, "link", 10);
+        balBtn.title = `Link A: ${item.bind || "none"} · Link B: ${item.bind2 || "none"} (click to change)`;
+        balBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openLegoContextMenu(e, balanceLinkEntries(host, item, state, ctrl.items));
+        });
+        actionsWrap.append(balBtn);
       } else if (!isDividerItem && !isLabelItem && !isContainerItem) {
         const linkSubBtn = glyphBtn(
           `lego-item-link-btn ${isBound ? "is-bound" : "is-unbound"}`,
@@ -681,6 +691,10 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       innerSeg.style.minHeight = "32px";
       innerSeg.style.overflow = "visible";
       itemWrap.append(innerSeg);
+    } else if (isBalanceItem) {
+      const bal = mkBalance(host, item, state);
+      bal.style.flex = "1";
+      itemWrap.append(bal);
     } else if (isOutputItem) {
       const labelPos = item.labelPos || "left";
       if (labelPos !== "none" && item.label && item.label !== item.name) {
