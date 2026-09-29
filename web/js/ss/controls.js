@@ -223,6 +223,30 @@ const GLYPHS = {
  * duas folhas coincidem, a pasta volta para não ficar ambíguo.
  * O value cheio continua no `title` e é o que vai para o widget.
  */
+/**
+ * Nome de exibição de uma opção quando o widget tem `options.getOptionLabel`
+ * (o mesmo que o ComfyUI usa para desenhar o combo no nó): o Solo do
+ * Muter/Bypasser do AllmaNodes mostra o nome de cada switch, mas o valor
+ * continua sendo o número. Sem essa função, null.
+ */
+function optionLabel(w, v) {
+  const f = w?.options?.getOptionLabel;
+  if (typeof f !== "function") return null;
+  try {
+    const t = f(v);
+    return t == null ? null : String(t);
+  } catch { return null; }
+}
+/** Opções para a lista suspensa: com nome de exibição, no formato {value, content}. */
+function dropdownValues(w, node) {
+  const vals = valuesOf(w, node);
+  if (typeof w?.options?.getOptionLabel !== "function") return vals;
+  return vals.map((v) => {
+    const raw = v && typeof v === "object" && "value" in v ? v.value : v;
+    return { value: raw, content: optionLabel(w, raw) ?? String(raw) };
+  });
+}
+
 function shortLabel(value, all) {
   const txt = String(value ?? "");
   const cut = txt.lastIndexOf("/");
@@ -842,8 +866,9 @@ function mkCombo(node, w, ctrl, state) {
 
   const pinta = () => {
     const vals = valuesOf(w);
-    labelEl.textContent = shortLabel(w.value, vals) || "\u2014";
-    btn.title = String(w.value ?? "");
+    const named = optionLabel(w, w.value);
+    labelEl.textContent = named ?? (shortLabel(w.value, vals) || "\u2014");
+    btn.title = named ?? String(w.value ?? "");
   };
   pinta();
 
@@ -851,7 +876,7 @@ function mkCombo(node, w, ctrl, state) {
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     e.preventDefault();
-    openDropdown(btn, valuesOf(w), w.value, (v) => {
+    openDropdown(btn, dropdownValues(w, node), w.value, (v) => {
       writeWidget(node, w, v);
       pinta();
     });
@@ -1574,4 +1599,4 @@ function mkStepNumber(node, w, ctrl, state) {
   return wrap;
 }
 
-export { el, esc, PILL, GLYPHS, shortLabel, glyph, glyphEl, glyphBtn, glyphTextBtn, selectOnFocus, eatPointer, mkToggle, mkSlider, SEED_MODE_INFO, controlWidgetOf, wantsSeedMode, seedModeShown, RUN_MODES, nextRunValue, seedModeButton, balanceRange, balanceSplit, mkBalance, mkNumber, DROPDOWN_OPEN, openDropdown, mkCombo, mkText, mkButton, MEDIA_VERSIONS, MEDIA_ELEMENT_CACHE, sameUrl, viewURL, openMaskEditorFor, uploadTo, mkMediaControl, mkStepNumber };
+export { el, esc, PILL, GLYPHS, shortLabel, glyph, glyphEl, glyphBtn, glyphTextBtn, selectOnFocus, eatPointer, optionLabel, dropdownValues, mkToggle, mkSlider, SEED_MODE_INFO, controlWidgetOf, wantsSeedMode, seedModeShown, RUN_MODES, nextRunValue, seedModeButton, balanceRange, balanceSplit, mkBalance, mkNumber, DROPDOWN_OPEN, openDropdown, mkCombo, mkText, mkButton, MEDIA_VERSIONS, MEDIA_ELEMENT_CACHE, sameUrl, viewURL, openMaskEditorFor, uploadTo, mkMediaControl, mkStepNumber };
