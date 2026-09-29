@@ -1,5 +1,6 @@
 // Stepper num grupo com largura escolhida ocupa essa largura (como dropdown e
-// texto); sem largura escolhida continua compacto.
+// texto). Em grupo VERTICAL ele ocupa a linha toda mesmo sem largura escolhida
+// (como o campo numérico do nó nativo); em grupo horizontal continua compacto.
 import { launch, COMFY_URL } from "../lib.mjs";
 const b = await launch();
 const pg = await b.newPage({ viewport: { width: 1400, height: 900 } });
@@ -20,13 +21,17 @@ const r = await pg.evaluate(async () => {
   list.push({ kind: "vsegment", name: "G", header: "Size", label: "Size", x: 16, y: 16, w: 320, h: 160, items: [
     { kind: "label", name: "LW", text: "width", label: "width" }, { kind: "number", name: "W", bind: `${id}/width`, label: "width", labelPos: "none", w: 240 },
     { kind: "label", name: "LH", text: "height", label: "height" }, { kind: "number", name: "H", bind: `${id}/height`, label: "height", labelPos: "none" } ] });
+  list.push({ kind: "segment", name: "HG", header: "Row", label: "Row", x: 16, y: 200, w: 480, h: 57, items: [
+    { kind: "label", name: "LX", text: "width", label: "width" }, { kind: "number", name: "X", bind: `${id}/width`, label: "width", labelPos: "none" } ] });
   sn.pos = [60, 60]; app.canvas.ds.offset = [0, 0]; app.canvas.ds.scale = 1;
   sn.__legoState.refresh(); await new Promise(r => setTimeout(r, 400));
   const m = (n) => { const it = sn.__legoHost.querySelector(`.lego-segment-item[data-name="${n}"]`); return { item: it.offsetWidth, stepper: it.querySelector(".lego-step-number").offsetWidth }; };
-  return { W: m("W"), H: m("H") };
+  return { W: m("W"), H: m("H"), X: m("X") };
 });
 t("stepper with a chosen width fills it " + JSON.stringify(r.W), r.W.item >= 238 && r.W.stepper >= r.W.item - 4);
-t("stepper without a chosen width stays compact " + JSON.stringify(r.H), r.H.stepper < 120);
+// Mudança intencional: antes ficava compacto (~92px) e sobrava um vão só à direita.
+t("in a vertical group a stepper fills the row " + JSON.stringify(r.H), r.H.stepper >= r.H.item - 4);
+t("in a horizontal group a stepper without a chosen width stays compact " + JSON.stringify(r.X), r.X.stepper < 120);
 t("no page errors " + JSON.stringify(errs.slice(0, 3)), !errs.length);
 console.log(`\n${ok} passed, ${fail} failed`);
 await b.close();
