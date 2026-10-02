@@ -1364,6 +1364,7 @@ export const CSS = `
 .lego-row.over{outline:2px dashed var(--lego-accent)}
 
 .lego-row.missing .lego-lbl{color:#ef4444;text-decoration:line-through}
+.lego-row.loading .lego-lbl{color:var(--lego-dim);opacity:.6;font-style:italic}
 .lego-missing-box{display:flex;align-items:center;gap:6px;min-width:0}
 .lego-missing-txt{opacity:.55;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 .lego-missing-btn{flex:none;padding:2px 8px;border-radius:5px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:var(--lego-text);font:600 9px/14px system-ui,sans-serif;cursor:pointer}
@@ -2484,6 +2485,7 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-run-track{height:4px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
 .lego-run-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#a855f7,#22c55e);transition:width .25s}
 .lego-run-error{display:flex;align-items:flex-start;gap:0;padding:7px 10px;border-radius:6px;background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.5);color:#fecaca;font-size:9.5px;line-height:1.35;max-height:64px;overflow:hidden}
+.lego-missing-nodes-warn{padding:5px 10px;font-size:9px;line-height:1.35;color:#fbbf24;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);border-radius:5px;margin:4px 8px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lego-run-error b{white-space:nowrap}
 .lego-run-error span{flex:1;min-width:0;word-break:break-word}
 .lego-run-close{flex:none;border:0;background:none;color:inherit;opacity:.7;cursor:pointer;padding:0 0 0 6px}

@@ -762,7 +762,29 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
   if (!isGroup && !isDivider && !isLabel && !isOutput && !isBalance) {
 
   if (!hit) {
-    if (ctrl.bind === "" || !ctrl.bind) {
+    // Nó de dentro pode existir mas ainda não ter widgets populados (o subgrafo
+    // nativo cria widgets assíncronamente na primeira entrada). Se o nó existe
+    // sem widgets, agenda um refresh em vez de mostrar "widget missing".
+    let bindLoading = false;
+    if (ctrl.bind && ctrl.bind.includes("/")) {
+      const nodeId = ctrl.bind.slice(0, ctrl.bind.indexOf("/"));
+      const innerNode = findNodeInHostScope(host, nodeId);
+      if (innerNode && !(innerNode.widgets?.length)) {
+        // Nó existe mas sem widgets ainda — retry depois de configurar.
+        if (!host.__legoBindRetry) host.__legoBindRetry = 0;
+        if (host.__legoBindRetry < 5) {
+          host.__legoBindRetry++;
+          bindLoading = true;
+          setTimeout(() => { host.__legoBindRetry = 0; state.refresh(); }, 300);
+          row.classList.add("loading");
+          row.title = `${ctrl.bind} — loading…`;
+          row.append(el("div", "lego-lbl", ctrl.label || ctrl.bind || "Loading…"));
+        }
+      }
+    }
+    if (bindLoading) {
+      // Nada: já marcou "loading", cai até o final sem montar missing.
+    } else if (ctrl.bind === "" || !ctrl.bind) {
       // Componente recém-solto: ainda não tem função. Não é defeito — é o
       // estado normal de quem acabou de sair da paleta. Mostra a cara do tipo
       // e só espera o clique que vai lhe dar o parâmetro.

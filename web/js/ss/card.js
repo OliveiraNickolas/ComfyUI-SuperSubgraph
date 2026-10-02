@@ -12,7 +12,7 @@ import { isGroupKind, openComponentSearchMenu, openInspector, openManageTabModal
 import { addZoneBelow, addZoneBeside, buildToolPalette, dropArmedTool, findFreeSpot, makeComponent, makeZone, openAddZoneModal, openColorMenu, toolByKind, visibleControlsOf } from "./form.js";
 import { addSubTabTo, addTab, leaveEditMode, removeTabAt, renderObjectInspector, selectComponent } from "./inspector.js";
 import { applyNodeColorTheme, resize } from "./lifecycle.js";
-import { enterSuper, isSuperNode, openNodeMenuFromCard, openSuperMenu } from "./native.js";
+import { enterSuper, innerNodesOf, isSuperNode, openNodeMenuFromCard, openSuperMenu } from "./native.js";
 
 function buildCard(host, state) {
   const layout = host.properties[PROP];
@@ -95,6 +95,24 @@ function buildCard(host, state) {
   head.append(pencil);
 
   root.append(head);
+
+  /* — alerta de nós/modelos faltantes dentro do subgrafo — */
+  const LG = window.LiteGraph || window.LGraphCanvas?.active_canvas?.constructor?.LiteGraph;
+  const missingInner = innerNodesOf(host).filter((n) => {
+    // Nó sem tipo registrado no LiteGraph: tipo desconhecido / custom node não instalado.
+    const registered = LG?.registered_node_types?.[n.type];
+    return !registered && n.type;
+  });
+  if (missingInner.length) {
+    const warn = el("div", "lego-missing-nodes-warn");
+    const names = [...new Set(missingInner.map((n) => n.type))];
+    const txt = names.length === 1
+      ? `⚠ Missing node: ${names[0]}`
+      : `⚠ ${names.length} missing node types: ${names.slice(0, 3).join(", ")}${names.length > 3 ? "…" : ""}`;
+    warn.textContent = txt;
+    warn.title = `Missing custom nodes inside this subgraph:\n${names.join("\n")}`;
+    root.append(warn);
+  }
 
   /* — abas — */
   const tabs = layout.tabs || [];
