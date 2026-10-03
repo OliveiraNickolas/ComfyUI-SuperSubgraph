@@ -360,10 +360,14 @@ function mkSlider(node, w, ctrl, state) {
   const o = w?.options || {};
   const min = Number.isFinite(ctrl?.min) ? ctrl.min : (Number.isFinite(o.min) ? o.min : 0);
   const max = Number.isFinite(ctrl?.max) ? ctrl.max : (Number.isFinite(o.max) ? o.max : 1);
-  let step = ctrl?.step ?? realStep(o);
-  if (!ctrl?.step && !Number.isFinite(o?.step) && !Number.isFinite(o?.step2)) {
+  let step = ctrl?.step;
+  if (!Number.isFinite(step)) {
     if (ctrl && Number.isFinite(ctrl.decimals)) {
       step = ctrl.decimals === 0 ? 1 : Math.pow(10, -ctrl.decimals);
+    } else if (Number.isFinite(o?.step2)) {
+      step = o.step2;
+    } else if (Number.isFinite(o?.step)) {
+      step = o.step / 10;
     } else {
       step = (max - min <= 1) ? 0.01 : ((max - min <= 10) ? 0.1 : 1);
     }
