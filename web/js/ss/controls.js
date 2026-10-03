@@ -384,6 +384,8 @@ function mkSlider(node, w, ctrl, state) {
   const num = el("input", "lego-in lego-num");
   if (Number.isFinite(ctrl?.numW) && ctrl.numW > 0) {
     num.style.width = `${ctrl.numW}px`;
+    num.style.minWidth = `${ctrl.numW}px`;
+    num.style.maxWidth = `${ctrl.numW}px`;
   }
   selectOnFocus(num);
   num.type = "text";
@@ -405,7 +407,7 @@ function mkSlider(node, w, ctrl, state) {
       startW = num.offsetWidth || (ctrl.numW || 52);
       numResizer.classList.add("active");
       try { numResizer.setPointerCapture(e.pointerId); } catch {}
-    });
+    }, true);
 
     numResizer.addEventListener("pointermove", (e) => {
       if (!resizing) return;
@@ -416,8 +418,10 @@ function mkSlider(node, w, ctrl, state) {
       const dx = (startX - e.clientX) / sc;
       const newW = Math.max(28, Math.min(180, Math.round(startW + dx)));
       num.style.width = `${newW}px`;
+      num.style.minWidth = `${newW}px`;
+      num.style.maxWidth = `${newW}px`;
       ctrl.numW = newW;
-    });
+    }, true);
 
     const stopResize = (e) => {
       if (!resizing) return;
@@ -429,8 +433,8 @@ function mkSlider(node, w, ctrl, state) {
       state.refresh();
     };
 
-    numResizer.addEventListener("pointerup", stopResize);
-    numResizer.addEventListener("pointercancel", stopResize);
+    numResizer.addEventListener("pointerup", stopResize, true);
+    numResizer.addEventListener("pointercancel", stopResize, true);
     wrap.append(numResizer);
     wrap.numResizer = numResizer;
   }

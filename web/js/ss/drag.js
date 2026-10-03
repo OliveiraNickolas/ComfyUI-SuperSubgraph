@@ -388,7 +388,7 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       // zona. Barra o pointerdown para não arrastar o grupo inteiro junto.
       itemWrap.addEventListener("pointerdown", (e) => {
         if (e.button !== 0 || state.armedTool) return;
-        if (e.target.closest(".lego-item-actions, .lego-resizer-corner")) return;
+        if (e.target.closest(".lego-item-actions, .lego-resizer-corner, .lego-slider-num-resizer")) return;
         e.stopPropagation();
         e.preventDefault();
         // Seleciona já no pointerdown: o clique em cima do controle (dropdown,
