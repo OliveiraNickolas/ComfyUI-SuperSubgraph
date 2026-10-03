@@ -8,6 +8,7 @@ import { LOG } from "./constants.js";
 import { showLegoToast } from "./core.js";
 import { RE_AUDIO, RE_IMAGE, RE_VIDEO, fmtNum, isAudioCombo, isIntWidget, isVideoCombo, numDecimals, prettify, realStep, resolveBind, valuesOf, writeWidget } from "./widgets.js";
 import { applyLabelStyle } from "./panels.js";
+import { domScale } from "./drag.js";
 
 /* ══════════════════════════════════════════════════════════════════════════
    Controles
@@ -386,7 +387,49 @@ function mkSlider(node, w, ctrl, state) {
   }
   selectOnFocus(num);
   num.type = "text";
-  wrap.append(track, num);
+  wrap.append(track);
+
+  if (state?.edit) {
+    const numResizer = el("div", "lego-slider-num-resizer");
+    numResizer.title = "Drag to resize number field";
+    let resizing = false;
+    let startX = 0;
+    let startW = 52;
+
+    numResizer.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      resizing = true;
+      startX = e.clientX;
+      startW = num.offsetWidth || (ctrl.numW || 52);
+      numResizer.classList.add("active");
+      numResizer.setPointerCapture(e.pointerId);
+    });
+
+    numResizer.addEventListener("pointermove", (e) => {
+      if (!resizing) return;
+      e.stopPropagation();
+      const sc = domScale() || 1;
+      const dx = (startX - e.clientX) / sc;
+      const newW = Math.max(28, Math.min(180, Math.round(startW + dx)));
+      num.style.width = `${newW}px`;
+      ctrl.numW = newW;
+    });
+
+    const stopResize = (e) => {
+      if (!resizing) return;
+      resizing = false;
+      numResizer.classList.remove("active");
+      try { numResizer.releasePointerCapture(e.pointerId); } catch {}
+      state.refresh();
+    };
+
+    numResizer.addEventListener("pointerup", stopResize);
+    numResizer.addEventListener("pointercancel", stopResize);
+    wrap.append(numResizer);
+  }
+
+  wrap.append(num);
 
   wrap.track = track;
   wrap.num = num;
