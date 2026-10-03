@@ -1018,6 +1018,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
     }
     row.append(control);
   } else if (labelPos === "none") {
+    if (kind === "toggle") row.classList.add("is-toggle");
     row.classList.add("lbl-none");
     row.append(control);
   } else if (wide) {

@@ -1358,6 +1358,7 @@ export const CSS = `
   font-size:11px;font-weight:500}
 .lego-row .lego-in, .lego-row .lego-slider, .lego-row .lego-combo-btn{flex:1 1 0;min-width:0}
 .lego-row .lego-sw{flex:none}
+.lego-row.is-toggle.lbl-none{justify-content:center}
 .lego-row.wide{flex-direction:column;align-items:stretch}
 .lego-row.wide .lego-in{width:100%}
 .lego-row.drag{opacity:.4}
