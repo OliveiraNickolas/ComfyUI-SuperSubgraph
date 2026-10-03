@@ -820,11 +820,15 @@ function renderObjectInspector(host, state, force) {
     const rangeWrap = el("div", "lego-oi-range-wrap");
     rangeWrap.style.cssText = "display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;";
 
+    const formatRangeVal = (v, dec) => {
+      if (!Number.isFinite(v)) return "";
+      return Number.isFinite(dec) && dec > 0 ? v.toFixed(dec) : String(v);
+    };
+
     const inMin = el("input", "lego-oi-in");
-    inMin.type = "number";
-    inMin.step = "any";
+    inMin.type = "text";
     inMin.placeholder = String(Number.isFinite(o.min) ? o.min : 0);
-    inMin.value = Number.isFinite(ctrl.min) ? String(ctrl.min) : "";
+    inMin.value = Number.isFinite(ctrl.min) ? formatRangeVal(ctrl.min, ctrl.decimals) : "";
     inMin.title = "Range Minimum (x)";
     inMin.style.cssText = "flex:1;min-width:0;text-align:right;";
 
@@ -832,20 +836,50 @@ function renderObjectInspector(host, state, force) {
     sep.style.cssText = "color:var(--lego-dim);font-size:11px;font-weight:600;user-select:none;flex:none;text-transform:lowercase;";
 
     const inMax = el("input", "lego-oi-in");
-    inMax.type = "number";
-    inMax.step = "any";
+    inMax.type = "text";
     inMax.placeholder = String(Number.isFinite(o.max) ? o.max : 1);
-    inMax.value = Number.isFinite(ctrl.max) ? String(ctrl.max) : "";
+    inMax.value = Number.isFinite(ctrl.max) ? formatRangeVal(ctrl.max, ctrl.decimals) : "";
     inMax.title = "Range Maximum (y)";
     inMax.style.cssText = "flex:1;min-width:0;text-align:right;";
 
     const saveRange = () => {
-      const vMin = parseFloat(inMin.value);
-      const vMax = parseFloat(inMax.value);
-      if (Number.isFinite(vMin)) ctrl.min = vMin;
+      const rawMin = inMin.value.trim();
+      const rawMax = inMax.value.trim();
+      const vMin = parseFloat(rawMin);
+      const vMax = parseFloat(rawMax);
+
+      let detectedDec = null;
+      const checkDec = (str) => {
+        if (!str || !str.includes(".")) return 0;
+        return (str.split(".")[1] || "").length;
+      };
+
+      const hasMin = Number.isFinite(vMin) && rawMin !== "";
+      const hasMax = Number.isFinite(vMax) && rawMax !== "";
+
+      if (hasMin || hasMax) {
+        const decMin = hasMin && rawMin.includes(".") ? checkDec(rawMin) : null;
+        const decMax = hasMax && rawMax.includes(".") ? checkDec(rawMax) : null;
+        if (decMin !== null || decMax !== null) {
+          detectedDec = Math.max(decMin || 0, decMax || 0);
+        } else {
+          detectedDec = 0;
+        }
+      }
+
+      if (hasMin) ctrl.min = vMin;
       else delete ctrl.min;
-      if (Number.isFinite(vMax)) ctrl.max = vMax;
+      if (hasMax) ctrl.max = vMax;
       else delete ctrl.max;
+
+      if (detectedDec !== null) {
+        ctrl.decimals = detectedDec;
+        ctrl.isInt = detectedDec === 0;
+        delete ctrl.step;
+      } else {
+        delete ctrl.decimals;
+        delete ctrl.isInt;
+      }
       state.refresh();
     };
 

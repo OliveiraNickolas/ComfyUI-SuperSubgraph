@@ -362,10 +362,14 @@ function mkSlider(node, w, ctrl, state) {
   const max = Number.isFinite(ctrl?.max) ? ctrl.max : (Number.isFinite(o.max) ? o.max : 1);
   let step = ctrl?.step ?? realStep(o);
   if (!ctrl?.step && !Number.isFinite(o?.step) && !Number.isFinite(o?.step2)) {
-    step = (max - min <= 1) ? 0.01 : ((max - min <= 10) ? 0.1 : 1);
+    if (ctrl && Number.isFinite(ctrl.decimals)) {
+      step = ctrl.decimals === 0 ? 1 : Math.pow(10, -ctrl.decimals);
+    } else {
+      step = (max - min <= 1) ? 0.01 : ((max - min <= 10) ? 0.1 : 1);
+    }
   }
-  const isInt = isIntWidget(o, step, w);
-  const dec = numDecimals(o, step, isInt);
+  const isInt = isIntWidget(o, step, w, ctrl);
+  const dec = numDecimals(o, step, isInt, ctrl);
 
   const wrap = el("div", "lego-slider");
   const track = el("div", "lego-track");
@@ -539,7 +543,7 @@ function seedModeButton(node, w, state, ctrl = null) {
 function mkNumber(node, w, ctrl, state) {
   const o = w.options || {};
   const step = ctrl.step ?? realStep(o);
-  const isInt = isIntWidget(o, step, w);
+  const isInt = isIntWidget(o, step, w, ctrl);
 
   const wrap = el("div", "lego-slider");
   const num = el("input", "lego-in");
@@ -547,7 +551,7 @@ function mkNumber(node, w, ctrl, state) {
   num.type = "text";
   wrap.append(num);
 
-  const dec = numDecimals(o, step, isInt);
+  const dec = numDecimals(o, step, isInt, ctrl);
   const paint = (force = false) => {
     if (force === true || document.activeElement !== num) num.value = typeof w.value === "number" ? fmtNum(w.value, dec) : String(w.value ?? "");
   };
@@ -1540,7 +1544,7 @@ function mkMediaControl(node, w, ctrl, state, parentRow, mediaKind) {
 function mkStepNumber(node, w, ctrl, state) {
   const o = w?.options || {};
   const step = ctrl.step ?? realStep(o);
-  const isInt = isIntWidget(o, step, w);
+  const isInt = isIntWidget(o, step, w, ctrl);
   const min = Number.isFinite(o.min) ? o.min : -Infinity;
   const max = Number.isFinite(o.max) ? o.max : Infinity;
 
@@ -1557,7 +1561,7 @@ function mkStepNumber(node, w, ctrl, state) {
 
   const paint = (force = false) => {
     if (force === true || document.activeElement !== inp) {
-      inp.value = fmtNum(w.value, numDecimals(o, step, isInt));
+      inp.value = fmtNum(w.value, numDecimals(o, step, isInt, ctrl));
     }
   };
   paint();

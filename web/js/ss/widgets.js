@@ -45,15 +45,19 @@ function realStep(o) {
  * INT ou FLOAT. `precision` é o sinal explícito do ComfyUI (0 = inteiro);
  * o passo só entra quando ela não vem.
  */
-function isIntWidget(o, step, w) {
+function isIntWidget(o, step, w, ctrl) {
+  if (ctrl && Number.isFinite(ctrl.decimals)) return ctrl.decimals === 0;
+  if (ctrl && ctrl.isInt === false) return false;
+  if (ctrl && ctrl.isInt === true) return true;
   if (w?.type && /int/i.test(w.type)) return true;
   if (Number.isFinite(o?.precision)) return o.precision === 0;
   return Number.isInteger(step) && step >= 1;
 }
 
 /** Casas decimais que o ComfyUI mostra para o número (precision, ou as do passo). */
-function numDecimals(o, step, isInt) {
+function numDecimals(o, step, isInt, ctrl) {
   if (isInt) return 0;
+  if (ctrl && Number.isFinite(ctrl.decimals)) return Math.max(0, ctrl.decimals);
   if (Number.isFinite(o?.precision)) return Math.max(0, o.precision);
   return Math.min(4, Math.max(0, (String(step).split(".")[1] || "").length));
 }
