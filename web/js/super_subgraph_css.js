@@ -1389,8 +1389,8 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   background:var(--lego-text, #ffffff);box-shadow:0 1px 3px rgba(0,0,0,0.6);transform:translate(-50%,-50%);pointer-events:none;transition:transform .08s}
 .lego-track:hover .lego-knob{transform:translate(-50%,-50%) scale(1.15)}
 .lego-num{flex:none;width:52px;text-align:right;font-variant-numeric:tabular-nums;font-weight:400;box-sizing:border-box;height:22px;line-height:20px;padding:2px 6px;font-size:11px}
-.lego-slider-num-resizer{position:relative;width:6px;height:16px;cursor:ew-resize;z-index:10;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;margin:0 -3px;flex:none}
-.lego-slider-num-resizer::after{content:"";width:2px;height:10px;background:rgba(255,255,255,0.18);border-radius:1px;transition:background .15s}
+.lego-slider-num-resizer{position:relative;width:10px;height:18px;cursor:ew-resize;z-index:10;touch-action:none;user-select:none;display:flex;align-items:center;justify-content:center;margin:0 -2px;flex:none}
+.lego-slider-num-resizer::after{content:"";width:3px;height:12px;background:rgba(255,255,255,0.4);border-radius:2px;box-shadow:0 0 3px rgba(0,0,0,0.5);transition:background .15s}
 .lego-slider-num-resizer:hover::after, .lego-slider-num-resizer.active::after{background:var(--lego-accent, #3b82f6)}
 
 /* ── Balance Slider: um total dividido entre dois parâmetros ──

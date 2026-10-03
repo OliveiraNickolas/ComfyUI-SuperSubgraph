@@ -986,7 +986,11 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       const topBar = row.querySelector(".lego-row-top");
       if (topBar) topBar.remove();
 
-      control.replaceChildren(control.track, control.num);
+      if (control.numResizer) {
+        control.replaceChildren(control.track, control.numResizer, control.num);
+      } else {
+        control.replaceChildren(control.track, control.num);
+      }
       row.replaceChildren();
       if (labelPos === "none") {
         row.classList.add("lbl-none");

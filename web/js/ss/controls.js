@@ -427,6 +427,7 @@ function mkSlider(node, w, ctrl, state) {
     numResizer.addEventListener("pointerup", stopResize);
     numResizer.addEventListener("pointercancel", stopResize);
     wrap.append(numResizer);
+    wrap.numResizer = numResizer;
   }
 
   wrap.append(num);
