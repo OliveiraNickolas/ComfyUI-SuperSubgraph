@@ -1685,7 +1685,7 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 .lego-row.grp.grp-media .lego-media-select{flex:1;min-width:0;width:auto}
 .lego-row.grp.grp-media .lego-media-picker{flex:1;min-width:0}
 
-/* ── Audio Player com Timeline, Equalizador e Design Coeso ── */
+/* ── Audio Player: Design Moderno, Minimalista e Integrado ── */
 .lego-audio-player{
   position: absolute;
   inset: 0;
@@ -1697,45 +1697,48 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   justify-content: center;
   align-items: stretch;
   gap: 6px;
-  padding: 5px 8px;
-  background: rgba(0, 0, 0, 0.45);
+  padding: 8px 12px;
+  background: rgba(18, 18, 22, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 6px;
   user-select: none;
 }
 
-/* Modo Compacto: o thumb é 44x44, mostra só o botão de play centralizado */
+/* Modo Compacto: player horizontal em linha única e limpa */
 .lego-media-box:not(.tall) .lego-audio-player{
-  padding: 0 !important;
+  padding: 2px 6px !important;
+  flex-direction: row !important;
   align-items: center !important;
-  justify-content: center !important;
-  background: transparent !important;
+  gap: 8px !important;
+  background: rgba(18, 18, 22, 0.5) !important;
 }
-.lego-media-box:not(.tall) .lego-audio-visualizer,
-.lego-media-box:not(.tall) .lego-audio-timeline,
-.lego-media-box:not(.tall) .lego-audio-time{
+.lego-media-box:not(.tall) .lego-audio-visualizer{
   display: none !important;
 }
-.lego-media-box:not(.tall) .lego-audio-controls{
-  justify-content: center;
-  width: auto;
-}
 
-/* Visualizador / Equalizador de Ondas Sonoras */
+/* Visualizador / Onda Sonora Suave */
 .lego-audio-visualizer{
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  height: 18px;
+  gap: 2px;
+  height: 16px;
   width: 100%;
   overflow: hidden;
   flex: none;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+.lego-audio-player.playing .lego-audio-visualizer{
+  opacity: 1;
 }
 .lego-audio-vbar{
   flex: 1;
-  max-width: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.22);
-  height: 6px;
+  max-width: 3px;
+  border-radius: 1.5px;
+  background: var(--lego-dim, rgba(255, 255, 255, 0.25));
+  height: 4px;
   transition: height 0.15s ease, background 0.15s ease;
 }
 .lego-audio-player.playing .lego-audio-vbar{
@@ -1743,24 +1746,24 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   animation: legoEqualizer 0.75s ease-in-out infinite alternate;
 }
 @keyframes legoEqualizer{
-  0%{ transform: scaleY(0.2); }
+  0%{ transform: scaleY(0.25); }
   50%{ transform: scaleY(1.0); }
-  100%{ transform: scaleY(0.35); }
+  100%{ transform: scaleY(0.4); }
 }
 
 /* Linha de Controles: Play + Timeline + Tempo */
 .lego-audio-controls{
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
   width: 100%;
   min-width: 0;
-  flex: none;
+  flex: 1;
 }
 .lego-audio-play-btn{
   flex: none;
-  width: 28px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--lego-accent, #3b82f6);
   color: #fff;
@@ -1768,33 +1771,41 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-  transition: transform 0.12s ease, filter 0.12s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, filter 0.15s ease, background 0.15s ease;
 }
 .lego-audio-play-btn:hover{
   transform: scale(1.08);
-  filter: brightness(1.12);
+  filter: brightness(1.15);
+}
+.lego-audio-play-btn:active{
+  transform: scale(0.95);
 }
 
 /* Timeline / Barra de Progresso Arrastável */
 .lego-audio-timeline{
   flex: 1;
   position: relative;
-  height: 18px;
+  height: 20px;
   display: flex;
   align-items: center;
   cursor: pointer;
   touch-action: none;
-  min-width: 40px;
+  min-width: 36px;
 }
 .lego-audio-rail{
   position: absolute;
   left: 0;
   right: 0;
-  height: 5px;
+  height: 4px;
   border-radius: 99px;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.12);
   overflow: hidden;
+  transition: height 0.12s ease;
+}
+.lego-audio-timeline:hover .lego-audio-rail,
+.lego-audio-timeline.dragging .lego-audio-rail{
+  height: 5px;
 }
 .lego-audio-progress{
   position: absolute;
@@ -1810,29 +1821,29 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
   position: absolute;
   top: 50%;
   left: 0%;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: #ffffff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   transform: translate(-50%, -50%);
   pointer-events: none;
-  opacity: 0.85;
-  transition: transform 0.12s ease, opacity 0.12s ease;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.12s ease;
 }
 .lego-audio-timeline:hover .lego-audio-knob,
 .lego-audio-timeline.dragging .lego-audio-knob{
   opacity: 1;
-  transform: translate(-50%, -50%) scale(1.25);
+  transform: translate(-50%, -50%) scale(1.15);
 }
 
 /* Display de Tempo Monospace */
 .lego-audio-time{
   flex: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 500;
-  color: var(--lego-dim, rgba(255, 255, 255, 0.6));
+  color: var(--lego-dim, rgba(255, 255, 255, 0.5));
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   letter-spacing: -0.2px;

@@ -492,10 +492,10 @@ function ghostControl(kind, ctrl) {
       audioWrap.style.height = "100%";
 
       const vis = el("div", "lego-audio-visualizer");
-      const barHeights = [25, 45, 80, 60, 95, 40, 70, 85, 30, 65, 90, 50, 75, 100, 55, 35, 70, 45, 80, 30];
+      const barHeights = [20, 35, 60, 45, 75, 30, 55, 65, 25, 50, 70, 40, 60, 80, 45, 30, 55, 35, 60, 25, 40, 65, 30, 50];
       barHeights.forEach((h) => {
         const b = el("div", "lego-audio-vbar");
-        b.style.height = `${Math.round(h * 0.22)}px`;
+        b.style.height = `${Math.round(h * 0.16)}px`;
         vis.append(b);
       });
 
