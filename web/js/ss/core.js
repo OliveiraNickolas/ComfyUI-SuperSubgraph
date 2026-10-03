@@ -6,7 +6,7 @@ import { CSS, CSS_FORM, CSS_OUTPUT, CSS_DRAG, CSS_CAPTION_ALIGN } from "../super
 import { PROP } from "./constants.js";
 import { el } from "./controls.js";
 import { activeSectionOf, groupSelectedComponents, removeControlsByName, renameClone, visibleControlsOf, walkControls } from "./form.js";
-import { ensureComponentName, findSelected, renderObjectInspector } from "./inspector.js";
+import { ensureComponentName, findSelected, leaveEditMode, renderObjectInspector } from "./inspector.js";
 import { ATTACHED } from "./lifecycle.js";
 
 /* Estilos: web/js/super_subgraph_css.js */
@@ -252,25 +252,43 @@ function installFormShortcuts() {
       // Lista de um dropdown aberta: o Esc só fecha a lista (o listener dela
       // cuida disso), sem limpar a seleção do cartão.
       if (document.querySelector(".lego-list-pop")) return;
+
+      // 1. Se houver ferramenta armada ou componente selecionado, limpa primeiro
+      let handledSelection = false;
       for (const n of ATTACHED) {
         const st = n.__legoState;
-        if (st) {
-          let changed = false;
-          if (st.armedTool) {
+        if (st && st.edit) {
+          if (st.armedTool || (st.selectedNames && st.selectedNames.size > 0) || st.selectedName) {
             st.armedTool = null;
-            changed = true;
-          }
-          if ((st.selectedNames && st.selectedNames.size > 0) || st.selectedName) {
             st.selectedNames?.clear();
             st.selectedName = null;
-            changed = true;
-          }
-          if (changed) {
             st.refresh();
             renderObjectInspector(n, st, false);
-            e.stopPropagation();
+            handledSelection = true;
           }
         }
+      }
+      if (handledSelection) {
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
+
+      // 2. Se não havia seleção ou ferramenta ativa, sai do Modo Edição
+      let leftEdit = false;
+      for (const n of ATTACHED) {
+        const st = n.__legoState;
+        if (st && st.edit) {
+          st.edit = false;
+          leaveEditMode(st);
+          st.refresh();
+          leftEdit = true;
+        }
+      }
+      if (leftEdit) {
+        e.stopPropagation();
+        e.preventDefault();
+        return;
       }
       return;
     }
