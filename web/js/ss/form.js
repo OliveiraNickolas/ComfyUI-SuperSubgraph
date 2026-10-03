@@ -199,7 +199,9 @@ function fitGroupToContent(host, ctrl, row, onChange) {
   if (overW <= 1 && !growH) return false;
   if (overW > 1) ctrl.w = Math.ceil((w0 + overW + 4) / GRID) * GRID;
   if (growH) ctrl.h = needH;
-  if (auto) ctrl.autoH = ctrl.h;
+  // Mantém autoH em dia: grupos de uma linha e auto sempre acompanham a
+  // altura calculada, senão autoH fossiliza e o grupo nunca mais encolhe.
+  if (auto || oneLine) ctrl.autoH = ctrl.h;
   row.style.width = `${ctrl.w}px`;
   row.style.height = `${ctrl.h}px`;
   // O ajuste não é uma edição do usuário: não vira entrada de Undo.
