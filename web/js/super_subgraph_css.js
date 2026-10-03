@@ -1417,8 +1417,8 @@ textarea.lego-in{height:auto;resize:vertical;min-height:50px;font-family:ui-mono
 
 .lego-sw{position:relative;flex:none;width:28px;height:16px;border-radius:99px;
   background:rgba(0,0,0,0.5);cursor:pointer;transition:background .15s ease;border:1px solid rgba(255,255,255,0.08);box-sizing:border-box}
-.lego-sw::after{content:"";position:absolute;top:1.5px;left:2px;width:11px;height:11px;
-  border-radius:50%;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.4);transition:transform .15s cubic-bezier(0.4,0,0.2,1)}
+.lego-sw::after{content:"";position:absolute;top:50%;left:2px;width:10px;height:10px;margin-top:-5px;
+  border-radius:50%;background:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.35);transition:transform .15s cubic-bezier(0.4,0,0.2,1)}
 .lego-sw.on{background:var(--lego-on);border-color:rgba(34,197,94,0.4)}
 .lego-sw.on::after{transform:translateX(12px)}
 
