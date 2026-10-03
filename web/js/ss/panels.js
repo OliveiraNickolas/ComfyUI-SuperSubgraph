@@ -1239,6 +1239,7 @@ function buildControl(host, ctrl, state, sectionCtrls, parentContainer, updateBo
       // exceto se o clique for explicitamente na alça de redimensionamento ou nos botões de ação flutuantes.
       if (
         e.target.closest(".lego-resizer-corner") ||
+        e.target.closest(".lego-slider-num-resizer") ||
         e.target.closest(".lego-floating-actions") ||
         e.target.closest(".lego-item-actions") ||
         e.target.closest(".lego-item-del-btn") ||

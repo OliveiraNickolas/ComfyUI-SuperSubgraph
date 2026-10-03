@@ -398,17 +398,20 @@ function mkSlider(node, w, ctrl, state) {
 
     numResizer.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
+      e.stopImmediatePropagation();
       e.preventDefault();
       resizing = true;
       startX = e.clientX;
       startW = num.offsetWidth || (ctrl.numW || 52);
       numResizer.classList.add("active");
-      numResizer.setPointerCapture(e.pointerId);
+      try { numResizer.setPointerCapture(e.pointerId); } catch {}
     });
 
     numResizer.addEventListener("pointermove", (e) => {
       if (!resizing) return;
       e.stopPropagation();
+      e.stopImmediatePropagation();
+      e.preventDefault();
       const sc = domScale() || 1;
       const dx = (startX - e.clientX) / sc;
       const newW = Math.max(28, Math.min(180, Math.round(startW + dx)));
@@ -421,6 +424,8 @@ function mkSlider(node, w, ctrl, state) {
       resizing = false;
       numResizer.classList.remove("active");
       try { numResizer.releasePointerCapture(e.pointerId); } catch {}
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       state.refresh();
     };
 

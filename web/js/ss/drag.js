@@ -410,7 +410,7 @@ function buildSegment(host, ctrl, state, sectionCtrls) {
       }, true);
 
       itemWrap.addEventListener("click", (e) => {
-        if (e.target.closest(".lego-item-actions") || e.target.closest(".lego-resizer-corner")) return;
+        if (e.target.closest(".lego-item-actions") || e.target.closest(".lego-resizer-corner") || e.target.closest(".lego-slider-num-resizer")) return;
         e.stopPropagation();
         // Clique simples num item de uma seleção múltipla: fica só ele.
         const isMulti = e.ctrlKey || e.metaKey || e.shiftKey;
