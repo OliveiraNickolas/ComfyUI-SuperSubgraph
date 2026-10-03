@@ -381,6 +381,9 @@ function mkSlider(node, w, ctrl, state) {
   const knob = el("div", "lego-knob");
   track.append(fill, knob);
   const num = el("input", "lego-in lego-num");
+  if (Number.isFinite(ctrl?.numW) && ctrl.numW > 0) {
+    num.style.width = `${ctrl.numW}px`;
+  }
   selectOnFocus(num);
   num.type = "text";
   wrap.append(track, num);

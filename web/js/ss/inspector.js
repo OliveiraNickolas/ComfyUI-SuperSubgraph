@@ -890,6 +890,13 @@ function renderObjectInspector(host, state, force) {
 
     rangeWrap.append(inMin, sep, inMax);
     props.append(propRow("Range", rangeWrap));
+
+    // Field Width (largura da caixinha numérica do slider em pixels, padrão 52)
+    props.append(propRow("Field Width", propNumber(ctrl.numW || 52, (v) => {
+      if (v > 0 && v !== 52) ctrl.numW = v;
+      else delete ctrl.numW;
+      state.refresh();
+    }, 4)));
   }
 
   // Grupo e segmento são recipientes: trocar o "tipo" deles desmontaria os
